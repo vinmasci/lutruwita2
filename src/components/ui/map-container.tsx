@@ -36,7 +36,7 @@ const MapContainer = () => {
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
 
-    const mapboxToken = process.env.REACT_APP_MAPBOX_TOKEN;
+    const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
     if (!mapboxToken) {
       console.error('Mapbox token not found');
       return;
