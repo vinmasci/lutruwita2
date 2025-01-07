@@ -34,24 +34,49 @@ const MapContainer = () => {
   ]);
 
   useEffect(() => {
-    if (!mapContainer.current || map.current) return;
-
-    const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
-    if (!mapboxToken) {
-      console.error('Mapbox token not found');
+    console.log('1. Effect starting');
+    if (!mapContainer.current) {
+      console.log('2a. No map container');
+      return;
+    }
+    if (map.current) {
+      console.log('2b. Map already exists');
       return;
     }
 
-    mapboxgl.accessToken = mapboxToken;
+    const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
+    console.log('3. Token:', mapboxToken?.slice(0, 10) + '...');
+    
+    if (!mapboxToken) {
+      console.error('4a. Mapbox token not found');
+      return;
+    }
 
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: MAP_STYLES[currentStyle as keyof typeof MAP_STYLES],
-      center: [146.5, -41.5], // Center on Tasmania
-      zoom: 7,
-      minZoom: 3,
-      maxZoom: 18,
-    });
+    try {
+      console.log('4b. Setting access token');
+      mapboxgl.accessToken = mapboxToken;
+
+      console.log('5. Creating map instance');
+      map.current = new mapboxgl.Map({
+        container: mapContainer.current,
+        style: MAP_STYLES[currentStyle as keyof typeof MAP_STYLES],
+        center: [146.5, -41.5], // Center on Tasmania
+        zoom: 7,
+        minZoom: 3,
+        maxZoom: 18,
+      });
+      console.log('6. Map instance created');
+    } catch (error) {
+      console.error('Error creating map:', error);
+    }
+
+    return () => {
+      if (map.current) {
+        map.current.remove();
+        map.current = null;
+      }
+    };
+  }, []); // Removed currentStyle from dependencies
 
     // Add these event listeners
     map.current.on('error', (e) => {
