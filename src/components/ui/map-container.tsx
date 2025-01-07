@@ -53,6 +53,15 @@ const MapContainer = () => {
       maxZoom: 18,
     });
 
+    // Add these event listeners
+    map.current.on('error', (e) => {
+      console.error('Mapbox error:', e);
+    });
+
+    map.current.on('load', () => {
+      console.log('Map loaded successfully');
+    });
+
     // Initialize the draw control
     draw.current = new MapboxDraw({
       displayControlsDefault: false,
