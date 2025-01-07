@@ -6,163 +6,119 @@ Before suggesting an update to a file, always check it on GITHUB first
 An advanced mapping platform for creating and sharing interactive routes for cycling, hiking, and outdoor activities in Tasmania.
 
 ## Current Status
-🚧 **In Development** - Setting up initial project structure and dependencies
+🚧 **In Development** - Basic map functionality implemented, working on feature development
 
-### Current Issues
-- [x] Initial project setup with Create React App
+### Completed Features ✅
+- [x] Project setup with Vite + React + TypeScript
 - [x] Basic file structure created
-- [x] Core components scaffolded
-- [ ] Dependency conflicts resolving
-  - Need to fix React Router DOM version issues
-  - Web Vitals module needs proper configuration
-- [ ] Tailwind configuration needs completion
-- [ ] MapBox integration pending
+- [x] Core components implemented
+- [x] Mapbox integration
+- [x] Basic map controls (zoom, pan, locate)
+- [x] Style switching functionality
+- [x] Drawing tools integration
+- [x] Mobile-responsive layout
+- [x] Sidebar component
+- [x] Bottom navigation
+- [x] Basic route drawing capabilities
 
-## Project Setup Progress
+### Current Issues and Next Steps 🔄
+- [ ] Implement surface type system
+- [ ] Add elevation profile with real data
+- [ ] Complete route editing tools
+- [ ] Add GPX file upload functionality
+- [ ] Implement point of interest system
 
-### Environment Setup ⚙️
-- [x] Create React App with TypeScript
-- [x] Project structure organized
-- [x] Git repository initialized
-- [ ] Environment variables configured
-- [ ] Development server running
+## Project Structure
 
 ### Dependencies 📦
-- [x] React 19
+- [x] React 18
 - [x] TypeScript
-- [ ] React Router DOM (needs version fix)
-- [x] Tailwind CSS (partial)
-- [ ] MapBox GL JS
-- [ ] Turf.js
-- [ ] Recharts
-- [x] Shadcn/UI components (partial)
-NOW USING VITE
+- [x] React Router DOM
+- [x] Tailwind CSS
+- [x] MapBox GL JS
+- [x] @mapbox/mapbox-gl-draw
+- [x] Turf.js
+- [x] Recharts
+- [x] Shadcn/UI components
 
 ### Core Components Structure 🏗️
-- [x] Basic layout components created
+- [x] Layout components
   - [x] MainLayout
   - [x] Sidebar
   - [x] BottomTabs
-- [x] Map components scaffolded
+- [x] Map components
   - [x] MapContainer
   - [x] MapControls
   - [x] ElevationProfile
-- [x] Page components created
+- [x] Page components
   - [x] Home
   - [x] Create
   - [x] Explore
 
-## Next Steps
-1. Resolve current dependency issues:
-   - Fix React Router DOM version
-   - Configure Web Vitals properly
-2. Complete Tailwind setup
-3. Add MapBox integration
-4. Implement drawing functionality
-
 ## Implementation Plan
 
-### Phase 1: Core Infrastructure (Current Phase)
+### Phase 1: Core Infrastructure ✅ (Completed)
 - [x] Project setup
 - [x] Basic React application structure
 - [x] Mobile-responsive layout implementation
-- [ ] MapBox integration
-- [ ] Basic routing setup
-- [ ] Environment configuration
+- [x] MapBox integration
+- [x] Basic routing setup
+- [x] Environment configuration
 
-### Phase 2: Basic Map Features (Next Phase)
-- [ ] Map display and controls
-  - [ ] Basic map rendering
-  - [ ] Zoom controls
-  - [ ] Pan controls
-  - [ ] Location detection
-  - [ ] Map style switching
-- [ ] Navigation implementation
-  - [ ] Sidebar component
-  - [ ] Bottom navigation tabs
-  - [ ] Basic routing between views
+### Phase 2: Basic Map Features (In Progress)
+- [x] Map display and controls
+  - [x] Basic map rendering
+  - [x] Zoom controls
+  - [x] Pan controls
+  - [x] Location detection
+  - [x] Map style switching
+- [x] Navigation implementation
+  - [x] Sidebar component
+  - [x] Bottom navigation tabs
+  - [x] Basic routing between views
 
-### Phase 3: Route Management
+### Phase 3: Route Management (Next Focus)
 - [ ] Route creation tools
-  - [ ] Manual route drawing
+  - [x] Manual route drawing
   - [ ] GPX file upload and parsing
   - [ ] Route preview
   - [ ] Route editing
 - [ ] Surface type system
 - [ ] Elevation profile
 
-### Phase 4: Advanced Features
+### Phase 4: Advanced Features (Planned)
 - [ ] Points of Interest system
 - [ ] Gradient visualization
 - [ ] Comments system
 
-### Phase 5: User Management
+### Phase 5: User Management (Planned)
 - [ ] Authentication system
 - [ ] User roles and permissions
 
-### Phase 6: Sharing and Integration
+### Phase 6: Sharing and Integration (Planned)
 - [ ] Map sharing
 - [ ] Multi-user features
 
-### Phase 7: Mobile Optimization
+### Phase 7: Mobile Optimization (Planned)
 - [ ] React Native implementation
 - [ ] Offline capabilities
 
-### Phase 8: Testing and Polish
+### Phase 8: Testing and Polish (Planned)
 - [ ] Comprehensive testing
 - [ ] Performance optimization
 - [ ] Documentation
 
-## Technical Details
+## Map Features
 
-### Map Styles to be Implemented
-- [ ] Mapbox Outdoor (default)
-- [ ] Light
-- [ ] Dark
-- [ ] Streets
-- [ ] Satellite
-- [ ] Hybrid
-- [ ] 3D
+### Map Styles Implemented ✅
+- [x] Mapbox Outdoor (default)
+- [x] Light
+- [x] Dark
+- [x] Streets
+- [x] Satellite
+- [x] Satellite Streets
 
-### Route Features to be Implemented
-- [ ] Line styles
-- [ ] Surface types
-- [ ] Gradient system
-- [ ] Points of Interest
-
-## Getting Started
-
-### Prerequisites
-- Node.js
-- npm
-- Git
-
-### Current Setup Instructions
-1. Clone the repository
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Fix current dependency issues:
-   ```bash
-   npm install react-router-dom@6.21.1
-   npm install web-vitals@3.5.1
-   ```
-4. Create necessary environment files (pending)
-
-### Development
-Currently working on resolving initial setup issues before proceeding with feature development.
-
-## Contributing
-Project is in initial setup phase. Contribution guidelines will be added once basic structure is stable.
-
-## License
-TBD
-
-## Contact
-[To be added]
-
-### Surface Types
+### Surface Types (To Be Implemented)
 - [ ] Rating system (0-6):
   - [ ] 0: Green solid
   - [ ] 1: Green dashed yellow
@@ -175,7 +131,7 @@ TBD
   - [ ] Bike paths: Purple solid
   - [ ] Gravel bike paths: Purple dashed
 
-### Gradient System
+### Gradient System (To Be Implemented)
 - [ ] Grade classifications:
   - [ ] 0-3%: Green
   - [ ] 3-6%: Yellow
@@ -184,62 +140,49 @@ TBD
   - [ ] 12-15%: Maroon
   - [ ] 15%+: Black
 
-### Points of Interest Categories
-- [ ] Infrastructure:
-  - [ ] Towns
-  - [ ] Train stations
-  - [ ] Bus stops
-  - [ ] Ferry points
-- [ ] Services:
-  - [ ] Supermarkets
-  - [ ] Petrol stations
-  - [ ] Bike shops
-  - [ ] Cafes/Restaurants
-- [ ] Accommodation:
-  - [ ] Camping sites
-  - [ ] Hotels/Hostels
-- [ ] Natural Features:
-  - [ ] Swimming spots
-  - [ ] Water points
-  - [ ] River crossings
-- [ ] Information:
-  - [ ] Tourist POIs
-  - [ ] Warnings
-  - [ ] Hazards
+### Points of Interest Categories (To Be Implemented)
+- [ ] Infrastructure
+- [ ] Services
+- [ ] Accommodation
+- [ ] Natural Features
+- [ ] Information
 
 ## Getting Started
 
-[To be completed with setup instructions after initial development]
-
 ### Prerequisites
-
-[To be completed with required software and tools]
+- Node.js
+- npm
+- Git
 
 ### Installation
+1. Clone the repository
+```bash
+git clone https://github.com/yourusername/lutruwita.git
+```
 
-[To be completed with step-by-step installation guide]
+2. Install dependencies
+```bash
+npm install
+```
 
-### Development
+3. Create a `.env.local` file with your Mapbox token:
+```
+VITE_MAPBOX_TOKEN=your_token_here
+```
 
-[To be completed with development workflow instructions]
-
-### Deployment
-
-[To be completed with deployment procedures]
-
----
+4. Start the development server
+```bash
+npm run dev
+```
 
 ## Contributing
-
-[To be completed with contribution guidelines]
+Project is in active development. Contribution guidelines will be added once basic structure is stable.
 
 ## License
-
-[To be completed with chosen license]
+TBD
 
 ## Contact
-
-[To be completed with contact information]
+[To be added]
 
 ### My Original Vision
 - I want to make a web app that is easily translatable to mobile.. 
