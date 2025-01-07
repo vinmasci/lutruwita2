@@ -34,49 +34,24 @@ const MapContainer = () => {
   ]);
 
   useEffect(() => {
-    console.log('1. Effect starting');
-    if (!mapContainer.current) {
-      console.log('2a. No map container');
-      return;
-    }
-    if (map.current) {
-      console.log('2b. Map already exists');
-      return;
-    }
+    if (!mapContainer.current || map.current) return;
 
     const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
-    console.log('3. Token:', mapboxToken?.slice(0, 10) + '...');
-    
     if (!mapboxToken) {
-      console.error('4a. Mapbox token not found');
+      console.error('Mapbox token not found');
       return;
     }
 
-    try {
-      console.log('4b. Setting access token');
-      mapboxgl.accessToken = mapboxToken;
+    mapboxgl.accessToken = mapboxToken;
 
-      console.log('5. Creating map instance');
-      map.current = new mapboxgl.Map({
-        container: mapContainer.current,
-        style: MAP_STYLES[currentStyle as keyof typeof MAP_STYLES],
-        center: [146.5, -41.5], // Center on Tasmania
-        zoom: 7,
-        minZoom: 3,
-        maxZoom: 18,
-      });
-      console.log('6. Map instance created');
-    } catch (error) {
-      console.error('Error creating map:', error);
-    }
-
-    return () => {
-      if (map.current) {
-        map.current.remove();
-        map.current = null;
-      }
-    };
-  }, []); // Removed currentStyle from dependencies
+    map.current = new mapboxgl.Map({
+      container: mapContainer.current,
+      style: MAP_STYLES[currentStyle as keyof typeof MAP_STYLES],
+      center: [146.5, -41.5], // Center on Tasmania
+      zoom: 7,
+      minZoom: 3,
+      maxZoom: 18,
+    });
 
     // Add these event listeners
     map.current.on('error', (e) => {
@@ -140,13 +115,19 @@ const MapContainer = () => {
     );
 
     // Add click handler for snapping
-    map.current.on('click', handleMapClick);
+    if (map.current) {
+      map.current.on('click', handleMapClick);
+    }
 
     // Clean up on unmount
     return () => {
-      map.current?.remove();
+      if (map.current) {
+        map.current.off('click', handleMapClick);
+        map.current.remove();
+        map.current = null;
+      }
     };
-  }, [currentStyle]);
+  }, [currentStyle, handleMapClick, isDrawingMode]);
 
   const handleMapClick = async (e: mapboxgl.MapMouseEvent) => {
     if (!isDrawingMode || !map.current) return;
