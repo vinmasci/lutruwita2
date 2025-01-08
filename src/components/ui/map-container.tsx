@@ -69,25 +69,52 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
 
   const querySurfaceType = async (point: Point): Promise<'paved' | 'unpaved'> => {
     if (!map.current) return 'unpaved';
-  
-    // Increase bounding box size
+
+    // Check zoom level first
+    const currentZoom = map.current.getZoom();
+    console.log('Current zoom level:', currentZoom);
+    
+    // If zoom is too low, zoom in to see road details
+    if (currentZoom < 13) {
+      console.log('Zooming in to see road details...');
+      map.current.easeTo({
+        zoom: 13,
+        center: [point.lon, point.lat],
+        duration: 0  // Instant zoom for processing
+      });
+
+      // Give the map a moment to update after zooming
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
     const bbox = [
       [point.lon - 0.001, point.lat - 0.001],
       [point.lon + 0.001, point.lat + 0.001]
     ];
-  
-    // Query the road layer from the composite source
+
+    // Query using the exact layer names we added
     const features = map.current.queryRenderedFeatures(bbox, {
       layers: [
-        'road',               // Main road layer
-        'road-street',        // Street level roads
-        'road-secondary',     // Secondary roads
-        'road-primary',       // Primary roads
-        'road-motorway',      // Motorways
-        'road-service',       // Service roads
-        'road-path',          // Paths
-        'road-track'          // Tracks
+        'road-motorway',
+        'road-trunk',
+        'road-primary',
+        'road-secondary',
+        'road-tertiary',
+        'road-street',
+        'road-service',
+        'road-path',
+        'road-track'
       ]
+    });
+
+    console.log('Features found:', {
+      bbox,
+      zoom: map.current.getZoom(),
+      features: features.map(f => ({
+        layer: f.layer.id,
+        source: f.source,
+        properties: f.properties
+      }))
     });
   
     // Debug logging
@@ -442,7 +469,7 @@ useEffect(() => {
               source: 'streets',
               'source-layer': 'road', // This is important - it's the layer in the vector tileset
               layout: {
-                visibility: 'none' // Make it invisible but queryable
+                visibility: 'visible'  // Keep it queryable but...
               },
               paint: {
                 'line-opacity': 0
