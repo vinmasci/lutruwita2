@@ -94,17 +94,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
 
     // Query using the exact layer names we added
     const features = map.current.queryRenderedFeatures(bbox, {
-      layers: [
-        'road-motorway',
-        'road-trunk',
-        'road-primary',
-        'road-secondary',
-        'road-tertiary',
-        'road-street',
-        'road-service',
-        'road-path',
-        'road-track'
-      ]
+      layers: ['all-roads']
     });
 
     console.log('Features found:', {
