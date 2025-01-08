@@ -317,15 +317,11 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       });
       throw new Error('Map not fully loaded. Please try again in a moment.');
     }
-
+  
     if (!gpxContent || typeof gpxContent !== 'string') {
       throw new Error('Invalid GPX content');
     }
-
-    if (!gpxContent.includes('<gpx') || !gpxContent.includes('</gpx>')) {
-      throw new Error('Invalid GPX file format');
-    }
-
+  
     console.log('Starting GPX parse...');
     
     return new Promise((resolve, reject) => {
@@ -335,21 +331,21 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
           reject(new Error('Failed to parse GPX file'));
           return;
         }
-
+  
         try {
           if (!result?.gpx) {
             throw new Error('Invalid GPX structure: missing root gpx element');
           }
-
+  
           const points = result.gpx?.rte?.rtept || result.gpx?.trk?.trkseg?.trkpt;
           
           if (!points) {
             throw new Error('Invalid GPX format: missing track points');
           }
-
+  
           const pointsArray = Array.isArray(points) ? points : [points];
           console.log('Points found:', pointsArray.length);
-
+  
           const coordinates: Point[] = pointsArray
             .map((point: any) => {
               try {
@@ -375,15 +371,38 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
               }
             })
             .filter((point: Point | null): point is Point => point !== null);
-
+  
           if (coordinates.length === 0) {
             throw new Error('No valid coordinates found in GPX file');
           }
-
-          console.log('Processing surface types...');
+  
+          // NEW: First move map to show coordinates
+          console.log('Moving map to show route...');
+          const bounds = coordinates.reduce(
+            (acc, coord) => ({
+              minLat: Math.min(acc.minLat, coord.lat),
+              maxLat: Math.max(acc.maxLat, coord.lat),
+              minLon: Math.min(acc.minLon, coord.lon),
+              maxLon: Math.max(acc.maxLon, coord.lon),
+            }),
+            { minLat: 90, maxLat: -90, minLon: 180, maxLon: -180 }
+          );
+  
+          map.current.fitBounds(
+            [[bounds.minLon, bounds.minLat], [bounds.maxLon, bounds.maxLat]],
+            { padding: 50 }
+          );
+  
+          // NEW: Wait for map movement to finish
+          await new Promise<void>(moveResolve => {
+            map.current!.once('moveend', moveResolve);
+          });
+  
+          // Now process surface types after map is in position
+          console.log('Map positioned, starting surface queries...');
           const enhancedCoordinates = await processCoordinatesWithSurface(coordinates);
           
-          console.log('Adding route to map...');
+          console.log('Surface types processed, drawing route...');
           await addRouteToMap(enhancedCoordinates);
           
           resolve();
