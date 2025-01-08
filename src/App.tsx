@@ -1,3 +1,4 @@
+// src/App.tsx
 import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
@@ -22,7 +23,7 @@ const darkTheme = createTheme({
     MuiDrawer: {
       styleOverrides: {
         paper: {
-          backgroundImage: 'none', // Removes the default gradient
+          backgroundImage: 'none',
         },
       },
     },
@@ -34,13 +35,13 @@ function App() {
     <ThemeProvider theme={darkTheme}>
       <CssBaseline />
       <BrowserRouter>
-        <MainLayout>
-          <Routes>
+        <Routes>
+          <Route element={<MainLayout />}>
             <Route path="/" element={<Home />} />
             <Route path="/create" element={<Create />} />
             <Route path="/explore" element={<Explore />} />
-          </Routes>
-        </MainLayout>
+          </Route>
+        </Routes>
       </BrowserRouter>
     </ThemeProvider>
   );

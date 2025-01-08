@@ -78,24 +78,44 @@ const Sidebar = ({ mapRef }: SidebarProps) => {
 
   // Check map ready state
   React.useEffect(() => {
-    const handleMapReady = () => {
-      setMapReady(true);
+    let checkInterval: NodeJS.Timeout | null = null;
+    
+    const checkMapReady = () => {
+      if (mapRef.current?.isReady()) {
+        console.log('Map is ready');
+        setMapReady(true);
+        if (checkInterval) {
+          clearInterval(checkInterval);
+          checkInterval = null;
+        }
+      } else {
+        console.log('Map not ready yet...');
+      }
     };
 
-    const map = mapRef.current;
-    if (map) {
-      map.on('load', handleMapReady);
+    // Check immediately
+    checkMapReady();
+    
+    // Also set up an interval to keep checking until ready
+    if (!checkInterval) {
+      checkInterval = setInterval(checkMapReady, 500);
     }
 
     return () => {
-      if (map) {
-        map.off('load', handleMapReady);
+      if (checkInterval) {
+        clearInterval(checkInterval);
       }
+      setMapReady(false);
     };
   }, [mapRef]);
 
   const handleFileUpload = async (file: File) => {
-    console.log('File selected:', file?.name);
+    console.log('Starting file upload process', { 
+      fileName: file?.name,
+      fileSize: file?.size,
+      mapReady: mapRef.current?.isReady()
+    });
+    
     setLoading(true);
 
     if (!file) {
@@ -110,32 +130,41 @@ const Sidebar = ({ mapRef }: SidebarProps) => {
     }
 
     if (!file.name.endsWith('.gpx')) {
-      console.log('Not a GPX file');
+      console.log('Invalid file type:', file.name);
       setSnackbar({
         open: true,
         message: 'Please select a valid GPX file',
         severity: 'error'
       });
+      setLoading(false);
       return;
     }
 
-    if (!mapRef.current || !mapRef.current.isReady()) {
-      console.error('Map not ready');
+    // Check map ready state with detailed logging
+    const isMapReady = mapRef.current?.isReady();
+    console.log('Map ready check:', {
+      mapRefExists: !!mapRef.current,
+      isMapReady,
+      mapReadyState: mapReady
+    });
+
+    if (!mapRef.current || !isMapReady) {
+      console.log('Map not ready for upload');
       setSnackbar({
         open: true,
         message: 'Please wait for the map to fully load and try again.',
         severity: 'error'
       });
+      setLoading(false);
       return;
     }
 
-    setLoading(true);
     try {
-      console.log('Reading file...');
+      console.log('Reading file contents...');
       const content = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
-          console.log('File read successfully');
+          console.log('File read successfully, content length:', (e.target?.result as string)?.length);
           resolve(e.target?.result as string);
         };
         reader.onerror = (e) => {
@@ -145,9 +174,9 @@ const Sidebar = ({ mapRef }: SidebarProps) => {
         reader.readAsText(file);
       });
 
-      console.log('Uploading to map...');
+      console.log('Starting GPX upload to map...');
       await mapRef.current.handleGpxUpload(content);
-      console.log('Upload complete');
+      console.log('GPX upload completed successfully');
       
       setSnackbar({
         open: true,
@@ -161,15 +190,10 @@ const Sidebar = ({ mapRef }: SidebarProps) => {
         message: error instanceof Error ? error.message : 'Error loading GPX file',
         severity: 'error'
       });
-      // Ensure loading state is reset even if error occurs
+    } finally {
       setLoading(false);
       setUploadDialogOpen(false);
-      return;
     }
-    
-    // Reset states after successful upload
-    setLoading(false);
-    setUploadDialogOpen(false);
   };
 
   const handleDrawerToggle = () => {
