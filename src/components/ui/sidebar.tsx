@@ -263,13 +263,9 @@ const Sidebar = ({ mapRef }: SidebarProps) => {
           }}
           sx={{ justifyContent: open ? 'start' : 'center', minHeight: 48 }}
         >
-          <ListItemIcon>
-            {!mapReady ? (
-              <CircularProgress size={24} />
-            ) : (
-              <UploadFileIcon />
-            )}
-          </ListItemIcon>
+<ListItemIcon>
+  <UploadFileIcon />
+</ListItemIcon>
           <ListItemText 
             primary="Upload GPX" 
             sx={{ 
