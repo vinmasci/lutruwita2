@@ -69,7 +69,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
 
   const querySurfaceType = async (point: Point): Promise<'paved' | 'unpaved'> => {
     if (!map.current) return 'unpaved';
-
+  
     // Check zoom level first
     const currentZoom = map.current.getZoom();
     console.log('Current zoom level:', currentZoom);
@@ -82,23 +82,24 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
         center: [point.lon, point.lat],
         duration: 0  // Instant zoom for processing
       });
-
+  
       // Give the map a moment to update after zooming
       await new Promise(resolve => setTimeout(resolve, 100));
     }
-
-    const bbox = [
-      [point.lon - 0.001, point.lat - 0.001],
-      [point.lon + 0.001, point.lat + 0.001]
-    ];
-
-    // Query using the exact layer names we added
-    const features = map.current.queryRenderedFeatures(bbox, {
-      layers: ['all-roads']
-    });
-
+  
+    // Query specific road layers instead of 'all-roads'
+    const features = map.current.queryRenderedFeatures(
+      map.current.project([point.lon, point.lat]),
+      { layers: [
+        'road-motorway-trunk',
+        'road-primary',
+        'road-secondary-tertiary',
+        'road-street'
+      ]}
+    );
+  
     console.log('Features found:', {
-      bbox,
+      point: [point.lon, point.lat],
       zoom: map.current.getZoom(),
       features: features.map(f => ({
         layer: f.layer.id,
@@ -109,72 +110,66 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
   
     // Debug logging
     console.log('Features found:', {
-      bbox,
+      point: [point.lon, point.lat],
       zoom: map.current.getZoom(),
       features: features.map(f => ({
         layer: f.layer.id,
         source: f.source,
-        sourceLayer: f.sourceLayer, // This is important for composite sources
+        sourceLayer: f.sourceLayer,
         properties: f.properties
       }))
     });
   
     if (features.length > 0) {
       const roadFeature = features[0];
-      
-      // Check OSM properties
       const properties = roadFeature.properties;
       const surface = properties?.surface;
       const highway = properties?.highway;
       const class_ = properties?.class;
   
       console.log('Road properties:', { surface, highway, class: class_ });
+      console.log('All properties:', properties);
   
-// Log all properties for debugging
-console.log('All properties:', properties);
-
-// Check surface type explicitly first
-if (surface) {
-  // According to Mapbox Streets v8 surface types
-  const unpavedSurfaces = [
-    'unpaved',
-    'dirt',
-    'gravel',
-    'grass',
-    'ground'
-  ];
+      // Check surface type explicitly first
+      if (surface) {
+        const unpavedSurfaces = [
+          'unpaved', 'dirt', 'gravel', 'grass', 'ground',
+          'fine_gravel', 'compacted', 'earth', 'mud', 'sand', 'woodchips'
+        ];
+        
+        if (unpavedSurfaces.includes(surface.toLowerCase())) {
+          return 'unpaved';
+        }
+        
+        const pavedSurfaces = [
+          'paved', 'asphalt', 'concrete', 'paving_stones', 'sett',
+          'cobblestone', 'metal', 'wood', 'concrete:plates'
+        ];
+        
+        if (pavedSurfaces.includes(surface.toLowerCase())) {
+          return 'paved';
+        }
+      }
   
-  if (unpavedSurfaces.includes(surface)) {
-    return 'unpaved';
-  }
+      // Check road class
+      if (class_ === 'track' || class_ === 'service') {
+        return 'unpaved';
+      }
   
-  const pavedSurfaces = [
-    'paved',
-    'asphalt',
-    'concrete',
-    'metal',
-    'wood'
-  ];
+      // Major roads are typically paved
+      if (class_ === 'motorway' || class_ === 'trunk' || 
+          class_ === 'primary' || class_ === 'secondary' || 
+          class_ === 'tertiary' || class_ === 'residential' ||
+          class_ === 'street') {
+        return 'paved';
+      }
   
-  if (pavedSurfaces.includes(surface)) {
-    return 'paved';
-  }
-}
-
-// Fallback to highway type checks
-if (
-  highway === 'motorway' ||
-  highway === 'trunk' ||
-  highway === 'primary' ||
-  highway === 'secondary' ||
-  highway === 'tertiary' ||
-  highway === 'residential'
-) {
-  return 'paved';
-}
-
-// If no definitive surface type found, classify as unpaved
-return 'unpaved';
+      // Fallback highway type check
+      if (highway === 'motorway' || highway === 'trunk' ||
+          highway === 'primary' || highway === 'secondary' ||
+          highway === 'tertiary' || highway === 'residential') {
+        return 'paved';
+      }
     }
   
     return 'unpaved';
@@ -500,20 +495,30 @@ useEffect(() => {
             type: 'vector',
             url: 'mapbox://mapbox.mapbox-streets-v8'
           });
-
-// Add just one comprehensive road layer
-newMap.addLayer({
-  id: 'all-roads',
-  type: 'line',
-  source: 'streets',
-  'source-layer': 'road',
-  layout: {
-    visibility: 'visible'
-  },
-  paint: {
-    'line-opacity': 0
-  }
-});
+          
+          // Add specific road layers - keep them invisible but queryable
+          const roadLayers = [
+            {id: 'road-motorway-trunk', class: 'motorway'},
+            {id: 'road-primary', class: 'primary'},
+            {id: 'road-secondary-tertiary', class: 'secondary'},
+            {id: 'road-street', class: 'street'}
+          ];
+          
+          for (const layer of roadLayers) {
+            newMap.addLayer({
+              id: layer.id,
+              type: 'line',
+              source: 'streets',
+              'source-layer': 'road',
+              filter: ['==', 'class', layer.class],
+              layout: {
+                visibility: 'visible'
+              },
+              paint: {
+                'line-opacity': 0  // Keep invisible
+              }
+            });
+          }
 
 // Add debug listener to check available properties
 newMap.on('sourcedata', (e) => {
