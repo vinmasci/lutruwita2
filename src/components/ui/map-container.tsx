@@ -68,36 +68,70 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
 
   const querySurfaceType = async (point: Point): Promise<'paved' | 'unpaved'> => {
     if (!map.current) return 'unpaved';
-
+  
     const bbox = [
       [point.lon - 0.0001, point.lat - 0.0001],
       [point.lon + 0.0001, point.lat + 0.0001]
     ];
-
+  
+    // Query both satellite and regular street layers
     const features = map.current.queryRenderedFeatures(bbox, {
-      layers: ['road', 'road-secondary-tertiary', 'road-primary', 'road-motorway-trunk']
+      layers: [
+        // Satellite-streets specific layers
+        'highway_motorway-satellite',
+        'highway_trunk-satellite',
+        'highway_primary-satellite',
+        'highway_secondary-satellite',
+        'highway_tertiary-satellite',
+        'highway_unclassified-satellite',
+        'highway_residential-satellite',
+        'highway_path-satellite',
+        'highway_track-satellite',
+        'highway_service-satellite',
+        // Regular street layers
+        'road-street',
+        'road-secondary-tertiary',
+        'road-primary',
+        'road-motorway-trunk',
+        'road-pedestrian',
+        'road-service-track-path',
+        'street-label'
+      ]
     });
-
+  
     if (features.length > 0) {
       const roadFeature = features[0];
-      const surface = roadFeature.properties?.surface;
-      const roadClass = roadFeature.properties?.class;
-      const structure = roadFeature.properties?.structure;
-
+      console.log('Road feature found:', roadFeature); // Debug log
+  
+      // Check both the layer ID and properties
+      const layerId = roadFeature.layer.id;
+      const properties = roadFeature.properties;
+      
+      console.log('Layer ID:', layerId); // Debug log
+      console.log('Properties:', properties); // Debug log
+  
+      // Check for paved roads using both naming conventions
       if (
-        surface === 'asphalt' || 
-        surface === 'paved' || 
-        surface === 'concrete' ||
-        roadClass === 'motorway' ||
-        roadClass === 'trunk' ||
-        roadClass === 'primary' ||
-        structure === 'bridge' ||
-        structure === 'tunnel'
+        // Satellite style checks
+        layerId.includes('motorway') ||
+        layerId.includes('trunk') ||
+        layerId.includes('primary') ||
+        layerId.includes('secondary') ||
+        layerId.includes('tertiary') ||
+        layerId.includes('residential') ||
+        // Regular style checks
+        properties?.class === 'motorway' ||
+        properties?.class === 'trunk' ||
+        properties?.class === 'primary' ||
+        properties?.class === 'street' ||
+        properties?.surface === 'paved' ||
+        properties?.surface === 'asphalt' ||
+        properties?.surface === 'concrete'
       ) {
         return 'paved';
       }
     }
-
+  
     return 'unpaved';
   };
 
