@@ -24,9 +24,8 @@ const MapContainer = forwardRef<MapRef, {}>((props, ref) => {
   const initializationTimer = useRef<NodeJS.Timeout | null>(null);
   
   const isReady = useCallback((): boolean => {
-    if (!map.current) return false;
-    return Boolean(isMapReady);  // Just check if the map is marked as ready
-  }, [isMapReady]);
+    return Boolean(map.current) && map.current.loaded();
+  }, []);
 
   const addRouteToMap = useCallback(async (coordinates: Point[]) => {
     if (!map.current) {

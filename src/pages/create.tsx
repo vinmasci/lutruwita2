@@ -1,13 +1,13 @@
 // src/pages/create.tsx
 import React from 'react';
+import { useOutletContext } from 'react-router-dom';
 import type { MapRef } from '../components/ui/map-container';
 import MapContainer from '../components/ui/map-container';
+import type { MapContext } from '../components/layout/main-layout';
 
-interface CreateProps {
-  mapRef?: React.RefObject<MapRef>;
-}
+const Create = () => {
+  const { mapRef } = useOutletContext<MapContext>();
 
-const Create: React.FC<CreateProps> = ({ mapRef }) => {
   return (
     <div className="w-full h-full relative">
       <MapContainer ref={mapRef} />
