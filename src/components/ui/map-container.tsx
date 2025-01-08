@@ -130,26 +130,51 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
   
       console.log('Road properties:', { surface, highway, class: class_ });
   
-      if (
-        // Check surface
-        surface === 'paved' ||
-        surface === 'asphalt' ||
-        surface === 'concrete' ||
-        // Check highway type
-        highway === 'motorway' ||
-        highway === 'trunk' ||
-        highway === 'primary' ||
-        highway === 'secondary' ||
-        highway === 'tertiary' ||
-        highway === 'residential' ||
-        // Check road class
-        class_ === 'motorway' ||
-        class_ === 'trunk' ||
-        class_ === 'primary' ||
-        class_ === 'street'
-      ) {
-        return 'paved';
-      }
+// Log all properties for debugging
+console.log('All properties:', properties);
+
+// Check surface type explicitly first
+if (surface) {
+  // According to Mapbox Streets v8 surface types
+  const unpavedSurfaces = [
+    'unpaved',
+    'dirt',
+    'gravel',
+    'grass',
+    'ground'
+  ];
+  
+  if (unpavedSurfaces.includes(surface)) {
+    return 'unpaved';
+  }
+  
+  const pavedSurfaces = [
+    'paved',
+    'asphalt',
+    'concrete',
+    'metal',
+    'wood'
+  ];
+  
+  if (pavedSurfaces.includes(surface)) {
+    return 'paved';
+  }
+}
+
+// Fallback to highway type checks
+if (
+  highway === 'motorway' ||
+  highway === 'trunk' ||
+  highway === 'primary' ||
+  highway === 'secondary' ||
+  highway === 'tertiary' ||
+  highway === 'residential'
+) {
+  return 'paved';
+}
+
+// If no definitive surface type found, classify as unpaved
+return 'unpaved';
     }
   
     return 'unpaved';
