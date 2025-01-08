@@ -377,33 +377,52 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
           }
   
           // NEW: First move map to show coordinates
-          console.log('Moving map to show route...');
-          const bounds = coordinates.reduce(
-            (acc, coord) => ({
-              minLat: Math.min(acc.minLat, coord.lat),
-              maxLat: Math.max(acc.maxLat, coord.lat),
-              minLon: Math.min(acc.minLon, coord.lon),
-              maxLon: Math.max(acc.maxLon, coord.lon),
-            }),
-            { minLat: 90, maxLat: -90, minLon: 180, maxLon: -180 }
-          );
-  
-          map.current.fitBounds(
-            [[bounds.minLon, bounds.minLat], [bounds.maxLon, bounds.maxLat]],
-            { padding: 50 }
-          );
-  
-          // NEW: Wait for map movement to finish
-          await new Promise<void>(moveResolve => {
-            map.current!.once('moveend', moveResolve);
-          });
-  
-          // Now process surface types after map is in position
-          console.log('Map positioned, starting surface queries...');
-          const enhancedCoordinates = await processCoordinatesWithSurface(coordinates);
-          
-          console.log('Surface types processed, drawing route...');
-          await addRouteToMap(enhancedCoordinates);
+// First draw the initial route
+console.log('Drawing initial route...');
+await addRouteToMap(coordinates); // This will draw the route assuming all paved
+
+// Then move map to show the route
+console.log('Moving map to show route...');
+const bounds = coordinates.reduce(
+  (acc, coord) => ({
+    minLat: Math.min(acc.minLat, coord.lat),
+    maxLat: Math.max(acc.maxLat, coord.lat),
+    minLon: Math.min(acc.minLon, coord.lon),
+    maxLon: Math.max(acc.maxLon, coord.lon),
+  }),
+  { minLat: 90, maxLat: -90, minLon: 180, maxLon: -180 }
+);
+
+map.current.fitBounds(
+  [[bounds.minLon, bounds.minLat], [bounds.maxLon, bounds.maxLat]],
+  { padding: 50 }
+);
+
+// Wait for both movement AND tiles
+await new Promise<void>(moveResolve => {
+  const checkLoadStatus = () => {
+    if (map.current?.areTilesLoaded()) {
+      console.log('Map moved and tiles loaded');
+      moveResolve();
+    } else {
+      console.log('Waiting for tiles...');
+      setTimeout(checkLoadStatus, 100);
+    }
+  };
+
+  map.current!.once('moveend', () => {
+    console.log('Map moved, checking tiles...');
+    checkLoadStatus();
+  });
+});
+
+// Now process surface types after everything is loaded
+console.log('Map ready, starting surface queries...');
+const enhancedCoordinates = await processCoordinatesWithSurface(coordinates);
+
+// Update the route with surface information
+console.log('Updating route with surface types...');
+await addRouteToMap(enhancedCoordinates);
           
           resolve();
         } catch (error) {
@@ -467,36 +486,38 @@ useEffect(() => {
             url: 'mapbox://mapbox.mapbox-streets-v8'
           });
 
-          // Add road layers from the streets tileset
-          const roadLayers = [
-            { id: 'road-motorway', class: 'motorway' },
-            { id: 'road-trunk', class: 'trunk' },
-            { id: 'road-primary', class: 'primary' },
-            { id: 'road-secondary', class: 'secondary' },
-            { id: 'road-tertiary', class: 'tertiary' },
-            { id: 'road-street', class: 'street' },
-            { id: 'road-service', class: 'service' },
-            { id: 'road-path', class: 'path' },
-            { id: 'road-track', class: 'track' }
-          ];
+// Add just one comprehensive road layer
+newMap.addLayer({
+  id: 'all-roads',
+  type: 'line',
+  source: 'streets',
+  'source-layer': 'road',
+  layout: {
+    visibility: 'visible'
+  },
+  paint: {
+    'line-opacity': 0
+  }
+});
 
-          // Add each road layer
-          roadLayers.forEach(({ id, class: roadClass }) => {
-            newMap.addLayer({
-              id,
-              type: 'line',
-              source: 'streets',
-              'source-layer': 'road', // This is important - it's the layer in the vector tileset
-              layout: {
-                visibility: 'visible'  // Keep it queryable but...
-              },
-              paint: {
-                'line-opacity': 0
-              },
-              filter: ['==', 'class', roadClass]
-            });
-            console.log(`Added road layer: ${id}`);
-          });
+// Add debug listener to check available properties
+newMap.on('sourcedata', (e) => {
+  if (e.sourceId === 'streets' && e.isSourceLoaded) {
+    const features = newMap.querySourceFeatures('streets', {
+      sourceLayer: 'road'
+    });
+    if (features.length > 0) {
+      console.log('Available road properties:', {
+        propertySamples: features.slice(0, 5).map(f => ({
+          surface: f.properties?.surface,
+          structure: f.properties?.structure,
+          type: f.properties?.type,
+          class: f.properties?.class
+        }))
+      });
+    }
+  }
+});
 
           // Add terrain
           newMap.addSource('mapbox-dem', {
