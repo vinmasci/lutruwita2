@@ -63,6 +63,7 @@ interface SidebarProps {
 const Sidebar = ({ mapRef }: SidebarProps) => {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
@@ -75,11 +76,36 @@ const Sidebar = ({ mapRef }: SidebarProps) => {
   });
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
+  // Check map ready state
+  React.useEffect(() => {
+    const handleMapReady = () => {
+      setMapReady(true);
+    };
+
+    const map = mapRef.current;
+    if (map) {
+      map.on('load', handleMapReady);
+    }
+
+    return () => {
+      if (map) {
+        map.off('load', handleMapReady);
+      }
+    };
+  }, [mapRef]);
+
   const handleFileUpload = async (file: File) => {
     console.log('File selected:', file?.name);
+    setLoading(true);
 
     if (!file) {
       console.log('No file selected');
+      setSnackbar({
+        open: true,
+        message: 'No file selected',
+        severity: 'error'
+      });
+      setLoading(false);
       return;
     }
 
@@ -93,11 +119,11 @@ const Sidebar = ({ mapRef }: SidebarProps) => {
       return;
     }
 
-    if (!mapRef.current) {
-      console.error('Map reference not available');
+    if (!mapRef.current || !mapRef.current.isReady()) {
+      console.error('Map not ready');
       setSnackbar({
         open: true,
-        message: 'Map not ready. Please try again.',
+        message: 'Please wait for the map to fully load and try again.',
         severity: 'error'
       });
       return;
@@ -135,10 +161,15 @@ const Sidebar = ({ mapRef }: SidebarProps) => {
         message: error instanceof Error ? error.message : 'Error loading GPX file',
         severity: 'error'
       });
-    } finally {
+      // Ensure loading state is reset even if error occurs
       setLoading(false);
       setUploadDialogOpen(false);
+      return;
     }
+    
+    // Reset states after successful upload
+    setLoading(false);
+    setUploadDialogOpen(false);
   };
 
   const handleDrawerToggle = () => {
@@ -201,12 +232,15 @@ const Sidebar = ({ mapRef }: SidebarProps) => {
         <Divider sx={{ my: 1 }} />
 
         <ListItemButton
-          disabled={loading}
-          onClick={() => setUploadDialogOpen(true)}
+          disabled={!mapReady}
+          onClick={() => {
+            setUploadDialogOpen(true);
+            setLoading(false);
+          }}
           sx={{ justifyContent: open ? 'start' : 'center', minHeight: 48 }}
         >
           <ListItemIcon>
-            {loading ? (
+            {!mapReady ? (
               <CircularProgress size={24} />
             ) : (
               <UploadFileIcon />
@@ -224,70 +258,129 @@ const Sidebar = ({ mapRef }: SidebarProps) => {
 
       <Dialog
         open={uploadDialogOpen}
-        onClose={() => !loading && setUploadDialogOpen(false)}
+        onClose={() => {
+          setUploadDialogOpen(false);
+          setLoading(false);
+        }}
         maxWidth="sm"
         fullWidth
       >
         <DialogTitle>Upload GPX File</DialogTitle>
         <DialogContent>
-          <Paper
-            sx={{
-              border: '2px dashed #ccc',
-              borderRadius: 2,
-              p: 3,
-              textAlign: 'center',
-              bgcolor: 'background.default',
-              cursor: loading ? 'wait' : 'pointer',
-              '&:hover': {
-                borderColor: loading ? '#ccc' : 'primary.main'
-              }
-            }}
-            component="label"
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              const file = e.dataTransfer.files[0];
-              if (file) handleFileUpload(file);
-            }}
-          >
-            {loading ? (
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
-                <CircularProgress size={24} />
-                <Typography>Processing GPX file...</Typography>
-              </Box>
-            ) : (
-              <>
-                <UploadFileIcon sx={{ fontSize: 48, mb: 2, color: 'primary.main' }} />
-                <Typography variant="h6" gutterBottom>
-                  Drag & Drop GPX file here
-                </Typography>
-                <Typography color="textSecondary" gutterBottom>
-                  or
-                </Typography>
-                <input
-                  type="file"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleFileUpload(file);
-                  }}
-                  accept=".gpx"
-                  style={{ display: 'none' }}
-                />
-                <Typography 
-                  sx={{ 
+          {!mapReady ? (
+            <Box sx={{ textAlign: 'center', p: 3 }}>
+              <CircularProgress size={24} sx={{ mb: 2 }} />
+              <Typography>
+                Initializing map...
+              </Typography>
+            </Box>
+          ) : (
+            <Box sx={{ p: 2 }}>
+            <Paper
+              sx={{
+                border: '2px dashed',
+                borderColor: 'divider',
+                borderRadius: 2,
+                p: 4,
+                textAlign: 'center',
+                bgcolor: 'background.paper',
+                cursor: loading ? 'wait' : 'pointer',
+                minHeight: 200,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                alignItems: 'center',
+                transition: 'border-color 0.2s ease',
+                '&:hover': {
+                  borderColor: loading ? 'divider' : 'primary.main',
+                  bgcolor: 'action.hover'
+                },
+                '&.drag-active': {
+                  borderColor: 'primary.main',
+                  bgcolor: 'action.selected'
+                }
+              }}
+              component="label"
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.currentTarget.classList.add('drag-active');
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.currentTarget.classList.remove('drag-active');
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.currentTarget.classList.remove('drag-active');
+                const file = e.dataTransfer.files[0];
+                if (file) handleFileUpload(file);
+              }}
+            >
+              {loading ? (
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                  <CircularProgress size={32} thickness={4} />
+                  <Typography variant="body1" color="text.secondary">
+                    Processing GPX file...
+                  </Typography>
+                </Box>
+              ) : (
+                <>
+                  <UploadFileIcon sx={{ 
+                    fontSize: 56, 
+                    mb: 2, 
                     color: 'primary.main',
-                    '&:hover': { textDecoration: 'underline' }
-                  }}
-                >
-                  click to browse
-                </Typography>
-              </>
-            )}
-          </Paper>
+                    transition: 'transform 0.2s ease',
+                    '&:hover': {
+                      transform: 'translateY(-2px)'
+                    }
+                  }} />
+                  <Typography variant="h6" gutterBottom sx={{ fontWeight: 500 }}>
+                    Drag & Drop GPX file here
+                  </Typography>
+                  <Typography variant="body1" color="text.secondary" gutterBottom>
+                    or
+                  </Typography>
+                  <input
+                    type="file"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleFileUpload(file);
+                    }}
+                    accept=".gpx"
+                    style={{ display: 'none' }}
+                  />
+                  <Typography 
+                    variant="body1"
+                    sx={{ 
+                      color: 'primary.main',
+                      fontWeight: 500,
+                      '&:hover': { 
+                        textDecoration: 'underline',
+                        cursor: 'pointer'
+                      }
+                    }}
+                  >
+                    click to browse
+                  </Typography>
+                  <Typography 
+                    variant="caption" 
+                    color="text.secondary" 
+                    sx={{ 
+                      mt: 2,
+                      display: 'block',
+                      maxWidth: 300
+                    }}
+                  >
+                    Supported formats: GPX (GPS Exchange Format)
+                  </Typography>
+                </>
+              )}
+            </Paper>
+          </Box>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -295,11 +388,19 @@ const Sidebar = ({ mapRef }: SidebarProps) => {
         open={snackbar.open}
         autoHideDuration={6000}
         onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
       >
         <Alert 
           onClose={() => setSnackbar(prev => ({ ...prev, open: false }))} 
           severity={snackbar.severity}
-          sx={{ width: '100%' }}
+          sx={{ 
+            width: '100%',
+            boxShadow: 3,
+            '& .MuiAlert-icon': {
+              alignItems: 'center'
+            }
+          }}
+          elevation={6}
         >
           {snackbar.message}
         </Alert>

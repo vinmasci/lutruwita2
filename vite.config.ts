@@ -7,6 +7,25 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      stream: 'stream-browserify',
+      timers: 'timers-browserify',
+      events: 'events',
+    },
+  },
+  define: {
+    global: {},
+  },
+  optimizeDeps: {
+    include: ['stream-browserify', 'timers-browserify', 'events'],
+    esbuildOptions: {
+      define: {
+        global: 'globalThis',
+      },
+    },
+  },
+  build: {
+    commonjsOptions: {
+      transformMixedEsModules: true,
     },
   },
 })
