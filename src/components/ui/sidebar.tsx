@@ -81,6 +81,13 @@ const Sidebar = ({ mapRef }: SidebarProps) => {
     let checkInterval: NodeJS.Timeout | null = null;
     
     const checkMapReady = () => {
+      // ADD DEBUG LOG HERE
+      console.log("Debug mapRef:", {
+        hasRef: Boolean(mapRef.current),
+        isReadyFn: Boolean(mapRef.current?.isReady),
+        isReadyResult: mapRef.current?.isReady?.()
+      });
+  
       if (mapRef.current?.isReady()) {
         console.log('Map is ready');
         setMapReady(true);
