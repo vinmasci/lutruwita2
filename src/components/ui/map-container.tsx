@@ -56,6 +56,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const [isMapReady, setIsMapReady] = React.useState(false);
+  const [streetsLayersLoaded, setStreetsLayersLoaded] = React.useState(false);
   const [surfaceProgress, setSurfaceProgress] = React.useState<SurfaceProgressState>({
     isProcessing: false,
     progress: 0,
@@ -63,70 +64,72 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
   });
 
   const isReady = useCallback((): boolean => {
-    return Boolean(map.current) && isMapReady;
-  }, [isMapReady]);
+    return Boolean(map.current) && isMapReady && streetsLayersLoaded;
+  }, [isMapReady, streetsLayersLoaded]);
 
   const querySurfaceType = async (point: Point): Promise<'paved' | 'unpaved'> => {
     if (!map.current) return 'unpaved';
   
+    // Increase bounding box size
     const bbox = [
-      [point.lon - 0.0001, point.lat - 0.0001],
-      [point.lon + 0.0001, point.lat + 0.0001]
+      [point.lon - 0.001, point.lat - 0.001],
+      [point.lon + 0.001, point.lat + 0.001]
     ];
   
-    // Query both satellite and regular street layers
+    // Query the road layer from the composite source
     const features = map.current.queryRenderedFeatures(bbox, {
       layers: [
-        // Satellite-streets specific layers
-        'highway_motorway-satellite',
-        'highway_trunk-satellite',
-        'highway_primary-satellite',
-        'highway_secondary-satellite',
-        'highway_tertiary-satellite',
-        'highway_unclassified-satellite',
-        'highway_residential-satellite',
-        'highway_path-satellite',
-        'highway_track-satellite',
-        'highway_service-satellite',
-        // Regular street layers
-        'road-street',
-        'road-secondary-tertiary',
-        'road-primary',
-        'road-motorway-trunk',
-        'road-pedestrian',
-        'road-service-track-path',
-        'street-label'
+        'road',               // Main road layer
+        'road-street',        // Street level roads
+        'road-secondary',     // Secondary roads
+        'road-primary',       // Primary roads
+        'road-motorway',      // Motorways
+        'road-service',       // Service roads
+        'road-path',          // Paths
+        'road-track'          // Tracks
       ]
+    });
+  
+    // Debug logging
+    console.log('Features found:', {
+      bbox,
+      zoom: map.current.getZoom(),
+      features: features.map(f => ({
+        layer: f.layer.id,
+        source: f.source,
+        sourceLayer: f.sourceLayer, // This is important for composite sources
+        properties: f.properties
+      }))
     });
   
     if (features.length > 0) {
       const roadFeature = features[0];
-      console.log('Road feature found:', roadFeature); // Debug log
-  
-      // Check both the layer ID and properties
-      const layerId = roadFeature.layer.id;
-      const properties = roadFeature.properties;
       
-      console.log('Layer ID:', layerId); // Debug log
-      console.log('Properties:', properties); // Debug log
+      // Check OSM properties
+      const properties = roadFeature.properties;
+      const surface = properties?.surface;
+      const highway = properties?.highway;
+      const class_ = properties?.class;
   
-      // Check for paved roads using both naming conventions
+      console.log('Road properties:', { surface, highway, class: class_ });
+  
       if (
-        // Satellite style checks
-        layerId.includes('motorway') ||
-        layerId.includes('trunk') ||
-        layerId.includes('primary') ||
-        layerId.includes('secondary') ||
-        layerId.includes('tertiary') ||
-        layerId.includes('residential') ||
-        // Regular style checks
-        properties?.class === 'motorway' ||
-        properties?.class === 'trunk' ||
-        properties?.class === 'primary' ||
-        properties?.class === 'street' ||
-        properties?.surface === 'paved' ||
-        properties?.surface === 'asphalt' ||
-        properties?.surface === 'concrete'
+        // Check surface
+        surface === 'paved' ||
+        surface === 'asphalt' ||
+        surface === 'concrete' ||
+        // Check highway type
+        highway === 'motorway' ||
+        highway === 'trunk' ||
+        highway === 'primary' ||
+        highway === 'secondary' ||
+        highway === 'tertiary' ||
+        highway === 'residential' ||
+        // Check road class
+        class_ === 'motorway' ||
+        class_ === 'trunk' ||
+        class_ === 'primary' ||
+        class_ === 'street'
       ) {
         return 'paved';
       }
@@ -282,7 +285,8 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
     if (!map.current || !isReady()) {
       console.log('Map ready state:', {
         mapExists: !!map.current,
-        isMapReady
+        isMapReady,
+        streetsLayersLoaded
       });
       throw new Error('Map not fully loaded. Please try again in a moment.');
     }
@@ -397,8 +401,8 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
 
       const newMap = new mapboxgl.Map({
         container: mapContainer.current,
-        style: 'mapbox://styles/mapbox/satellite-streets-v12',
-        center: [146.5, -41.5], // Center on Tasmania
+        style: 'mapbox://styles/mapbox/satellite-v9', // Base satellite style
+        center: [146.5, -41.5],
         zoom: 6,
         minZoom: 3,
         maxZoom: 18,
@@ -407,66 +411,110 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
 
       map.current = newMap;
 
-      newMap.on('load', () => {
-        console.log('Map load event fired');
+      newMap.on('load', async () => {
+        console.log('Base map loaded');
         
-        newMap.addSource('mapbox-dem', {
-          type: 'raster-dem',
-          url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
-          tileSize: 512,
-          maxzoom: 14
-        });
+        try {
+          // Add streets style sources and layers
+          const response = await fetch(`https://api.mapbox.com/styles/v1/mapbox/streets-v12?access_token=${mapboxToken}`);
+          const streetsStyle = await response.json();
 
-        newMap.setTerrain({ source: 'mapbox-dem', exaggeration: 1.0 });
+          console.log('Adding streets style sources and layers...');
 
-        newMap.addLayer({
-          id: 'sky',
-          type: 'sky',
-          paint: {
-            'sky-type': 'atmosphere',
-            'sky-atmosphere-sun': [0.0, 90.0],
-            'sky-atmosphere-sun-intensity': 15
-          }
-        });
+          // Add sources first
+          Object.entries(streetsStyle.sources).forEach(([id, source]) => {
+            if (!newMap.getSource(id)) {
+              console.log('Adding source:', id);
+              newMap.addSource(`streets-${id}`, source as mapboxgl.AnySourceData);
+            }
+          });
 
-        console.log('Map fully initialized');
-        setIsMapReady(true);
-      });
+          // Then add layers with modified IDs and invisible
+          streetsStyle.layers.forEach(layer => {
+            const newId = `streets-${layer.id}`;
+            if (!newMap.getLayer(newId)) {
+              console.log('Adding layer:', newId);
+              newMap.addLayer({
+                ...layer,
+                id: newId,
+                source: `streets-${layer.source}`,
+                layout: {
+                  ...layer.layout,
+                  visibility: 'none'
+                }
+              });
+            }
+          });
 
-      newMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
-      newMap.addControl(new mapboxgl.FullscreenControl());
-      newMap.addControl(
-        new mapboxgl.GeolocateControl({
-          positionOptions: {
-            enableHighAccuracy: true
-          },
-          trackUserLocation: true
-        })
-      );
+          // Add terrain
+          newMap.addSource('mapbox-dem', {
+            type: 'raster-dem',
+            url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
+            tileSize: 512,
+            maxzoom: 14
+          });
 
-    } catch (error) {
-      console.error('Error creating map:', error);
-    }
+          newMap.setTerrain({ source: 'mapbox-dem', exaggeration: 1.0 });
 
-    return () => {
-      if (map.current) {
-        map.current.remove();
-        map.current = null;
-      }
-    };
-  }, []);
+          newMap.addLayer({
+            id: 'sky',
+            type: 'sky',
+            paint: {
+              'sky-type': 'atmosphere',
+              'sky-atmosphere-sun': [0.0, 90.0],
+              'sky-atmosphere-sun-intensity': 15
+            }
+          });
 
-  return (
-    <div className="w-full h-full relative">
-      <div ref={mapContainer} className="w-full h-full" />
-      {surfaceProgress.isProcessing && (
-        <LoadingOverlay 
-          progress={surfaceProgress.progress} 
-          total={surfaceProgress.total}
-        />
-      )}
-    </div>
-  );
+          setStreetsLayersLoaded(true);
+          console.log('Streets layers added and ready for querying');
+
+// List all layers for debugging
+const allLayers = newMap.getStyle().layers;
+console.log('All available layers:', allLayers.map(layer => layer.id));
+
+} catch (error) {
+console.error('Error loading streets style:', error);
+}
+
+setIsMapReady(true);
+});
+
+// Add controls
+newMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
+newMap.addControl(new mapboxgl.FullscreenControl());
+newMap.addControl(
+new mapboxgl.GeolocateControl({
+positionOptions: {
+  enableHighAccuracy: true
+},
+trackUserLocation: true
+})
+);
+
+} catch (error) {
+console.error('Error creating map:', error);
+}
+
+return () => {
+if (map.current) {
+map.current.remove();
+map.current = null;
+}
+};
+}, []);
+
+return (
+<div className="w-full h-full relative">
+<div ref={mapContainer} className="w-full h-full" />
+{surfaceProgress.isProcessing && (
+<LoadingOverlay 
+progress={surfaceProgress.progress} 
+total={surfaceProgress.total}
+/>
+)}
+</div>
+);
 });
 
 MapContainer.displayName = 'MapContainer';
