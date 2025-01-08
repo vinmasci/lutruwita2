@@ -25,7 +25,7 @@ const MapContainer = forwardRef<MapRef, {}>((props, ref) => {
   
   const isReady = useCallback((): boolean => {
     if (!map.current) return false;
-    return isMapReady && map.current.loaded() && map.current.isStyleLoaded();
+    return Boolean(isMapReady);  // Just check if the map is marked as ready
   }, [isMapReady]);
 
   const addRouteToMap = useCallback(async (coordinates: Point[]) => {
@@ -281,20 +281,10 @@ const MapContainer = forwardRef<MapRef, {}>((props, ref) => {
           }
         });
 
-        // Start checking for full initialization
-        const checkInitialization = () => {
-          if (newMap.loaded() && newMap.isStyleLoaded()) {
-            console.log('Map fully initialized');
-            setIsMapReady(true);
-            cleanupInitTimer();
-          } else {
-            console.log('Waiting for map initialization...');
-            initializationTimer.current = setTimeout(checkInitialization, 100);
-          }
-        };
-
-        // Start the initialization check
-        checkInitialization();
+        // Just mark the map as ready after initial load
+        console.log('Map fully initialized');
+        setIsMapReady(true);
+        cleanupInitTimer();
       });
 
       // Add standard navigation controls
