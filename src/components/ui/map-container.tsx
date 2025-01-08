@@ -387,7 +387,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
     [handleGpxUpload, isReady]
   );
 
-  useEffect(() => {
+useEffect(() => {
     if (!mapContainer.current || map.current) return;
 
     const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
@@ -415,35 +415,41 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
         console.log('Base map loaded');
         
         try {
-          // Add streets style sources and layers
-          const response = await fetch(`https://api.mapbox.com/styles/v1/mapbox/streets-v12?access_token=${mapboxToken}`);
-          const streetsStyle = await response.json();
-
-          console.log('Adding streets style sources and layers...');
-
-          // Add sources first
-          Object.entries(streetsStyle.sources).forEach(([id, source]) => {
-            if (!newMap.getSource(id)) {
-              console.log('Adding source:', id);
-              newMap.addSource(`streets-${id}`, source as mapboxgl.AnySourceData);
-            }
+          // Add Mapbox Streets source directly
+          newMap.addSource('streets', {
+            type: 'vector',
+            url: 'mapbox://mapbox.mapbox-streets-v8'
           });
 
-          // Then add layers with modified IDs and invisible
-          streetsStyle.layers.forEach(layer => {
-            const newId = `streets-${layer.id}`;
-            if (!newMap.getLayer(newId)) {
-              console.log('Adding layer:', newId);
-              newMap.addLayer({
-                ...layer,
-                id: newId,
-                source: `streets-${layer.source}`,
-                layout: {
-                  ...layer.layout,
-                  visibility: 'none'
-                }
-              });
-            }
+          // Add road layers from the streets tileset
+          const roadLayers = [
+            { id: 'road-motorway', class: 'motorway' },
+            { id: 'road-trunk', class: 'trunk' },
+            { id: 'road-primary', class: 'primary' },
+            { id: 'road-secondary', class: 'secondary' },
+            { id: 'road-tertiary', class: 'tertiary' },
+            { id: 'road-street', class: 'street' },
+            { id: 'road-service', class: 'service' },
+            { id: 'road-path', class: 'path' },
+            { id: 'road-track', class: 'track' }
+          ];
+
+          // Add each road layer
+          roadLayers.forEach(({ id, class: roadClass }) => {
+            newMap.addLayer({
+              id,
+              type: 'line',
+              source: 'streets',
+              'source-layer': 'road', // This is important - it's the layer in the vector tileset
+              layout: {
+                visibility: 'none' // Make it invisible but queryable
+              },
+              paint: {
+                'line-opacity': 0
+              },
+              filter: ['==', 'class', roadClass]
+            });
+            console.log(`Added road layer: ${id}`);
           });
 
           // Add terrain
@@ -467,42 +473,42 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
           });
 
           setStreetsLayersLoaded(true);
-          console.log('Streets layers added and ready for querying');
+          console.log('Road layers added and ready for querying');
 
-// List all layers for debugging
-const allLayers = newMap.getStyle().layers;
-console.log('All available layers:', allLayers.map(layer => layer.id));
+          // List all layers for debugging
+          const allLayers = newMap.getStyle().layers;
+          console.log('All available layers:', allLayers.map(layer => layer.id));
 
-} catch (error) {
-console.error('Error loading streets style:', error);
-}
+        } catch (error) {
+          console.error('Error loading streets style:', error);
+        }
 
-setIsMapReady(true);
-});
+        setIsMapReady(true);
+      });
 
-// Add controls
-newMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
-newMap.addControl(new mapboxgl.FullscreenControl());
-newMap.addControl(
-new mapboxgl.GeolocateControl({
-positionOptions: {
-  enableHighAccuracy: true
-},
-trackUserLocation: true
-})
-);
+      // Add controls
+      newMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
+      newMap.addControl(new mapboxgl.FullscreenControl());
+      newMap.addControl(
+        new mapboxgl.GeolocateControl({
+          positionOptions: {
+            enableHighAccuracy: true
+          },
+          trackUserLocation: true
+        })
+      );
 
-} catch (error) {
-console.error('Error creating map:', error);
-}
+    } catch (error) {
+      console.error('Error creating map:', error);
+    }
 
-return () => {
-if (map.current) {
-map.current.remove();
-map.current = null;
-}
-};
-}, []);
+    return () => {
+      if (map.current) {
+        map.current.remove();
+        map.current = null;
+      }
+    };
+  }, []);
 
 return (
 <div className="w-full h-full relative">
