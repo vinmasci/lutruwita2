@@ -72,24 +72,48 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
   
     // Check zoom level first
     const currentZoom = map.current.getZoom();
-    console.log('Current zoom level:', currentZoom);
-    
-    // If zoom is too low, zoom in to see road details
+    console.log(`Querying point at [${point.lon}, ${point.lat}], zoom level: ${currentZoom}`);
+  
+    // If zoom is too low, zoom in to see road details and wait for tiles
     if (currentZoom < 13) {
       console.log('Zooming in to see road details...');
       map.current.easeTo({
         zoom: 13,
         center: [point.lon, point.lat],
-        duration: 0  // Instant zoom for processing
+        duration: 0
       });
   
-      // Give the map a moment to update after zooming
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Wait for zoom and tiles to load
+      await new Promise<void>(resolve => {
+        const checkLoadStatus = () => {
+          if (map.current?.areTilesLoaded()) {
+            resolve();
+          } else {
+            setTimeout(checkLoadStatus, 100);
+          }
+        };
+        
+        map.current.once('moveend', () => {
+          setTimeout(checkLoadStatus, 100);
+        });
+      });
     }
   
-    // Query specific road layers instead of 'all-roads'
+    const projectedPoint = map.current.project([point.lon, point.lat]);
+    console.log('Making query:', {
+      point: [point.lon, point.lat],
+      projected: [projectedPoint.x, projectedPoint.y],
+      zoom: map.current.getZoom(),
+      tilesLoaded: map.current.areTilesLoaded()
+    });
+  
+    // Try to query with a small radius around the point for better detection
+    const radius = 5; // pixels
     const features = map.current.queryRenderedFeatures(
-      map.current.project([point.lon, point.lat]),
+      [
+        [projectedPoint.x - radius, projectedPoint.y - radius],
+        [projectedPoint.x + radius, projectedPoint.y + radius]
+      ],
       { layers: [
         'road-motorway-trunk',
         'road-primary',
@@ -98,25 +122,16 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       ]}
     );
   
-    console.log('Features found:', {
-      point: [point.lon, point.lat],
-      zoom: map.current.getZoom(),
+    // More detailed logging
+    console.log('Query results:', {
+      location: [point.lon, point.lat],
+      featuresFound: features.length,
       features: features.map(f => ({
+        id: f.id,
         layer: f.layer.id,
-        source: f.source,
-        properties: f.properties
-      }))
-    });
-  
-    // Debug logging
-    console.log('Features found:', {
-      point: [point.lon, point.lat],
-      zoom: map.current.getZoom(),
-      features: features.map(f => ({
-        layer: f.layer.id,
-        source: f.source,
-        sourceLayer: f.sourceLayer,
-        properties: f.properties
+        class: f.properties?.class,
+        surface: f.properties?.surface,
+        highway: f.properties?.highway
       }))
     });
   
@@ -498,10 +513,22 @@ useEffect(() => {
           
           // Add specific road layers - keep them invisible but queryable
           const roadLayers = [
-            {id: 'road-motorway-trunk', class: 'motorway'},
-            {id: 'road-primary', class: 'primary'},
-            {id: 'road-secondary-tertiary', class: 'secondary'},
-            {id: 'road-street', class: 'street'}
+            {
+              id: 'road-motorway-trunk',
+              filter: ['in', 'class', 'motorway', 'trunk']
+            },
+            {
+              id: 'road-primary',
+              filter: ['==', 'class', 'primary']
+            },
+            {
+              id: 'road-secondary-tertiary',
+              filter: ['in', 'class', 'secondary', 'tertiary']
+            },
+            {
+              id: 'road-street',
+              filter: ['in', 'class', 'street', 'residential', 'service']
+            }
           ];
           
           for (const layer of roadLayers) {
@@ -510,15 +537,24 @@ useEffect(() => {
               type: 'line',
               source: 'streets',
               'source-layer': 'road',
-              filter: ['==', 'class', layer.class],
+              filter: layer.filter,  // Use the more complex filter
               layout: {
                 visibility: 'visible'
               },
               paint: {
-                'line-opacity': 0  // Keep invisible
+                'line-opacity': 0  // Keep invisible but queryable
               }
             });
           }
+          
+          // Add debug logging to confirm layers were added
+          console.log('Added road layers:', newMap.getStyle().layers
+            .filter(layer => layer.id.startsWith('road-'))
+            .map(layer => ({
+              id: layer.id,
+              filter: layer.filter
+            }))
+          );
 
 // Add debug listener to check available properties
 newMap.on('sourcedata', (e) => {
