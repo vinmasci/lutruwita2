@@ -1,6 +1,8 @@
-import React, { useEffect, useRef, useCallback, forwardRef, ForwardedRef } from 'react';
+// src/components/ui/map-container.tsx
+import React, { useEffect, useRef, useCallback, forwardRef } from 'react';
 import { parseString } from 'xml2js';
 import mapboxgl from 'mapbox-gl';
+import { CircularProgress, Box, Typography } from '@mui/material';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 interface MapRef {
@@ -13,50 +15,189 @@ interface MapRef {
 interface Point {
   lat: number;
   lon: number;
+  surface?: 'paved' | 'unpaved';
 }
 
-const MapContainer = forwardRef<MapRef, {}>((props, ref) => {
+interface SurfaceProgressState {
+  isProcessing: boolean;
+  progress: number;
+  total: number;
+}
+
+const LoadingOverlay = ({ progress, total }: { progress: number; total: number }) => (
+  <Box
+    sx={{
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.7)',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000,
+    }}
+  >
+    <CircularProgress size={60} sx={{ mb: 2 }} />
+    <Typography variant="h6" color="white" gutterBottom>
+      Processing Surface Types
+    </Typography>
+    <Typography color="white">
+      {progress} of {total} points processed
+    </Typography>
+  </Box>
+);
+
+const MapContainer = forwardRef<MapRef>((props, ref) => {
   const routeSourceId = 'route';
   const routeLayerId = 'route-layer';
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const [isMapReady, setIsMapReady] = React.useState(false);
-  const initializationTimer = useRef<NodeJS.Timeout | null>(null);
-  
-  const isReady = useCallback((): boolean => {
-    return Boolean(map.current) && isMapReady;  // Check state instead of map.loaded()
-  }, [isMapReady]);  // Include isMapReady in dependencies
+  const [surfaceProgress, setSurfaceProgress] = React.useState<SurfaceProgressState>({
+    isProcessing: false,
+    progress: 0,
+    total: 0
+  });
 
-  const addRouteToMap = useCallback(async (coordinates: Point[]) => {
-    if (!map.current) {
-      throw new Error('Map not initialized');
+  const isReady = useCallback((): boolean => {
+    return Boolean(map.current) && isMapReady;
+  }, [isMapReady]);
+
+  const querySurfaceType = async (point: Point): Promise<'paved' | 'unpaved'> => {
+    if (!map.current) return 'unpaved';
+
+    const bbox = [
+      [point.lon - 0.0001, point.lat - 0.0001],
+      [point.lon + 0.0001, point.lat + 0.0001]
+    ];
+
+    const features = map.current.queryRenderedFeatures(bbox, {
+      layers: ['road', 'road-secondary-tertiary', 'road-primary', 'road-motorway-trunk']
+    });
+
+    if (features.length > 0) {
+      const roadFeature = features[0];
+      const surface = roadFeature.properties?.surface;
+      const roadClass = roadFeature.properties?.class;
+      const structure = roadFeature.properties?.structure;
+
+      if (
+        surface === 'asphalt' || 
+        surface === 'paved' || 
+        surface === 'concrete' ||
+        roadClass === 'motorway' ||
+        roadClass === 'trunk' ||
+        roadClass === 'primary' ||
+        structure === 'bridge' ||
+        structure === 'tunnel'
+      ) {
+        return 'paved';
+      }
     }
 
-    if (!isReady()) {
-      throw new Error('Map not fully loaded');
+    return 'unpaved';
+  };
+
+  const processCoordinatesWithSurface = async (coordinates: Point[]): Promise<Point[]> => {
+    setSurfaceProgress({
+      isProcessing: true,
+      progress: 0,
+      total: coordinates.length
+    });
+
+    const enhancedCoordinates: Point[] = [];
+
+    for (const [index, point] of coordinates.entries()) {
+      const surface = await querySurfaceType(point);
+      enhancedCoordinates.push({ ...point, surface });
+      
+      setSurfaceProgress(prev => ({
+        ...prev,
+        progress: index + 1
+      }));
+    }
+
+    setSurfaceProgress(prev => ({
+      ...prev,
+      isProcessing: false
+    }));
+
+    return enhancedCoordinates;
+  };
+
+  const addRouteToMap = useCallback(async (coordinates: Point[]) => {
+    if (!map.current || !isReady()) {
+      throw new Error('Map not ready');
     }
 
     try {
-      // Remove existing route if any
+      // Remove existing routes if any
       if (map.current.getSource(routeSourceId)) {
+        map.current.removeLayer(`${routeLayerId}-background`);
         map.current.removeLayer(routeLayerId);
         map.current.removeSource(routeSourceId);
       }
 
-      // Add the route source
-      map.current.addSource(routeSourceId, {
-        type: 'geojson',
-        data: {
-          type: 'Feature',
-          properties: {},
-          geometry: {
-            type: 'LineString',
-            coordinates: coordinates.map(point => [point.lon, point.lat])
+      // Create segments based on surface type
+      let currentSegment: Point[] = [];
+      const segments: { points: Point[], surface: 'paved' | 'unpaved' }[] = [];
+      let currentSurface = coordinates[0]?.surface || 'paved';
+
+      coordinates.forEach((point, index) => {
+        if (point.surface !== currentSurface || index === coordinates.length - 1) {
+          if (index === coordinates.length - 1) {
+            currentSegment.push(point);
           }
+          if (currentSegment.length > 0) {
+            segments.push({
+              points: [...currentSegment],
+              surface: currentSurface
+            });
+          }
+          currentSegment = [point];
+          currentSurface = point.surface || 'paved';
+        } else {
+          currentSegment.push(point);
         }
       });
 
-      // Add the route layer with simple styling
+      // Add source
+      map.current.addSource(routeSourceId, {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: segments.map(segment => ({
+            type: 'Feature',
+            properties: {
+              surface: segment.surface
+            },
+            geometry: {
+              type: 'LineString',
+              coordinates: segment.points.map(point => [point.lon, point.lat])
+            }
+          }))
+        }
+      });
+
+      // Add route layers
+      map.current.addLayer({
+        id: `${routeLayerId}-background`,
+        type: 'line',
+        source: routeSourceId,
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round'
+        },
+        paint: {
+          'line-color': '#FFB4B4',
+          'line-width': 4,
+          'line-opacity': ['case', ['==', ['get', 'surface'], 'unpaved'], 1, 0]
+        }
+      });
+
       map.current.addLayer({
         id: routeLayerId,
         type: 'line',
@@ -67,9 +208,36 @@ const MapContainer = forwardRef<MapRef, {}>((props, ref) => {
         },
         paint: {
           'line-color': '#FF4444',
-          'line-width': 4
+          'line-width': 4,
+          'line-dasharray': ['case',
+            ['==', ['get', 'surface'], 'unpaved'],
+            ['literal', [2, 2]],
+            ['literal', [1, 0]]
+          ]
         }
       });
+
+      // Fit map to route bounds
+      const bounds = coordinates.reduce(
+        (acc, coord) => ({
+          minLat: Math.min(acc.minLat, coord.lat),
+          maxLat: Math.max(acc.maxLat, coord.lat),
+          minLon: Math.min(acc.minLon, coord.lon),
+          maxLon: Math.max(acc.maxLon, coord.lon),
+        }),
+        { minLat: 90, maxLat: -90, minLon: 180, maxLon: -180 }
+      );
+
+      map.current.fitBounds(
+        [
+          [bounds.minLon, bounds.minLat],
+          [bounds.maxLon, bounds.maxLat]
+        ],
+        {
+          padding: 50,
+          duration: 1000
+        }
+      );
     } catch (error) {
       console.error('Error adding route to map:', error);
       throw error;
@@ -77,62 +245,46 @@ const MapContainer = forwardRef<MapRef, {}>((props, ref) => {
   }, [isReady]);
 
   const handleGpxUpload = useCallback(async (gpxContent: string): Promise<void> => {
-    if (!map.current) {
-      throw new Error('Map not initialized');
-    }
-
-    if (!isReady()) {
+    if (!map.current || !isReady()) {
       console.log('Map ready state:', {
         mapExists: !!map.current,
-        loaded: map.current.loaded(),
-        styleLoaded: map.current.isStyleLoaded(),
         isMapReady
       });
       throw new Error('Map not fully loaded. Please try again in a moment.');
     }
 
-    // Validate GPX content
     if (!gpxContent || typeof gpxContent !== 'string') {
       throw new Error('Invalid GPX content');
     }
 
-    // Check for basic GPX structure
     if (!gpxContent.includes('<gpx') || !gpxContent.includes('</gpx>')) {
       throw new Error('Invalid GPX file format');
     }
 
-    console.log('Starting GPX parse...', gpxContent.substring(0, 100));
+    console.log('Starting GPX parse...');
     
     return new Promise((resolve, reject) => {
-      parseString(gpxContent, { explicitArray: false }, (err: Error | null, result: any) => {
+      parseString(gpxContent, { explicitArray: false }, async (err: Error | null, result: any) => {
         if (err) {
           console.error('Error parsing GPX:', err);
-          reject(new Error('Failed to parse GPX file. Please ensure it is a valid GPX file.'));
-          return;
-        }
-
-        // Validate parsed GPX structure
-        if (!result?.gpx) {
-          reject(new Error('Invalid GPX structure: missing root gpx element'));
+          reject(new Error('Failed to parse GPX file'));
           return;
         }
 
         try {
-          console.log('GPX structure:', JSON.stringify(result, null, 2));
+          if (!result?.gpx) {
+            throw new Error('Invalid GPX structure: missing root gpx element');
+          }
 
-          // Check if we have a route or track
           const points = result.gpx?.rte?.rtept || result.gpx?.trk?.trkseg?.trkpt;
           
           if (!points) {
-            throw new Error('Invalid GPX format: missing track points. Ensure your GPX file contains either a route (rte) or track (trk).');
+            throw new Error('Invalid GPX format: missing track points');
           }
 
-          // Handle both single and multiple points
           const pointsArray = Array.isArray(points) ? points : [points];
+          console.log('Points found:', pointsArray.length);
 
-          console.log('Points found:', points.length);
-
-          // Filter out any invalid points and ensure proper numeric conversion
           const coordinates: Point[] = pointsArray
             .map((point: any) => {
               try {
@@ -163,37 +315,13 @@ const MapContainer = forwardRef<MapRef, {}>((props, ref) => {
             throw new Error('No valid coordinates found in GPX file');
           }
 
-          console.log('Coordinates processed:', coordinates.length);
-
-          // Calculate bounds
-          const bounds = coordinates.reduce(
-            (acc, coord) => ({
-              minLat: Math.min(acc.minLat, coord.lat),
-              maxLat: Math.max(acc.maxLat, coord.lat),
-              minLon: Math.min(acc.minLon, coord.lon),
-              maxLon: Math.max(acc.maxLon, coord.lon),
-            }),
-            { minLat: 90, maxLat: -90, minLon: 180, maxLon: -180 }
-          );
-
-          // Add route to map
-          addRouteToMap(coordinates).then(() => {
-            // Fit map to route bounds with padding
-            if (map.current) {
-              map.current.fitBounds(
-                [
-                  [bounds.minLon, bounds.minLat],
-                  [bounds.maxLon, bounds.maxLat]
-                ],
-                {
-                  padding: 50,
-                  duration: 1000
-                }
-              );
-            }
-            resolve();
-          }).catch(reject);
-
+          console.log('Processing surface types...');
+          const enhancedCoordinates = await processCoordinatesWithSurface(coordinates);
+          
+          console.log('Adding route to map...');
+          await addRouteToMap(enhancedCoordinates);
+          
+          resolve();
         } catch (error) {
           console.error('Error processing GPX:', error);
           reject(error);
@@ -202,7 +330,6 @@ const MapContainer = forwardRef<MapRef, {}>((props, ref) => {
     });
   }, [addRouteToMap, isReady]);
 
-  // Expose the handleGpxUpload function and isReady check to parent components
   React.useImperativeHandle(
     ref,
     () => ({
@@ -221,14 +348,6 @@ const MapContainer = forwardRef<MapRef, {}>((props, ref) => {
     }),
     [handleGpxUpload, isReady]
   );
-
-  // Cleanup function for initialization timer
-  const cleanupInitTimer = useCallback(() => {
-    if (initializationTimer.current) {
-      clearTimeout(initializationTimer.current);
-      initializationTimer.current = null;
-    }
-  }, []);
 
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
@@ -249,16 +368,14 @@ const MapContainer = forwardRef<MapRef, {}>((props, ref) => {
         zoom: 6,
         minZoom: 3,
         maxZoom: 18,
-        pitch: 0, // Bird's eye view
+        pitch: 0,
       });
 
       map.current = newMap;
 
-      // Set up event listeners
       newMap.on('load', () => {
         console.log('Map load event fired');
         
-        // Add terrain source
         newMap.addSource('mapbox-dem', {
           type: 'raster-dem',
           url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
@@ -266,10 +383,8 @@ const MapContainer = forwardRef<MapRef, {}>((props, ref) => {
           maxzoom: 14
         });
 
-        // Set terrain with reduced exaggeration for better route visibility
         newMap.setTerrain({ source: 'mapbox-dem', exaggeration: 1.0 });
 
-        // Add sky layer
         newMap.addLayer({
           id: 'sky',
           type: 'sky',
@@ -280,13 +395,10 @@ const MapContainer = forwardRef<MapRef, {}>((props, ref) => {
           }
         });
 
-        // Just mark the map as ready after initial load
         console.log('Map fully initialized');
         setIsMapReady(true);
-        cleanupInitTimer();
       });
 
-      // Add standard navigation controls
       newMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
       newMap.addControl(new mapboxgl.FullscreenControl());
       newMap.addControl(
@@ -303,22 +415,27 @@ const MapContainer = forwardRef<MapRef, {}>((props, ref) => {
     }
 
     return () => {
-      cleanupInitTimer();
       if (map.current) {
         map.current.remove();
         map.current = null;
       }
     };
-  }, [cleanupInitTimer]);
+  }, []);
 
   return (
     <div className="w-full h-full relative">
       <div ref={mapContainer} className="w-full h-full" />
+      {surfaceProgress.isProcessing && (
+        <LoadingOverlay 
+          progress={surfaceProgress.progress} 
+          total={surfaceProgress.total}
+        />
+      )}
     </div>
   );
 });
 
-export default MapContainer;
+MapContainer.displayName = 'MapContainer';
 
-// Export the ref interface for parent components
+export default MapContainer;
 export type { MapRef };

@@ -1,5 +1,24 @@
 ## RULES FOR CLAUDE AI
 Before suggesting an update to a file, always check it on GITHUB first
+When making multiple changes to one file, its probably easier just to give me the whole file
+If you dont give me the full file, give me the code in before and after so I can easily copy and paste
+Dont try to edit my code, it wont work
+
+## MOST RECENT UPDATE
+Instead of trying to match routes via an API (which gave us those messy red lines across Tasmania), we're now using a more direct approach:
+
+When a GPX file is uploaded, we look at each point in the route
+For each point, we check what type of road exists at that location using queryRenderedFeatures
+We classify each road segment as either 'paved' or 'unpaved' based on what Mapbox tells us about the road properties (like surface type, road class, etc.)
+While this is happening, we show a loading overlay with a progress counter
+Once we know which segments are paved/unpaved, we draw them differently:
+
+Paved roads: Solid red line
+Unpaved roads: Dashed red line with a lighter red background
+
+
+
+This way, we're using actual map data to determine road surfaces rather than trying to guess or match routes through an API. It might take a few seconds longer to process, but it should give much more accurate results.
 
 # Lutruwita - Interactive Mapping Application
 
@@ -30,6 +49,15 @@ An advanced mapping platform for creating and sharing interactive routes for cyc
 
 ## Project Structure
 
+### Application Screens 📱
+- **Home**: Main landing page
+- **Create (Admin)**: Map creation and editing interface where administrators can:
+  - Upload or draw new routes
+  - Add and edit points of interest
+  - Configure surface types and gradients
+  - Set map visibility and sharing options
+- **Explore**: Public view for users to discover and interact with created maps
+
 ### Dependencies 📦
 - [x] React 18
 - [x] TypeScript
@@ -51,7 +79,7 @@ An advanced mapping platform for creating and sharing interactive routes for cyc
   - [x] MapControls
   - [x] ElevationProfile
 - [x] Page components
-  - [x] Home
+  - [ ] Home
   - [x] Create
   - [x] Explore
 
@@ -78,13 +106,11 @@ An advanced mapping platform for creating and sharing interactive routes for cyc
   - [x] Basic routing between views
 
 ### Phase 3: Route Management (Next Focus)
-- [ ] Route creation tools
-  - [x] Manual route drawing
+- [ ] Admin route creation tools
+  - [ ] Manual route drawing
   - [ ] GPX file upload and parsing
   - [ ] Route preview
   - [ ] Route editing
-- [ ] Surface type system
-- [ ] Elevation profile
 
 ### Phase 4: Advanced Features (Planned)
 - [ ] Points of Interest system
@@ -196,3 +222,4 @@ TBD
 - I would like the map to be mapbox outdoor to begin with but give the option of light, dark, streets, satellite, hybrid and 3d (the user will also be able to select this option
 - There will be a comment system for the admin as well as the users where they can create a point of interest on the map and choose an icon to associate with it.. I would like to see it as sort of like a speech box or something with an icon in it that they choose (it might be for a town, supermarket, petrol station, bike shop, camping site, accommodation, tourist poi, cafe or restaurant, swimming spot, water point, river crossing, warning, train station, bus stop, ferry, hazard etc.)
 - On the sidebar, I would like there to be three toggles, when one is enables, the other two are still present but you wont be able to interact with them 1. The route toggle (this will be draw mode for admin, or for the user they will be able to see the full route of gpx), the admin will be able to add many routes to one map, so there may be more than one. In admin, there should be an option to add another, then another etc. There should be an elevation profile as they draw (sticky at the bottom of the screen above the tabs). The elevation profile should also show the surface type and a coloured by the grade. 0 - 3% green, 3 - 6% yellow, 6 - 9% orange, 9 - 12% red, 12 - 15% maroon, 15% + black. The route should always be shown on the page, but really transparent when the surface type is toggled. The route line should be cyan. 2. Gradient Toggle - this will turn the route into a gradient, showing the steepness of the course. This is only required for the user.3. Surface Toggle - this will allow the admin to go into draw mode again and draw segments over roads with a rating of 0 - 6 (which will essentially be a guide for the surface type of the road). 0 - green, 1 - green dashed yellow, 2 - yellow, 3 - yellow dashed red, 4 - red, 5 red dashed moroon, 6 maroon. Also purple for bike paths and purple dashed for gravel bike paths. I would like the segment line to be wide and fairly transparent. It should always be present on the page, but more transparent when the gradient or route are toggled. 
+
