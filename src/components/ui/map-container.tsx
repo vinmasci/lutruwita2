@@ -169,9 +169,8 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       total: coordinates.length
     });
   
-    // Set initial zoom and get road features
     if (!map.current) return coordinates;
-    
+  
     // Get bounds of the route
     const bounds = coordinates.reduce(
       (acc, coord) => ({
@@ -183,7 +182,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       { minLat: 90, maxLat: -90, minLon: 180, maxLon: -180 }
     );
   
-    // Force zoom to 13 to get road data
+    // Force zoom to 13 and fit bounds
     map.current.setZoom(13);
     map.current.fitBounds(
       [[bounds.minLon, bounds.minLat], [bounds.maxLon, bounds.maxLat]],
@@ -203,86 +202,68 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       checkTiles();
     });
   
-// Create a route line from all coordinates
-const routeLine = turf.lineString(coordinates.map(coord => [coord.lon, coord.lat]));
-
-// Create a buffer around the route (100 meters)
-const buffered = turf.buffer(routeLine, 0.1, { units: 'kilometers' });
-
-// Get the bounding box of the buffered route
-const bbox = turf.bbox(buffered);
-
-// Query road features within the buffer
-const roadFeatures = map.current.querySourceFeatures('australia-roads', {
-  sourceLayer: 'roads',
-  bbox: bbox,
-  filter: ['all',
-    ['has', 'surface'],
-    ['!=', ['get', 'surface'], null],
-    ['!=', ['get', 'surface'], '']
-  ]
-});
-
-// Add debug logging
-console.log('Buffer bbox:', bbox);
-console.log('Road features found within buffer:', roadFeatures.length);
-if (roadFeatures.length > 0) {
-  console.log('Sample road features:', roadFeatures.slice(0, 3).map(f => ({
-    surface: f.properties?.surface,
-    highway: f.properties?.highway,
-    name: f.properties?.name
-  })));
-}
-    
-    console.log('Road features with surface:', roadFeatures.map(f => ({
-      surface: f.properties?.surface,
-      name: f.properties?.name,
-      highway: f.properties?.highway
-    })));
-  
-    console.log('Found road features:', roadFeatures.length);
-  
-    // Convert road features to Turf.js format
-    const roads = roadFeatures.map(feature => ({
-      type: 'Feature',
-      geometry: feature.geometry,
-      properties: feature.properties
-    }));
-  
     const enhancedCoordinates: Point[] = [];
-    const batchSize = 50; // Can process more points at once now
+    const batchSize = 50;
   
     for (let i = 0; i < coordinates.length; i += batchSize) {
       const batch = coordinates.slice(i, i + batchSize);
       
       for (const [batchIndex, point] of batch.entries()) {
         try {
-          // Find nearest road and get its surface type
-          let minDistance = Infinity;
+              // Force zoom to 13 before querying
+    if (map.current.getZoom() !== 13) {
+      map.current.setZoom(13);
+      // Wait for zoom to complete
+      await new Promise<void>(resolve => {
+        map.current?.once('moveend', () => resolve());
+      });
+    }
+
+        // ADD THESE DEBUG LOGS HERE
+        console.log('Available source data:', map.current.getSource('australia-roads'));
+        console.log('Source features at zoom 13:', map.current.querySourceFeatures('australia-roads', {
+          sourceLayer: 'roads'
+        }));
+    
+
+          // Convert point coordinates to pixel coordinates
+          const pixelPoint = map.current.project([point.lon, point.lat]);
+          
+    // ADD THE DEBUG LOG HERE
+    console.log('Current map state:', {
+      zoom: map.current.getZoom(),
+      layers: map.current.getStyle().layers.map(l => l.id),
+      center: map.current.getCenter()
+    });
+    
+
+          // Query rendered features at this point
+          const features = map.current.queryRenderedFeatures([
+            [pixelPoint.x - 5, pixelPoint.y - 5],
+            [pixelPoint.x + 5, pixelPoint.y + 5]
+          ], {
+            layers: ['custom-roads']
+          });
+  
+          console.log(`Point ${i + batchIndex}: Found ${features.length} features`);
+          
           let surfaceType: 'paved' | 'unpaved' = 'unpaved';
   
-          roads.forEach(road => {
-            if (!road.geometry || road.geometry.type !== 'LineString') return;
-            
-            try {
-              const coords = road.geometry.coordinates as [number, number][];
-              const line = turf.lineString(coords);
-              const pointFeature = turf.point([point.lon, point.lat]);
-              // @ts-ignore - nearestPointOnLine exists but TypeScript doesn't recognize it
-              const snapped = turf.nearestPointOnLine(line, pointFeature);
-              
-              if (snapped.properties?.dist && snapped.properties.dist < minDistance) {
-                minDistance = snapped.properties.dist;
-                // Classify surface type based on road properties
-                const roadSurface = road.properties?.surface?.toLowerCase();
-                if (roadSurface && ['paved', 'asphalt', 'concrete'].includes(roadSurface)) {
-                  surfaceType = 'paved';
-                }
+          if (features.length > 0) {
+            const roadFeature = features[0];
+            const surface = roadFeature.properties?.surface?.toLowerCase();
+            const highway = roadFeature.properties?.highway?.toLowerCase();
+  
+            if (surface) {
+              if (['paved', 'asphalt', 'concrete', 'paving_stones'].includes(surface)) {
+                surfaceType = 'paved';
               }
-            } catch (error) {
-              console.warn('Error processing road:', error);
+            } else if (highway) {
+              if (['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'residential'].includes(highway)) {
+                surfaceType = 'paved';
+              }
             }
-          });
+          }
   
           enhancedCoordinates.push({ ...point, surface: surfaceType });
           
@@ -656,6 +637,9 @@ newMap.addLayer({
   },
   filter: ['has', 'surface']
 });
+
+console.log('Layer ID check:', newMap.getLayer('custom-roads')?.id);
+console.log('Layer visibility:', newMap.getLayoutProperty('custom-roads', 'visibility'));
 
 // Keep just one listener, combining both log formats
 newMap.on('sourcedata', (e) => {
