@@ -71,63 +71,45 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
 
   const querySurfaceType = async (point: Point): Promise<'paved' | 'unpaved'> => {
     if (!map.current) return 'unpaved';
-  
-    // Check zoom level first
-    const currentZoom = map.current.getZoom();
-    console.log(`Querying point at [${point.lon}, ${point.lat}], zoom level: ${currentZoom}`);
-  
-    // Always ensure we're at zoom level 13 for consistent querying
-    if (currentZoom !== 13 && map.current) {
-      console.log('Adjusting zoom to 13...');
-      map.current.setZoom(13);
-      map.current.setCenter([point.lon, point.lat]);
-      
-      // Wait for both zoom AND tiles
-      await new Promise<void>(resolve => {
-        const checkLoadStatus = () => {
-          if (map.current?.areTilesLoaded()) {
-            console.log('Tiles loaded at zoom 13');
-            resolve();
-          } else {
-            setTimeout(checkLoadStatus, 100);
-          }
-        };
-        
-        map.current.once('moveend', checkLoadStatus);
-      });
-    }
-  
-    if (!map.current) return 'unpaved';
-    
-    // Query the vector tile source directly
-    if (!map.current) return 'unpaved';
-    const features = map.current.querySourceFeatures('australia-roads', {
-      sourceLayer: 'roads',
-      filter: ['all',
-        ['has', 'surface'],
-        ['!=', ['get', 'surface'], ''],
-        ['!=', ['get', 'surface'], null]
-      ]
-    });
+
+    // Create a small buffer around the point to increase chances of finding roads
+    const buffer = 0.0005; // roughly 50 meters
+    const bbox = [
+      point.lon - buffer,
+      point.lat - buffer,
+      point.lon + buffer,
+      point.lat + buffer
+    ];
+
+    // Convert bbox to screen coordinates
+    const sw = map.current.project([bbox[0], bbox[1]]);
+    const ne = map.current.project([bbox[2], bbox[3]]);
+
+    // Query both the custom roads layer and mapbox streets layer
+    const features = map.current.queryRenderedFeatures(
+      [[sw.x, sw.y], [ne.x, ne.y]],
+      {
+        layers: ['custom-roads', 'road-secondary-tertiary', 'road-primary', 'road-street']
+      }
+    );
   
     console.log('Query results:', {
       location: [point.lon, point.lat],
       featuresFound: features.length,
       features: features.map(f => ({
-        id: f.id,
+        layer: f.layer.id,
         surface: f.properties?.surface,
-        highway: f.properties?.highway
+        highway: f.properties?.highway,
+        class: f.properties?.class
       }))
     });
-  
-    if (features.length > 0) {
-      const roadFeature = features[0];
-      const properties = roadFeature?.properties || {};
-      
-      console.log('Road properties found:', properties);
-  
-      // Check surface type
-      if (properties?.surface) {
+
+    for (const feature of features) {
+      const properties = feature.properties || {};
+      const layerId = feature.layer.id;
+
+      // First check custom roads layer
+      if (layerId === 'custom-roads' && properties.surface) {
         const unpavedSurfaces = [
           'unpaved', 'dirt', 'gravel', 'grass', 'ground',
           'fine_gravel', 'compacted', 'earth', 'mud', 'sand', 'woodchips'
@@ -146,10 +128,16 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
           return 'paved';
         }
       }
-  
-      // Check highway type
-      if (properties?.highway) {
-        if (['track', 'path', 'bridleway', 'cycleway'].includes(properties.highway as string)) {
+
+      // Then check Mapbox streets layers
+      if (layerId.startsWith('road-')) {
+        // Most Mapbox streets are paved by default
+        return 'paved';
+      }
+
+      // Check highway type as fallback
+      if (properties.highway) {
+        if (['track', 'path', 'bridleway', 'cycleway'].includes(properties.highway)) {
           return 'unpaved';
         }
         
@@ -162,126 +150,126 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
     return 'unpaved';
   };
 
-  const processCoordinatesWithSurface = async (coordinates: Point[]): Promise<Point[]> => {
-    setSurfaceProgress({
-      isProcessing: true,
-      progress: 0,
-      total: coordinates.length
-    });
-  
-    if (!map.current) return coordinates;
-  
-    // Get bounds of the route
-    const bounds = coordinates.reduce(
-      (acc, coord) => ({
-        minLat: Math.min(acc.minLat, coord.lat),
-        maxLat: Math.max(acc.maxLat, coord.lat),
-        minLon: Math.min(acc.minLon, coord.lon),
-        maxLon: Math.max(acc.maxLon, coord.lon),
-      }),
-      { minLat: 90, maxLat: -90, minLon: 180, maxLon: -180 }
-    );
-  
-    // Force zoom to 13 and fit bounds
-    map.current.setZoom(13);
-    map.current.fitBounds(
-      [[bounds.minLon, bounds.minLat], [bounds.maxLon, bounds.maxLat]],
-      { padding: 50, duration: 0 }
-    );
-  
-    // Wait for tiles to load
-    await new Promise<void>(resolve => {
-      const checkTiles = () => {
-        if (map.current?.areTilesLoaded()) {
-          console.log('Tiles loaded at zoom 13');
-          resolve();
-        } else {
-          setTimeout(checkTiles, 100);
-        }
-      };
-      checkTiles();
-    });
-  
-    const enhancedCoordinates: Point[] = [];
-    const batchSize = 50;
-  
-    for (let i = 0; i < coordinates.length; i += batchSize) {
-      const batch = coordinates.slice(i, i + batchSize);
-      
-      for (const [batchIndex, point] of batch.entries()) {
-        try {
-          if (!map.current) continue;
-  
-          const pixelPoint = map.current.project([point.lon, point.lat]);
-          
-          // Get the default surface type from the previous point
-          let surfaceType: 'paved' | 'unpaved' = 
-            enhancedCoordinates.length > 0 
-              ? enhancedCoordinates[enhancedCoordinates.length - 1].surface || 'unpaved'
-              : 'unpaved';
-  
-          try {
-            const features = map.current.queryRenderedFeatures([
-              [pixelPoint.x - 5, pixelPoint.y - 5],
-              [pixelPoint.x + 5, pixelPoint.y + 5]
-            ], {
-              layers: ['custom-roads']
-            });
-  
-            if (features.length > 0) {
-              const roadFeature = features[0];
-              const layerStyle = roadFeature.layer?.paint;
-              
-              if (layerStyle && 'line-color' in layerStyle) {
-                const color = layerStyle['line-color'];
-                // Check the actual color that's rendered
-                if (color === '#4A90E2') {  // Blue color for paved roads
-                  surfaceType = 'paved';
-                } else if (color === '#D35400') {  // Orange/brown color for unpaved roads
-                  surfaceType = 'unpaved';
-                }
-                // If color doesn't match either, keep the default (previous point's surface)
-              }
-            }
-          } catch (queryError) {
-            console.warn(`Query failed for point ${i + batchIndex}, using previous surface type:`, queryError);
-            // Keep using the default surfaceType (previous point's surface)
-          }
-  
-          enhancedCoordinates.push({ ...point, surface: surfaceType });
-          
-          setSurfaceProgress(prev => ({
-            ...prev,
-            progress: i + batchIndex + 1
-          }));
-  
-        } catch (error) {
-          console.warn(`Failed to process point at index ${i + batchIndex}:`, error);
-          // Use previous point's surface type or default to unpaved
-          const surfaceType = enhancedCoordinates.length > 0 
+const processCoordinatesWithSurface = async (coordinates: Point[]): Promise<Point[]> => {
+  setSurfaceProgress({
+    isProcessing: true,
+    progress: 0,
+    total: coordinates.length
+  });
+
+  if (!map.current) return coordinates;
+
+  // Get bounds of the route
+  const bounds = coordinates.reduce(
+    (acc, coord) => ({
+      minLat: Math.min(acc.minLat, coord.lat),
+      maxLat: Math.max(acc.maxLat, coord.lat),
+      minLon: Math.min(acc.minLon, coord.lon),
+      maxLon: Math.max(acc.maxLon, coord.lon),
+    }),
+    { minLat: 90, maxLat: -90, minLon: 180, maxLon: -180 }
+  );
+
+  // Force zoom to 13 and fit bounds
+  map.current.setZoom(13);
+  map.current.fitBounds(
+    [[bounds.minLon, bounds.minLat], [bounds.maxLon, bounds.maxLat]],
+    { padding: 50, duration: 0 }
+  );
+
+  // Wait for tiles to load
+  await new Promise<void>(resolve => {
+    const checkTiles = () => {
+      if (map.current?.areTilesLoaded()) {
+        console.log('Tiles loaded at zoom 13');
+        resolve();
+      } else {
+        setTimeout(checkTiles, 100);
+      }
+    };
+    checkTiles();
+  });
+
+  const enhancedCoordinates: Point[] = [];
+  const batchSize = 50;
+
+  for (let i = 0; i < coordinates.length; i += batchSize) {
+    const batch = coordinates.slice(i, i + batchSize);
+    
+    for (const [batchIndex, point] of batch.entries()) {
+      try {
+        if (!map.current) continue;
+
+        const pixelPoint = map.current.project([point.lon, point.lat]);
+        
+        // Get the default surface type from the previous point
+        let surfaceType: 'paved' | 'unpaved' = 
+          enhancedCoordinates.length > 0 
             ? enhancedCoordinates[enhancedCoordinates.length - 1].surface || 'unpaved'
             : 'unpaved';
-          enhancedCoordinates.push({ ...point, surface: surfaceType });
-        }
-      }
-  
-      // Update the map every batch
-      if (enhancedCoordinates.length > 0) {
+
         try {
-          await addRouteToMap(enhancedCoordinates);
-        } catch (error) {
-          console.warn('Failed to update route display:', error);
+          const features = map.current.queryRenderedFeatures([
+            [pixelPoint.x - 5, pixelPoint.y - 5],
+            [pixelPoint.x + 5, pixelPoint.y + 5]
+          ], {
+            layers: ['custom-roads']
+          });
+
+          if (features.length > 0) {
+            const roadFeature = features[0];
+            const layerStyle = roadFeature.layer?.paint;
+            
+            if (layerStyle && 'line-color' in layerStyle) {
+              const color = layerStyle['line-color'];
+              // Check the actual color that's rendered
+              if (color === '#4A90E2') {  // Blue color for paved roads
+                surfaceType = 'paved';
+              } else if (color === '#D35400') {  // Orange/brown color for unpaved roads
+                surfaceType = 'unpaved';
+              }
+              // If color doesn't match either, keep the default (previous point's surface)
+            }
+          }
+        } catch (queryError) {
+          console.warn(`Query failed for point ${i + batchIndex}, using previous surface type:`, queryError);
+          // Keep using the default surfaceType (previous point's surface)
         }
+
+        enhancedCoordinates.push({ ...point, surface: surfaceType });
+        
+        setSurfaceProgress(prev => ({
+          ...prev,
+          progress: i + batchIndex + 1
+        }));
+
+      } catch (error) {
+        console.warn(`Failed to process point at index ${i + batchIndex}:`, error);
+        // Use previous point's surface type or default to unpaved
+        const surfaceType = enhancedCoordinates.length > 0 
+          ? enhancedCoordinates[enhancedCoordinates.length - 1].surface || 'unpaved'
+          : 'unpaved';
+        enhancedCoordinates.push({ ...point, surface: surfaceType });
       }
     }
-  
-    setSurfaceProgress(prev => ({
-      ...prev,
-      isProcessing: false
-    }));
-  
-    return enhancedCoordinates;
-  };
+
+    // Update the map every batch
+    if (enhancedCoordinates.length > 0) {
+      try {
+        await addRouteToMap(enhancedCoordinates);
+      } catch (error) {
+        console.warn('Failed to update route display:', error);
+      }
+    }
+  }
+
+  setSurfaceProgress(prev => ({
+    ...prev,
+    isProcessing: false
+  }));
+
+  return enhancedCoordinates;
+};
 
   const addRouteToMap = useCallback(async (coordinates: Point[]) => {
     if (!map.current || !isReady()) {
