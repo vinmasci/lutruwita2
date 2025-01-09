@@ -29,16 +29,10 @@ Step 1: Data Preparation
 Download full Australia OSM dataset
 Use MapTiler for processing
 
-Crop to Tasmania bounding box
+Do all of Australia 
 Extract only zoom level 13 data
-Focus on road and path layers
+Focus on all highway layers inc. path, track etc. 
 
-
-
-Bounding Box Coordinates for Tasmania
-
-Latitude: Between -43.6 and -40.6
-Longitude: Between 144.3 and 148.3
 
 Extraction Command (Pseudocode)
 bashCopymaptiler-engine extract \
@@ -51,7 +45,7 @@ Technical Implementation Considerations
 Surface Type Identification
 
 Primary source: OpenStreetMap tags
-Key surface type tags:
+Key surface type tags (but not limited to):
 
 surface=paved
 surface=unpaved
@@ -94,6 +88,47 @@ Performance Optimization
 Single zoom level (13) minimizes dataset size
 Focused metadata extraction
 Reduced processing overhead
+
+## ACTIVE GOAL UPDATE
+Surface Detection System Update
+Recent Implementation
+We've created a custom vector tileset containing all of Australia's road network data from OpenStreetMap. The tileset:
+
+Is optimized for zoom level 13 (ideal for surface detection)
+Contains full OSM road attributes (surface, highway type, etc.)
+Uses 'roads' as the source layer name
+Is hosted on MapTiler with tile URL: 7ed93f08-6f83-46f8-9319-96d8962f82bc
+
+Current Integration
+The system is being integrated into the map component with:
+typescriptCopynewMap.addSource('australia-roads', {
+  type: 'vector',
+  tiles: ['https://api.maptiler.com/tiles/7ed93f08-6f83-46f8-9319-96d8962f82bc/{z}/{x}/{y}.pbf?key=KEY'],
+  minzoom: 13,
+  maxzoom: 13
+});
+
+newMap.addLayer({
+  id: 'custom-roads',
+  type: 'line',
+  source: 'australia-roads',
+  'source-layer': 'roads',  // Confirmed source layer name from tileset
+  layout: {
+    visibility: 'visible'
+  },
+  paint: {
+    'line-opacity': 0  // Invisible but queryable
+  }
+});
+Next Steps
+
+Debug surface querying for uploaded GPX routes
+Ensure proper surface type detection using OSM attributes
+Implement progressive loading for long routes
+Add visual feedback for surface detection progress
+Optimize tile loading and query performance
+
+The system will query this tileset at each point along uploaded GPX routes to determine if the road surface is paved or unpaved, using both explicit surface tags and highway type classification from the OSM data.
 
 # Lutruwita - Interactive Mapping Application
 

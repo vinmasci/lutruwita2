@@ -82,6 +82,11 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
         center: [point.lon, point.lat],
         duration: 0
       });
+
+        // Add the new log here
+  map.current.once('moveend', () => {
+    console.log('New zoom level after zoom:', map.current?.getZoom());
+  });
   
       // Wait for zoom and tiles to load
       await new Promise<void>(resolve => {
@@ -89,12 +94,12 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
           if (map.current?.areTilesLoaded()) {
             resolve();
           } else {
-            setTimeout(checkLoadStatus, 100);
+            setTimeout(checkLoadStatus, 500);
           }
         };
         
         map.current.once('moveend', () => {
-          setTimeout(checkLoadStatus, 100);
+          setTimeout(checkLoadStatus, 500);
         });
       });
     }
@@ -108,7 +113,8 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
         [projectedPoint.x + 5, projectedPoint.y + 5]
       ],
       { 
-        layers: ['custom-roads']
+        layers: ['custom-roads'],
+        filter: ['has', 'surface']  // Add this filter
       }
     );
   
@@ -519,6 +525,8 @@ newMap.addSource('australia-roads', {
   maxzoom: 13
 });
 
+console.log('Source loaded:', newMap.getSource('australia-roads'));
+
 // Add a layer for our custom road data
 newMap.addLayer({
   id: 'custom-roads',
@@ -530,7 +538,8 @@ newMap.addLayer({
   },
   paint: {
     'line-opacity': 0  // Keep invisible but queryable
-  }
+  },
+  filter: ['has', 'surface']  // Add this to load only roads with surface data
 });
           
           // Add debug logging to confirm layers were added
@@ -544,9 +553,9 @@ newMap.addLayer({
 
 // Add debug listener to check available properties
 newMap.on('sourcedata', (e) => {
-  if (e.sourceId === 'streets' && e.isSourceLoaded) {
-    const features = newMap.querySourceFeatures('streets', {
-      sourceLayer: 'road'
+  if (e.sourceId === 'australia-roads' && e.isSourceLoaded) {
+    const features = newMap.querySourceFeatures('australia-roads', {
+      sourceLayer: 'roads'
     });
     if (features.length > 0) {
       console.log('Available road properties:', {
