@@ -82,24 +82,23 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
         center: [point.lon, point.lat],
         duration: 0
       });
-
-        // Add the new log here
-  map.current.once('moveend', () => {
-    console.log('New zoom level after zoom:', map.current?.getZoom());
-  });
-  
-      // Wait for zoom and tiles to load
+    
+      // Wait for both zoom AND tiles
       await new Promise<void>(resolve => {
-        const checkLoadStatus = () => {
-          if (map.current?.areTilesLoaded()) {
-            resolve();
-          } else {
-            setTimeout(checkLoadStatus, 500);
-          }
-        };
-        
         map.current.once('moveend', () => {
-          setTimeout(checkLoadStatus, 500);
+          const newZoom = map.current?.getZoom();
+          console.log('Zoom completed, new level:', newZoom);
+          
+          // Now wait for tiles
+          const checkTiles = () => {
+            if (map.current?.areTilesLoaded()) {
+              console.log('Tiles loaded at zoom:', map.current?.getZoom());
+              resolve();
+            } else {
+              setTimeout(checkTiles, 100);
+            }
+          };
+          checkTiles();
         });
       });
     }
@@ -177,23 +176,85 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       total: coordinates.length
     });
   
+    // Set initial zoom and get road features
+    if (!map.current) return coordinates;
+    
+    // Get bounds of the route
+    const bounds = coordinates.reduce(
+      (acc, coord) => ({
+        minLat: Math.min(acc.minLat, coord.lat),
+        maxLat: Math.max(acc.maxLat, coord.lat),
+        minLon: Math.min(acc.minLon, coord.lon),
+        maxLon: Math.max(acc.maxLon, coord.lon),
+      }),
+      { minLat: 90, maxLat: -90, minLon: 180, maxLon: -180 }
+    );
+  
+    // Force zoom to 13 to get road data
+    map.current.setZoom(13);
+    map.current.fitBounds(
+      [[bounds.minLon, bounds.minLat], [bounds.maxLon, bounds.maxLat]],
+      { padding: 50, duration: 0 }
+    );
+  
+    // Wait for tiles to load
+    await new Promise<void>(resolve => {
+      const checkTiles = () => {
+        if (map.current?.areTilesLoaded()) {
+          console.log('Tiles loaded at zoom 13');
+          resolve();
+        } else {
+          setTimeout(checkTiles, 100);
+        }
+      };
+      checkTiles();
+    });
+  
+    // Query all road features in view
+    const roadFeatures = map.current.querySourceFeatures('australia-roads', {
+      sourceLayer: 'roads',
+      filter: ['has', 'surface']
+    });
+  
+    console.log('Found road features:', roadFeatures.length);
+  
+    // Convert road features to Turf.js format
+    const roads = roadFeatures.map(feature => ({
+      type: 'Feature',
+      geometry: feature.geometry,
+      properties: feature.properties
+    }));
+  
     const enhancedCoordinates: Point[] = [];
-    const batchSize = 10; // Process 10 points at a time
+    const batchSize = 50; // Can process more points at once now
   
     for (let i = 0; i < coordinates.length; i += batchSize) {
-      // Process a batch of points
       const batch = coordinates.slice(i, i + batchSize);
       
-      // Wait between batches to prevent overwhelming the tile loading
-      if (i > 0) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-  
-      // Process each point in the batch
       for (const [batchIndex, point] of batch.entries()) {
         try {
-          const surface = await querySurfaceType(point);
-          enhancedCoordinates.push({ ...point, surface });
+          // Find nearest road and get its surface type
+          let minDistance = Infinity;
+          let surfaceType: 'paved' | 'unpaved' = 'unpaved';
+  
+          roads.forEach(road => {
+            const line = turf.lineString(road.geometry.coordinates);
+            const snapped = turf.nearestPointOnLine(
+              line, 
+              turf.point([point.lon, point.lat])
+            );
+            
+            if (snapped.properties.dist < minDistance) {
+              minDistance = snapped.properties.dist;
+              // Classify surface type based on road properties
+              const roadSurface = road.properties.surface?.toLowerCase();
+              if (roadSurface && ['paved', 'asphalt', 'concrete'].includes(roadSurface)) {
+                surfaceType = 'paved';
+              }
+            }
+          });
+  
+          enhancedCoordinates.push({ ...point, surface: surfaceType });
           
           setSurfaceProgress(prev => ({
             ...prev,
@@ -201,12 +262,11 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
           }));
         } catch (error) {
           console.warn(`Failed to process point at index ${i + batchIndex}:`, error);
-          // If a point fails, still include it but mark as unknown
           enhancedCoordinates.push({ ...point, surface: 'unpaved' });
         }
       }
   
-      // Update the map every batch to show progress
+      // Update the map every batch
       if (enhancedCoordinates.length > 0) {
         try {
           await addRouteToMap(enhancedCoordinates);
