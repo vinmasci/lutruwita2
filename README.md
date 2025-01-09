@@ -5,130 +5,70 @@ If you dont give me the full file, give me the code in before and after so I can
 Dont try to edit my code, it wont work
 
 ## ACTIVE GOAL
-Advanced Surface Type Detection Implementation Roadmap
-Project Goal
-Create a precise, efficient method for identifying road and path surface types in Tasmania using OpenStreetMap data.
-Data Extraction Strategy
-Key Constraints
+Surface Detection System - Implementation Status
+Current Implementation
 
-Source: Full Australia OpenStreetMap (OSM) Dataset
-Target Region: Tasmania
-Zoom Level: 13 (Maximum detail for road surface metadata)
+Custom vector tileset created in MapTiler containing Australia's road network with surface data
+Tileset optimized for zoom level 13
+Surface information confirmed present in tileset (visible in MapTiler preview)
+Basic integration implemented in map component
 
-Metadata Capture
-Zoom Level 13 will capture:
+Current Issue
+We're experiencing a data loading issue where the surface information isn't being queried correctly:
 
-All road types (highways, secondary, local, service)
-Path types (hiking trails, cycling paths, tracks)
-Surface type classifications
-Road/path material information
+The GPX route loads successfully (2428 points processed)
+Map correctly zooms to level 13
+Tiles are confirmed to load
+But querySourceFeatures returns 0 features
 
-Implementation Workflow
-Step 1: Data Preparation
+Debug Status
+Currently investigating if this is a:
 
-Download full Australia OSM dataset
-Use MapTiler for processing
+Source loading issue (data not loading from MapTiler)
+Query timing issue (querying before data is ready)
+Query parameter issue (wrong source-layer or filter settings)
 
-Do all of Australia 
-Extract only zoom level 13 data
-Focus on all highway layers inc. path, track etc. 
+Next Debug Steps
 
+Add source loading state verification
+Monitor source data events
+Verify feature querying at different zoom levels
+Test direct feature queries without GPX integration
 
-Extraction Command (Pseudocode)
-bashCopymaptiler-engine extract \
-  --input australia-latest.osm.pbf \
-  --output tasmania_road_surfaces \
-  --zoom 13 \
-  --bounding-box=-43.6,-40.6,144.3,148.3 \
-  --layers=roads,paths
-Technical Implementation Considerations
-Surface Type Identification
-
-Primary source: OpenStreetMap tags
-Key surface type tags (but not limited to):
-
-surface=paved
-surface=unpaved
-surface=gravel
-surface=dirt
-surface=asphalt
-surface=concrete
-
-
-
-Mapbox/Tileset Query Method
-javascriptCopyfunction querySurfaceType(feature) {
-  return {
-    surface: feature.properties.surface,
-    roadClass: feature.properties.class,
-    roadType: feature.properties.type
-  };
-}
-Rendering Strategy
-
-Paved roads: Solid red line
-Unpaved roads: Dashed red line
-Gravel paths: Dashed brown line
-Dirt tracks: Dotted earth-tone line
-
-Expected Challenges
-
-Incomplete OSM data in some areas
-Variations in surface type reporting
-Performance optimization
-
-Future Improvements
-
-Implement caching mechanism
-Add machine learning for surface type prediction
-Expand surface type classification granularity
-
-Performance Optimization
-
-Single zoom level (13) minimizes dataset size
-Focused metadata extraction
-Reduced processing overhead
-
-## ACTIVE GOAL UPDATE
-Surface Detection System Update
-Recent Implementation
-We've created a custom vector tileset containing all of Australia's road network data from OpenStreetMap. The tileset:
-
-Is optimized for zoom level 13 (ideal for surface detection)
-Contains full OSM road attributes (surface, highway type, etc.)
-Uses 'roads' as the source layer name
-Is hosted on MapTiler with tile URL: 7ed93f08-6f83-46f8-9319-96d8962f82bc
-
-Current Integration
-The system is being integrated into the map component with:
-typescriptCopynewMap.addSource('australia-roads', {
+Technical Details
+javascriptCopy// Current Source Configuration
+{
   type: 'vector',
-  tiles: ['https://api.maptiler.com/tiles/7ed93f08-6f83-46f8-9319-96d8962f82bc/{z}/{x}/{y}.pbf?key=KEY'],
+  tiles: ['https://api.maptiler.com/tiles/7ed93f08-6f83-46f8-9319-96d8962f82bc/{z}/{x}/{y}.pbf'],
   minzoom: 13,
   maxzoom: 13
-});
+}
 
-newMap.addLayer({
+// Layer Configuration
+{
   id: 'custom-roads',
   type: 'line',
   source: 'australia-roads',
-  'source-layer': 'roads',  // Confirmed source layer name from tileset
-  layout: {
-    visibility: 'visible'
-  },
-  paint: {
-    'line-opacity': 0  // Invisible but queryable
-  }
-});
-Next Steps
+  'source-layer': 'roads',
+  layout: { visibility: 'visible' },
+  paint: { 'line-opacity': 0.5, 'line-color': '#FF0000' }
+}
+Timeline
 
-Debug surface querying for uploaded GPX routes
-Ensure proper surface type detection using OSM attributes
-Implement progressive loading for long routes
-Add visual feedback for surface detection progress
-Optimize tile loading and query performance
+✅ Tileset created with surface data
+✅ Basic map integration
+✅ GPX route loading
+✅ Zoom level management
+🔄 Surface data querying (current blocker)
+⏳ Route surface visualization
+⏳ Performance optimization
 
-The system will query this tileset at each point along uploaded GPX routes to determine if the road surface is paved or unpaved, using both explicit surface tags and highway type classification from the OSM data.
+Project Goals
+
+Query road surface types for GPX route points
+Visualize route segments based on surface type
+Implement efficient surface detection for long routes
+Provide accurate surface information for route planning
 
 # Lutruwita - Interactive Mapping Application
 

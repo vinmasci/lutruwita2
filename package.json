@@ -20,6 +20,7 @@
     "@radix-ui/react-slot": "^1.1.1",
     "@radix-ui/react-tabs": "^1.1.2",
     "@turf/turf": "^7.2.0",
+    "@types/turf": "^3.5.32",
     "@types/xml2js": "^0.4.14",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

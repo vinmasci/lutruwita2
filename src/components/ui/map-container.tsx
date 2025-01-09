@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useCallback, forwardRef } from 'react';
 import { parseString } from 'xml2js';
 import mapboxgl from 'mapbox-gl';
 import { CircularProgress, Box, Typography } from '@mui/material';
+import * as turf from '@turf/turf';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 interface MapRef {
@@ -74,48 +75,36 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
     const currentZoom = map.current.getZoom();
     console.log(`Querying point at [${point.lon}, ${point.lat}], zoom level: ${currentZoom}`);
   
-    // If zoom is too low, zoom in to see road details and wait for tiles
-    if (currentZoom < 13) {
-      console.log('Zooming in to see road details...');
-      map.current.easeTo({
-        zoom: 13,
-        center: [point.lon, point.lat],
-        duration: 0
-      });
-    
+    // Always ensure we're at zoom level 13 for consistent querying
+    if (currentZoom !== 13) {
+      console.log('Adjusting zoom to 13...');
+      map.current.setZoom(13);
+      map.current.setCenter([point.lon, point.lat]);
+      
       // Wait for both zoom AND tiles
       await new Promise<void>(resolve => {
-        map.current.once('moveend', () => {
-          const newZoom = map.current?.getZoom();
-          console.log('Zoom completed, new level:', newZoom);
-          
-          // Now wait for tiles
-          const checkTiles = () => {
-            if (map.current?.areTilesLoaded()) {
-              console.log('Tiles loaded at zoom:', map.current?.getZoom());
-              resolve();
-            } else {
-              setTimeout(checkTiles, 100);
-            }
-          };
-          checkTiles();
-        });
+        const checkLoadStatus = () => {
+          if (map.current?.areTilesLoaded()) {
+            console.log('Tiles loaded at zoom 13');
+            resolve();
+          } else {
+            setTimeout(checkLoadStatus, 100);
+          }
+        };
+        
+        map.current.once('moveend', checkLoadStatus);
       });
     }
   
-    const projectedPoint = map.current.project([point.lon, point.lat]);
-    
-    // Query our custom road layer
-    const features = map.current.queryRenderedFeatures(
-      [
-        [projectedPoint.x - 5, projectedPoint.y - 5],
-        [projectedPoint.x + 5, projectedPoint.y + 5]
-      ],
-      { 
-        layers: ['custom-roads'],
-        filter: ['has', 'surface']  // Add this filter
-      }
-    );
+    // Query the vector tile source directly
+    const features = map.current?.querySourceFeatures('australia-roads', {
+      sourceLayer: 'roads',
+      filter: ['all',
+        ['has', 'surface'],
+        ['!=', ['get', 'surface'], ''],
+        ['!=', ['get', 'surface'], null]
+      ]
+    });
   
     console.log('Query results:', {
       location: [point.lon, point.lat],
@@ -129,12 +118,12 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
   
     if (features.length > 0) {
       const roadFeature = features[0];
-      const properties = roadFeature.properties;
+      const properties = roadFeature?.properties || {};
       
       console.log('Road properties found:', properties);
   
       // Check surface type
-      if (properties.surface) {
+      if (properties?.surface) {
         const unpavedSurfaces = [
           'unpaved', 'dirt', 'gravel', 'grass', 'ground',
           'fine_gravel', 'compacted', 'earth', 'mud', 'sand', 'woodchips'
@@ -155,8 +144,8 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       }
   
       // Check highway type
-      if (properties.highway) {
-        if (['track', 'path', 'bridleway', 'cycleway'].includes(properties.highway)) {
+      if (properties?.highway) {
+        if (['track', 'path', 'bridleway', 'cycleway'].includes(properties.highway as string)) {
           return 'unpaved';
         }
         
@@ -221,9 +210,9 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
     });
     
     console.log('Road features with surface:', roadFeatures.map(f => ({
-      surface: f.properties.surface,
-      name: f.properties.name,
-      highway: f.properties.highway
+      surface: f.properties?.surface,
+      name: f.properties?.name,
+      highway: f.properties?.highway
     })));
   
     console.log('Found road features:', roadFeatures.length);
@@ -248,16 +237,18 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
           let surfaceType: 'paved' | 'unpaved' = 'unpaved';
   
           roads.forEach(road => {
+            if (!road.geometry || !Array.isArray(road.geometry.coordinates)) return;
+            
             const line = turf.lineString(road.geometry.coordinates);
             const snapped = turf.nearestPointOnLine(
               line, 
               turf.point([point.lon, point.lat])
             );
             
-            if (snapped.properties.dist < minDistance) {
+            if (snapped.properties?.dist && snapped.properties.dist < minDistance) {
               minDistance = snapped.properties.dist;
               // Classify surface type based on road properties
-              const roadSurface = road.properties.surface?.toLowerCase();
+              const roadSurface = road.properties?.surface?.toLowerCase();
               if (roadSurface && ['paved', 'asphalt', 'concrete'].includes(roadSurface)) {
                 surfaceType = 'paved';
               }
@@ -587,29 +578,51 @@ useEffect(() => {
         console.log('Base map loaded');
         
         try {
-// Add our custom road tiles source
+// Add our custom road tiles source with broader zoom range
 newMap.addSource('australia-roads', {
   type: 'vector',
   tiles: ['https://api.maptiler.com/tiles/7ed93f08-6f83-46f8-9319-96d8962f82bc/{z}/{x}/{y}.pbf?key=DFSAZFJXzvprKbxHrHXv'],
-  minzoom: 13,
-  maxzoom: 13
+  minzoom: 10,  // Allow loading at lower zooms
+  maxzoom: 14   // Allow higher detail when needed
 });
 
 console.log('Source loaded:', newMap.getSource('australia-roads'));
 
-// Add a layer for our custom road data
+// Add a layer for our custom road data with improved visibility
 newMap.addLayer({
   id: 'custom-roads',
   type: 'line',
   source: 'australia-roads',
   'source-layer': 'roads',
+  minzoom: 10,
   layout: {
     visibility: 'visible'
   },
   paint: {
-    'line-opacity': 0.5,  // Change to 0.5 temporarily to see if data loads
-    'line-color': '#FF0000'  // Make it red to distinguish from base layers
-  }
+    'line-opacity': [
+      'interpolate',
+      ['linear'],
+      ['zoom'],
+      10, 0.3,
+      13, 0.8
+    ],
+    'line-color': [
+      'match',
+      ['get', 'surface'],
+      ['asphalt', 'paved', 'concrete'], '#4A90E2',
+      ['unpaved', 'gravel', 'dirt'], '#D35400',
+      '#888888'
+    ],
+    'line-width': [
+      'interpolate',
+      ['linear'],
+      ['zoom'],
+      10, 1,
+      13, 2,
+      16, 4
+    ]
+  },
+  filter: ['has', 'surface']
 });
 
 // Keep just one listener, combining both log formats
@@ -621,11 +634,11 @@ newMap.on('sourcedata', (e) => {
     if (features.length > 0) {
       console.log('Sample road feature properties:', 
         features.slice(0, 3).map(f => ({
-          surface: f.properties.surface,
-          highway: f.properties.highway,
-          type: f.properties.type,
-          name: f.properties.name,
-          all: f.properties
+          surface: f.properties?.surface,
+          highway: f.properties?.highway,
+          type: f.properties?.type,
+          name: f.properties?.name,
+          all: f.properties || {}
         }))
       );
     }
