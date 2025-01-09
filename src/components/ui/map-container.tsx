@@ -4,6 +4,7 @@ import { parseString } from 'xml2js';
 import mapboxgl from 'mapbox-gl';
 import { CircularProgress, Box, Typography } from '@mui/material';
 import * as turf from '@turf/turf';
+import { lineString, buffer, bbox } from '@turf/turf';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 interface MapRef {
@@ -76,7 +77,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
     console.log(`Querying point at [${point.lon}, ${point.lat}], zoom level: ${currentZoom}`);
   
     // Always ensure we're at zoom level 13 for consistent querying
-    if (currentZoom !== 13) {
+    if (currentZoom !== 13 && map.current) {
       console.log('Adjusting zoom to 13...');
       map.current.setZoom(13);
       map.current.setCenter([point.lon, point.lat]);
@@ -96,8 +97,11 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       });
     }
   
+    if (!map.current) return 'unpaved';
+    
     // Query the vector tile source directly
-    const features = map.current?.querySourceFeatures('australia-roads', {
+    if (!map.current) return 'unpaved';
+    const features = map.current.querySourceFeatures('australia-roads', {
       sourceLayer: 'roads',
       filter: ['all',
         ['has', 'surface'],
@@ -199,15 +203,36 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       checkTiles();
     });
   
-    // Query all road features in view
-    const roadFeatures = map.current.querySourceFeatures('australia-roads', {
-      sourceLayer: 'roads',
-      filter: ['all',
-        ['has', 'surface'],
-        ['!=', ['get', 'surface'], null],
-        ['!=', ['get', 'surface'], '']
-      ]
-    });
+// Create a route line from all coordinates
+const routeLine = turf.lineString(coordinates.map(coord => [coord.lon, coord.lat]));
+
+// Create a buffer around the route (100 meters)
+const buffered = turf.buffer(routeLine, 0.1, { units: 'kilometers' });
+
+// Get the bounding box of the buffered route
+const bbox = turf.bbox(buffered);
+
+// Query road features within the buffer
+const roadFeatures = map.current.querySourceFeatures('australia-roads', {
+  sourceLayer: 'roads',
+  bbox: bbox,
+  filter: ['all',
+    ['has', 'surface'],
+    ['!=', ['get', 'surface'], null],
+    ['!=', ['get', 'surface'], '']
+  ]
+});
+
+// Add debug logging
+console.log('Buffer bbox:', bbox);
+console.log('Road features found within buffer:', roadFeatures.length);
+if (roadFeatures.length > 0) {
+  console.log('Sample road features:', roadFeatures.slice(0, 3).map(f => ({
+    surface: f.properties?.surface,
+    highway: f.properties?.highway,
+    name: f.properties?.name
+  })));
+}
     
     console.log('Road features with surface:', roadFeatures.map(f => ({
       surface: f.properties?.surface,
@@ -237,21 +262,25 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
           let surfaceType: 'paved' | 'unpaved' = 'unpaved';
   
           roads.forEach(road => {
-            if (!road.geometry || !Array.isArray(road.geometry.coordinates)) return;
+            if (!road.geometry || road.geometry.type !== 'LineString') return;
             
-            const line = turf.lineString(road.geometry.coordinates);
-            const snapped = turf.nearestPointOnLine(
-              line, 
-              turf.point([point.lon, point.lat])
-            );
-            
-            if (snapped.properties?.dist && snapped.properties.dist < minDistance) {
-              minDistance = snapped.properties.dist;
-              // Classify surface type based on road properties
-              const roadSurface = road.properties?.surface?.toLowerCase();
-              if (roadSurface && ['paved', 'asphalt', 'concrete'].includes(roadSurface)) {
-                surfaceType = 'paved';
+            try {
+              const coords = road.geometry.coordinates as [number, number][];
+              const line = turf.lineString(coords);
+              const pointFeature = turf.point([point.lon, point.lat]);
+              // @ts-ignore - nearestPointOnLine exists but TypeScript doesn't recognize it
+              const snapped = turf.nearestPointOnLine(line, pointFeature);
+              
+              if (snapped.properties?.dist && snapped.properties.dist < minDistance) {
+                minDistance = snapped.properties.dist;
+                // Classify surface type based on road properties
+                const roadSurface = road.properties?.surface?.toLowerCase();
+                if (roadSurface && ['paved', 'asphalt', 'concrete'].includes(roadSurface)) {
+                  surfaceType = 'paved';
+                }
               }
+            } catch (error) {
+              console.warn('Error processing road:', error);
             }
           });
   
@@ -507,8 +536,11 @@ await new Promise<void>(moveResolve => {
     }
   };
 
-  const mapRef = map.current;
-  mapRef.once('moveend', () => {
+  if (!map.current) {
+    moveResolve();
+    return;
+  }
+  map.current.once('moveend', () => {
     console.log('Map moved, checking tiles...');
     checkLoadStatus();
   });
