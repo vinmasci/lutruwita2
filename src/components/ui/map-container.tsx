@@ -511,14 +511,41 @@ await addRouteToMap(coordinates);
 // Add our custom road tiles source
 const tileUrl = 'https://api.maptiler.com/tiles/7ed93f08-6f83-46f8-9319-96d8962f82bc/{z}/{x}/{y}.pbf?key=DFSAZFJXzvprKbxHrHXv';
 
+// Test a specific tile for Tasmania
+const testTileCoords = {
+  x: 3864,
+  y: 2604,
+  z: 13
+};
+
+const testTileUrl = tileUrl
+  .replace('{z}', testTileCoords.z.toString())
+  .replace('{x}', testTileCoords.x.toString())
+  .replace('{y}', testTileCoords.y.toString());
+
+console.log('Testing tile fetch:', testTileUrl);
+
+fetch(testTileUrl)
+  .then(async response => {
+    console.log('Tile response:', {
+      ok: response.ok,
+      status: response.status,
+      contentType: response.headers.get('content-type'),
+      size: response.headers.get('content-length')
+    });
+  })
+  .catch(error => console.error('Tile fetch failed:', error));
+
 console.log('Adding source with URL:', tileUrl);
 
-newMap.addSource('australia-roads', {
-  type: 'vector',
+const sourceConfig = {
+  type: 'vector' as const,
   tiles: [tileUrl],
   minzoom: 13,
   maxzoom: 13
-});
+};
+
+newMap.addSource('australia-roads', sourceConfig);
 
 // Debug the source immediately after adding
 const source = newMap.getSource('australia-roads');
