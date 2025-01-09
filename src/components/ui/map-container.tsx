@@ -232,21 +232,75 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       for (let i = 0; i < coordinates.length; i++) {
         const point = coordinates[i];
         
-        // Query surface type at this point
-        const projectedPoint = map.current.project([point.lon, point.lat]);
-        const features = map.current.queryRenderedFeatures(
-          projectedPoint,
-          { layers: ['custom-roads'] }
-        );
+// Debug map state before query
+console.log('Map state at query:', {
+  zoom: map.current.getZoom(),
+  center: map.current.getCenter(),
+  bounds: map.current.getBounds(),
+  tilesLoaded: map.current.areTilesLoaded()
+});
+
+// Get and log all available layers
+const allLayers = map.current.getStyle().layers;
+console.log('Available layers:', allLayers.map(l => l.id));
+
+// Query surface type at this point
+const projectedPoint = map.current.project([point.lon, point.lat]);
+console.log('Querying at point:', {
+  original: [point.lon, point.lat],
+  projected: projectedPoint,
+  zoom: map.current.getZoom()
+});
+
+// First try source features
+const sourceFeatures = map.current.querySourceFeatures('australia-roads', {
+  sourceLayer: 'roads',
+  filter: ['has', 'surface']
+});
+
+console.log('Source features near point:', {
+  count: sourceFeatures.length,
+  features: sourceFeatures.map(f => ({
+    surface: f.properties?.surface,
+    geometry: f.geometry,
+    properties: f.properties
+  }))
+});
+
+// Then try rendered features
+const features = map.current.queryRenderedFeatures(
+  projectedPoint,
+  { layers: ['custom-roads'] }
+);
+
+console.log('Rendered features at point:', {
+  count: features.length,
+  features: features.map(f => ({
+    surface: f.properties?.surface,
+    layer: f.layer.id,
+    properties: f.properties
+  }))
+});
+
+// Determine surface type
+let surfaceType: 'paved' | 'unpaved' = 'unpaved';
+if (features.length > 0) {
+  console.log('First feature detail:', features[0]);
   
-        // Determine surface type
-        let surfaceType: 'paved' | 'unpaved' = 'unpaved';
-        if (features.length > 0 && features[0].properties?.surface) {
-          const surface = features[0].properties.surface.toLowerCase();
-          if (surface === 'paved' || surface === 'asphalt' || surface === 'concrete') {
-            surfaceType = 'paved';
-          }
-        }
+  if (features[0].properties?.surface) {
+    const surface = features[0].properties.surface.toLowerCase();
+    console.log('Surface value found:', surface);
+    
+    if (surface === 'paved' || surface === 'asphalt' || surface === 'concrete') {
+      surfaceType = 'paved';
+      console.log('Setting surface to paved');
+    }
+  } else {
+    console.log('No surface property found on feature');
+  }
+}
+
+console.log('Final surface type:', surfaceType);
   
         // If surface type changes or last point, create new segment
         if ((surfaceType !== currentSurface && currentSegment.length > 0) || 
@@ -454,37 +508,132 @@ await addRouteToMap(coordinates);
           // Enable terrain
           newMap.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
           
-          // Add our custom road tiles source
-          newMap.addSource('australia-roads', {
-            type: 'vector',
-            tiles: ['https://api.maptiler.com/tiles/7ed93f08-6f83-46f8-9319-96d8962f82bc/{z}/{x}/{y}.pbf?key=DFSAZFJXzvprKbxHrHXv'],
-            minzoom: 13,
-            maxzoom: 13
-          });
+// Add our custom road tiles source
+const tileUrl = 'https://api.maptiler.com/tiles/7ed93f08-6f83-46f8-9319-96d8962f82bc/{z}/{x}/{y}.pbf?key=DFSAZFJXzvprKbxHrHXv';
 
-          // Add the custom roads layer
-          newMap.addLayer({
-            id: 'custom-roads',
-            type: 'line',
-            source: 'australia-roads',
-            'source-layer': 'roads',
-            minzoom: 13,
-            maxzoom: 13,
-            layout: {
-  visibility: 'visible'
-            },
-            paint: {
-              'line-opacity': 1,
-              'line-color': [
-                'match',
-                ['get', 'surface'],
-                'paved', '#4A90E2',
-                'unpaved', '#D35400',
-                '#888888'
-              ],
-              'line-width': 2
-            }
-          });
+console.log('Adding source with URL:', tileUrl);
+
+newMap.addSource('australia-roads', {
+  type: 'vector',
+  tiles: [tileUrl],
+  minzoom: 13,
+  maxzoom: 13
+});
+
+// Debug the source immediately after adding
+const source = newMap.getSource('australia-roads');
+console.log('Source details:', {
+  source,
+  type: source.type,
+  loaded: source.loaded?.(),
+  tileSize: source.tileSize,
+  attribution: source.attribution,
+  maxzoom: source.maxzoom,
+  minzoom: source.minzoom
+});
+
+// Add listener for when source loads
+newMap.on('sourcedata', (e) => {
+  if (e.sourceId === 'australia-roads') {
+    console.log('Source data event:', {
+      sourceId: e.sourceId,
+      sourceLoaded: e.isSourceLoaded,
+      dataType: e.dataType,
+      tile: e.tile
+    });
+
+    if (e.isSourceLoaded) {
+      // Try to query the source at current view
+      const bounds = newMap.getBounds();
+      const center = bounds.getCenter();
+      
+      console.log('Trying source query at:', {
+        center: center,
+        zoom: newMap.getZoom(),
+        bounds: bounds
+      });
+
+      const features = newMap.querySourceFeatures('australia-roads', {
+        sourceLayer: 'roads'
+      });
+
+      console.log('Source features found:', {
+        count: features.length,
+        sample: features.slice(0, 2).map(f => ({
+          surface: f.properties?.surface,
+          geometry: f.geometry.type,
+          allProps: f.properties
+        }))
+      });
+    }
+  }
+});
+
+console.log('Source loaded:', {
+  source: newMap.getSource('australia-roads'),
+  tiles: newMap.getSource('australia-roads').tiles
+});
+
+// Add the custom roads layer
+newMap.addLayer({
+  id: 'custom-roads',
+  type: 'line',
+  source: 'australia-roads',
+  'source-layer': 'roads',  // Let's verify this is the correct source layer name
+  minzoom: 13,
+  maxzoom: 13,
+  layout: {
+    visibility: 'visible'
+  },
+  paint: {
+    'line-opacity': 1,
+    'line-color': [
+      'match',
+      ['get', 'surface'],
+      'paved', '#4A90E2',
+      'unpaved', '#D35400',
+      '#888888'
+    ],
+    'line-width': 2
+  }
+});
+
+// Debug the layer
+console.log('Layer added:', {
+  layer: newMap.getLayer('custom-roads'),
+  style: newMap.getStyle(),
+  visible: newMap.getLayoutProperty('custom-roads', 'visibility')
+});
+
+// Add debug listener for source data
+newMap.on('sourcedata', (e) => {
+  if (e.sourceId === 'australia-roads' && e.isSourceLoaded) {
+    // Debug what data is actually in the tiles
+    const features = newMap.querySourceFeatures('australia-roads', {
+      sourceLayer: 'roads'
+    });
+    
+    console.log('Road source data loaded:', {
+      featureCount: features.length,
+      sampleFeatures: features.slice(0, 3).map(f => ({
+        surface: f.properties?.surface,
+        properties: f.properties
+      }))
+    });
+  }
+});
+
+// Add debug listener for tile loading
+newMap.on('data', (e) => {
+  if (e.dataType === 'tile') {
+    console.log('Tile load event:', {
+      source: e.source?.type,
+      sourceId: e.sourceId,
+      tile: e.tile,
+      coord: e.coord
+    });
+  }
+});
 
           setStreetsLayersLoaded(true);
           setIsMapReady(true);
