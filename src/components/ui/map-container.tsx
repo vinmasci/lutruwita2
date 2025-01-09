@@ -72,7 +72,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
 
   const querySurfaceType = async (point: Point): Promise<'paved' | 'unpaved'> => {
     if (!map.current) return 'unpaved';
-
+  
     // Ensure we're at zoom level 13
     if (map.current.getZoom() !== 13) {
       map.current.setZoom(13);
@@ -81,7 +81,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
         map.current?.once('moveend', () => resolve());
       });
     }
-
+  
     // Wait for tiles to load
     await new Promise<void>(resolve => {
       if (map.current?.areTilesLoaded()) {
@@ -90,25 +90,29 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
         map.current?.once('idle', () => resolve());
       }
     });
-
+  
+    // Query the exact point
     const projectedPoint = map.current.project([point.lon, point.lat]);
     const features = map.current.queryRenderedFeatures(
-      [[projectedPoint.x - 1, projectedPoint.y - 1], [projectedPoint.x + 1, projectedPoint.y + 1]],
-      { layers: ['custom-roads'] }
+      projectedPoint,  // Just query the exact point, not a box
+      { layers: ['custom-roads'] }  // Only query your custom roads layer
     );
-
+  
+    // Log features for debugging
     console.log('Features at point:', [point.lon, point.lat], features.map(f => ({
-      surface: f.properties?.surface,
-      highway: f.properties?.highway
+      surface: f.properties?.surface
     })));
-
-    for (const feature of features) {
-      const surface = feature.properties?.surface;
-      if (surface === 'paved') {
+  
+    // If we found a feature with surface type
+    if (features.length > 0 && features[0].properties?.surface) {
+      const surfaceType = features[0].properties.surface.toLowerCase();
+      // Check explicitly for paved
+      if (surfaceType === 'paved' || surfaceType === 'asphalt' || surfaceType === 'concrete') {
         return 'paved';
       }
     }
-
+  
+    // Default to unpaved if no paved surface found
     return 'unpaved';
   };
 
@@ -195,35 +199,77 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
     if (!map.current || !isReady()) {
       throw new Error('Map not ready');
     }
-
+  
     try {
       if (map.current.getSource(routeSourceId)) {
         map.current.removeLayer(routeLayerId);
         map.current.removeSource(routeSourceId);
       }
-
+  
+      // Force zoom level 13
+      const currentZoom = map.current.getZoom();
+      if (currentZoom !== 13) {
+        map.current.setZoom(13);
+        await new Promise<void>(resolve => {
+          map.current?.once('moveend', () => resolve());
+        });
+      }
+  
+      // Wait for tiles to load
+      await new Promise<void>(resolve => {
+        if (map.current?.areTilesLoaded()) {
+          resolve();
+        } else {
+          map.current?.once('idle', () => resolve());
+        }
+      });
+  
+      let segments: { points: Point[], surface: 'paved' | 'unpaved' }[] = [];
       let currentSegment: Point[] = [];
-      const segments: { points: Point[], surface: 'paved' | 'unpaved' }[] = [];
-      let currentSurface = coordinates[0]?.surface || 'paved';
-
-      coordinates.forEach((point, index) => {
-        if (point.surface !== currentSurface || index === coordinates.length - 1) {
-          if (index === coordinates.length - 1) {
+      let currentSurface: 'paved' | 'unpaved' = 'unpaved';
+  
+      // Process points and create segments
+      for (let i = 0; i < coordinates.length; i++) {
+        const point = coordinates[i];
+        
+        // Query surface type at this point
+        const projectedPoint = map.current.project([point.lon, point.lat]);
+        const features = map.current.queryRenderedFeatures(
+          projectedPoint,
+          { layers: ['custom-roads'] }
+        );
+  
+        // Determine surface type
+        let surfaceType: 'paved' | 'unpaved' = 'unpaved';
+        if (features.length > 0 && features[0].properties?.surface) {
+          const surface = features[0].properties.surface.toLowerCase();
+          if (surface === 'paved' || surface === 'asphalt' || surface === 'concrete') {
+            surfaceType = 'paved';
+          }
+        }
+  
+        // If surface type changes or last point, create new segment
+        if ((surfaceType !== currentSurface && currentSegment.length > 0) || 
+            i === coordinates.length - 1) {
+          if (i === coordinates.length - 1) {
             currentSegment.push(point);
           }
-          if (currentSegment.length > 0) {
-            segments.push({
-              points: [...currentSegment],
-              surface: currentSurface
-            });
-          }
+          segments.push({
+            points: [...currentSegment],
+            surface: currentSurface
+          });
           currentSegment = [point];
-          currentSurface = point.surface || 'paved';
+          currentSurface = surfaceType;
         } else {
           currentSegment.push(point);
         }
-      });
-
+  
+        // Update progress
+        if (i % 100 === 0) {
+          console.log(`Processing point ${i} of ${coordinates.length}`);
+        }
+      }
+  
       map.current.addSource(routeSourceId, {
         type: 'geojson',
         data: {
@@ -240,7 +286,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
           }))
         }
       });
-
+  
       map.current.addLayer({
         id: routeLayerId,
         type: 'line',
@@ -259,6 +305,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
           ]
         }
       });
+  
     } catch (error) {
       console.error('Error adding route to map:', error);
       throw error;
@@ -332,11 +379,9 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
             throw new Error('No valid coordinates found in GPX file');
           }
 
-          console.log('Map ready, starting surface queries...');
-          const enhancedCoordinates = await processCoordinatesWithSurface(coordinates);
-
-          console.log('Updating route with surface types...');
-          await addRouteToMap(enhancedCoordinates);
+// Remove the separate processing step and directly add to map with surface detection
+console.log('Map ready, drawing route...');
+await addRouteToMap(coordinates);
           
           resolve();
         } catch (error) {
@@ -426,7 +471,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
             minzoom: 13,
             maxzoom: 13,
             layout: {
-              visibility: 'none'
+  visibility: 'visible'
             },
             paint: {
               'line-opacity': 1,
