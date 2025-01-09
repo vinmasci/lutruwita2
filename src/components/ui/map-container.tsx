@@ -1,12 +1,11 @@
 // src/components/ui/map-container.tsx
 import React, { useEffect, useRef, useCallback, forwardRef } from 'react';
 import { parseString } from 'xml2js';
-import mapboxgl from 'mapbox-gl';
+import mapboxgl, { Point as MapboxPoint } from 'mapbox-gl';
 import { CircularProgress, Box, Typography } from '@mui/material';
-import * as turf from '@turf/turf';
-import { lineString, buffer, bbox } from '@turf/turf';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
+// Previous interfaces remain the same...
 interface MapRef {
   handleGpxUpload: (content: string) => Promise<void>;
   isReady: () => boolean;
@@ -26,6 +25,7 @@ interface SurfaceProgressState {
   total: number;
 }
 
+// Previous LoadingOverlay component remains the same...
 const LoadingOverlay = ({ progress, total }: { progress: number; total: number }) => (
   <Box
     sx={{
@@ -33,7 +33,7 @@ const LoadingOverlay = ({ progress, total }: { progress: number; total: number }
       top: 0,
       left: 0,
       right: 0,
-      bottom: '48px', // Leave space for bottom tabs
+      bottom: '48px',
       backgroundColor: 'rgba(0, 0, 0, 0.7)',
       display: 'flex',
       flexDirection: 'column',
@@ -53,6 +53,7 @@ const LoadingOverlay = ({ progress, total }: { progress: number; total: number }
 );
 
 const MapContainer = forwardRef<MapRef>((props, ref) => {
+  // Previous state and refs remain the same...
   const routeSourceId = 'route';
   const routeLayerId = 'route-layer';
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -72,84 +73,46 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
   const querySurfaceType = async (point: Point): Promise<'paved' | 'unpaved'> => {
     if (!map.current) return 'unpaved';
 
-    // Create a small buffer around the point to increase chances of finding roads
-    const buffer = 0.0005; // roughly 50 meters
-    const bbox = [
-      point.lon - buffer,
-      point.lat - buffer,
-      point.lon + buffer,
-      point.lat + buffer
-    ];
+    // Ensure we're at zoom level 13
+    if (map.current.getZoom() !== 13) {
+      map.current.setZoom(13);
+      // Wait for zoom to complete
+      await new Promise<void>(resolve => {
+        map.current?.once('moveend', () => resolve());
+      });
+    }
 
-    // Convert bbox to screen coordinates
-    const sw = map.current.project([bbox[0], bbox[1]]);
-    const ne = map.current.project([bbox[2], bbox[3]]);
-
-    // Query both the custom roads layer and mapbox streets layer
-    const features = map.current.queryRenderedFeatures(
-      [[sw.x, sw.y], [ne.x, ne.y]],
-      {
-        layers: ['custom-roads', 'road-secondary-tertiary', 'road-primary', 'road-street']
+    // Wait for tiles to load
+    await new Promise<void>(resolve => {
+      if (map.current?.areTilesLoaded()) {
+        resolve();
+      } else {
+        map.current?.once('idle', () => resolve());
       }
-    );
-  
-    console.log('Query results:', {
-      location: [point.lon, point.lat],
-      featuresFound: features.length,
-      features: features.map(f => ({
-        layer: f.layer.id,
-        surface: f.properties?.surface,
-        highway: f.properties?.highway,
-        class: f.properties?.class
-      }))
     });
 
+    const projectedPoint = map.current.project([point.lon, point.lat]);
+    const features = map.current.queryRenderedFeatures(
+      [[projectedPoint.x - 1, projectedPoint.y - 1], [projectedPoint.x + 1, projectedPoint.y + 1]],
+      { layers: ['custom-roads'] }
+    );
+
+    console.log('Features at point:', [point.lon, point.lat], features.map(f => ({
+      surface: f.properties?.surface,
+      highway: f.properties?.highway
+    })));
+
     for (const feature of features) {
-      const properties = feature.properties || {};
-      const layerId = feature.layer.id;
-
-      // First check custom roads layer
-      if (layerId === 'custom-roads' && properties.surface) {
-        const unpavedSurfaces = [
-          'unpaved', 'dirt', 'gravel', 'grass', 'ground',
-          'fine_gravel', 'compacted', 'earth', 'mud', 'sand', 'woodchips'
-        ];
-        
-        if (unpavedSurfaces.includes(properties.surface.toLowerCase())) {
-          return 'unpaved';
-        }
-        
-        const pavedSurfaces = [
-          'paved', 'asphalt', 'concrete', 'paving_stones', 'sett',
-          'cobblestone', 'metal', 'wood', 'concrete:plates'
-        ];
-        
-        if (pavedSurfaces.includes(properties.surface.toLowerCase())) {
-          return 'paved';
-        }
-      }
-
-      // Then check Mapbox streets layers
-      if (layerId.startsWith('road-')) {
-        // Most Mapbox streets are paved by default
+      const surface = feature.properties?.surface;
+      if (surface === 'paved') {
         return 'paved';
       }
-
-      // Check highway type as fallback
-      if (properties.highway) {
-        if (['track', 'path', 'bridleway', 'cycleway'].includes(properties.highway)) {
-          return 'unpaved';
-        }
-        
-        if (['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'residential'].includes(properties.highway)) {
-          return 'paved';
-        }
-      }
     }
-  
+
     return 'unpaved';
   };
 
+  // Rest of the component implementation remains the same...
   const processCoordinatesWithSurface = async (coordinates: Point[]): Promise<Point[]> => {
     console.log('Starting surface processing with coordinates:', coordinates.length);
     
@@ -163,31 +126,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       console.error('Map instance not found');
       return coordinates;
     }
-  
-    // Log map state
-    console.log('Current map state:', {
-      zoom: map.current.getZoom(),
-      center: map.current.getCenter(),
-      style: map.current.getStyle().sprite,
-      loaded: map.current.isStyleLoaded(),
-      tilesLoaded: map.current.areTilesLoaded()
-    });
-  
-    // Log source state
-    const australiaRoads = map.current.getSource('australia-roads');
-    console.log('Australia roads source:', australiaRoads);
-  
-    // Log layer state
-    const customRoadsLayer = map.current.getLayer('custom-roads');
-    console.log('Custom roads layer:', {
-      id: customRoadsLayer?.id,
-      type: customRoadsLayer?.type,
-      source: customRoadsLayer?.source,
-      sourceLayer: customRoadsLayer?.['source-layer'],
-      layout: customRoadsLayer?.layout,
-      paint: customRoadsLayer?.paint
-    });
-  
+
     const bounds = coordinates.reduce(
       (acc, coord) => ({
         minLat: Math.min(acc.minLat, coord.lat),
@@ -198,145 +137,48 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       { minLat: 90, maxLat: -90, minLon: 180, maxLon: -180 }
     );
   
-    console.log('Route bounds:', bounds);
-  
-    map.current.setZoom(13);
+    // Set the map view and force zoom level 13
     map.current.fitBounds(
       [[bounds.minLon, bounds.minLat], [bounds.maxLon, bounds.maxLat]],
-      { padding: 50, duration: 0 }
+      { 
+        padding: 50, 
+        duration: 500,
+        maxZoom: 13,
+        minZoom: 13
+      }
     );
-  
+
+    // Wait for map to settle and tiles to load
     await new Promise<void>(resolve => {
-      const checkTiles = () => {
-        if (map.current?.areTilesLoaded()) {
-          console.log('Tiles loaded at zoom 13');
-          // Log visible tiles
-          const visibleTiles = map.current.queryRenderedFeatures(undefined, {
-            layers: ['custom-roads']
-          });
-          console.log('Visible road features:', {
-            count: visibleTiles.length,
-            sample: visibleTiles.slice(0, 3).map(f => ({
-              properties: f.properties,
-              source: f.source,
-              sourceLayer: f.sourceLayer,
-              layer: f.layer.id
-            }))
-          });
+      const checkReady = () => {
+        if (map.current?.areTilesLoaded() && map.current?.getZoom() === 13) {
           resolve();
         } else {
-          console.log('Waiting for tiles...');
-          setTimeout(checkTiles, 100);
+          setTimeout(checkReady, 100);
         }
       };
-      checkTiles();
+      map.current?.once('moveend', () => {
+        setTimeout(checkReady, 500); // Give extra time for tiles to load
+      });
     });
-  
+
     const enhancedCoordinates: Point[] = [];
-    const batchSize = 50;
-  
-    for (let i = 0; i < coordinates.length; i += batchSize) {
-      console.log(`Processing batch ${i / batchSize + 1}`);
-      const batch = coordinates.slice(i, i + batchSize);
-      
-      for (const [batchIndex, point] of batch.entries()) {
-        try {
-          if (!map.current) continue;
-  
-          const pixelPoint = map.current.project([point.lon, point.lat]);
-          console.log(`Point ${i + batchIndex}:`, {
-            coordinates: [point.lon, point.lat],
-            pixel: [pixelPoint.x, pixelPoint.y],
-            zoom: map.current.getZoom()
-          });
-          
-          let surfaceType: 'paved' | 'unpaved' = 
-            enhancedCoordinates.length > 0 
-              ? enhancedCoordinates[enhancedCoordinates.length - 1].surface || 'unpaved'
-              : 'unpaved';
-  
-          try {
-            // Try both direct source query and rendered features
-            const sourceFeatures = map.current.querySourceFeatures('australia-roads', {
-              sourceLayer: 'roads',
-              filter: ['has', 'surface']
-            });
-  
-            const renderedFeatures = map.current.queryRenderedFeatures(
-              [[pixelPoint.x - 5, pixelPoint.y - 5], [pixelPoint.x + 5, pixelPoint.y + 5]],
-              { layers: ['custom-roads'] }
-            );
-  
-            console.log(`Features at point ${i + batchIndex}:`, {
-              sourceFeatures: {
-                count: sourceFeatures.length,
-                sample: sourceFeatures.slice(0, 2).map(f => ({
-                  surface: f.properties?.surface,
-                  properties: f.properties
-                }))
-              },
-              renderedFeatures: {
-                count: renderedFeatures.length,
-                sample: renderedFeatures.slice(0, 2).map(f => ({
-                  surface: f.properties?.surface,
-                  properties: f.properties,
-                  paint: f.layer?.paint
-                }))
-              }
-            });
-  
-            if (renderedFeatures.length > 0) {
-              const roadFeature = renderedFeatures[0];
-              const properties = roadFeature.properties;
-              const layerStyle = roadFeature.layer?.paint;
-              
-              console.log('Found road feature:', {
-                properties,
-                layerStyle,
-                source: roadFeature.source,
-                sourceLayer: roadFeature.sourceLayer
-              });
-              
-              if (layerStyle && 'line-color' in layerStyle) {
-                const color = layerStyle['line-color'];
-                console.log('Layer style color:', color);
-                if (color === '#4A90E2') {
-                  surfaceType = 'paved';
-                  console.log('Detected paved road');
-                } else if (color === '#D35400') {
-                  surfaceType = 'unpaved';
-                  console.log('Detected unpaved road');
-                }
-              }
-  
-              // Also check direct properties
-              if (properties?.surface) {
-                console.log('Direct surface property:', properties.surface);
-              }
-            }
-          } catch (queryError) {
-            console.error(`Query failed for point ${i + batchIndex}:`, queryError);
-          }
-  
-          enhancedCoordinates.push({ ...point, surface: surfaceType });
-          
-          setSurfaceProgress(prev => ({
-            ...prev,
-            progress: i + batchIndex + 1
-          }));
-  
-        } catch (error) {
-          console.error(`Failed to process point ${i + batchIndex}:`, error);
-          enhancedCoordinates.push({ ...point, surface: 'unpaved' });
-        }
-      }
-  
-      if (enhancedCoordinates.length > 0) {
-        try {
-          await addRouteToMap(enhancedCoordinates);
-        } catch (error) {
-          console.error('Failed to update route display:', error);
-        }
+
+    for (let i = 0; i < coordinates.length; i++) {
+      try {
+        if (!map.current) continue;
+
+        const surfaceType = await querySurfaceType(coordinates[i]);
+        enhancedCoordinates.push({ ...coordinates[i], surface: surfaceType });
+        
+        setSurfaceProgress(prev => ({
+          ...prev,
+          progress: i + 1
+        }));
+
+      } catch (error) {
+        console.error(`Failed to process point ${i}:`, error);
+        enhancedCoordinates.push({ ...coordinates[i], surface: 'unpaved' });
       }
     }
   
@@ -345,32 +187,21 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       isProcessing: false
     }));
   
-    console.log('Surface processing complete', {
-      total: coordinates.length,
-      processed: enhancedCoordinates.length,
-      surfaceTypes: enhancedCoordinates.reduce((acc, curr) => {
-        acc[curr.surface || 'unknown'] = (acc[curr.surface || 'unknown'] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>)
-    });
-  
     return enhancedCoordinates;
   };
 
+  // Previous methods remain the same...
   const addRouteToMap = useCallback(async (coordinates: Point[]) => {
     if (!map.current || !isReady()) {
       throw new Error('Map not ready');
     }
 
     try {
-      // Remove existing routes if any
       if (map.current.getSource(routeSourceId)) {
-        map.current.removeLayer(`${routeLayerId}-background`);
         map.current.removeLayer(routeLayerId);
         map.current.removeSource(routeSourceId);
       }
 
-      // Create segments based on surface type
       let currentSegment: Point[] = [];
       const segments: { points: Point[], surface: 'paved' | 'unpaved' }[] = [];
       let currentSurface = coordinates[0]?.surface || 'paved';
@@ -393,7 +224,6 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
         }
       });
 
-      // Add source
       map.current.addSource(routeSourceId, {
         type: 'geojson',
         data: {
@@ -408,22 +238,6 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
               coordinates: segment.points.map(point => [point.lon, point.lat])
             }
           }))
-        }
-      });
-
-      // Add route layers
-      map.current.addLayer({
-        id: `${routeLayerId}-background`,
-        type: 'line',
-        source: routeSourceId,
-        layout: {
-          'line-join': 'round',
-          'line-cap': 'round'
-        },
-        paint: {
-          'line-color': '#FFB4B4',
-          'line-width': 4,
-          'line-opacity': ['case', ['==', ['get', 'surface'], 'unpaved'], 1, 0]
         }
       });
 
@@ -445,34 +259,13 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
           ]
         }
       });
-
-      // Fit map to route bounds
-      const bounds = coordinates.reduce(
-        (acc, coord) => ({
-          minLat: Math.min(acc.minLat, coord.lat),
-          maxLat: Math.max(acc.maxLat, coord.lat),
-          minLon: Math.min(acc.minLon, coord.lon),
-          maxLon: Math.max(acc.maxLon, coord.lon),
-        }),
-        { minLat: 90, maxLat: -90, minLon: 180, maxLon: -180 }
-      );
-
-      map.current.fitBounds(
-        [
-          [bounds.minLon, bounds.minLat],
-          [bounds.maxLon, bounds.maxLat]
-        ],
-        {
-          padding: 50,
-          duration: 1000
-        }
-      );
     } catch (error) {
       console.error('Error adding route to map:', error);
       throw error;
     }
   }, [isReady]);
 
+  // Previous methods remain the same...
   const handleGpxUpload = useCallback(async (gpxContent: string): Promise<void> => {
     if (!map.current || !isReady()) {
       console.log('Map ready state:', {
@@ -487,8 +280,6 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       throw new Error('Invalid GPX content');
     }
   
-    console.log('Starting GPX parse...');
-    
     return new Promise((resolve, reject) => {
       parseString(gpxContent, { explicitArray: false }, async (err: Error | null, result: any) => {
         if (err) {
@@ -540,16 +331,12 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
           if (coordinates.length === 0) {
             throw new Error('No valid coordinates found in GPX file');
           }
-  
 
+          console.log('Map ready, starting surface queries...');
+          const enhancedCoordinates = await processCoordinatesWithSurface(coordinates);
 
-// Now process surface types after everything is loaded
-console.log('Map ready, starting surface queries...');
-const enhancedCoordinates = await processCoordinatesWithSurface(coordinates);
-
-// Update the route with surface information
-console.log('Updating route with surface types...');
-await addRouteToMap(enhancedCoordinates);
+          console.log('Updating route with surface types...');
+          await addRouteToMap(enhancedCoordinates);
           
           resolve();
         } catch (error) {
@@ -579,7 +366,7 @@ await addRouteToMap(enhancedCoordinates);
     [handleGpxUpload, isReady]
   );
 
-useEffect(() => {
+  useEffect(() => {
     if (!mapContainer.current || map.current) return;
 
     const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
@@ -593,13 +380,17 @@ useEffect(() => {
 
       const newMap = new mapboxgl.Map({
         container: mapContainer.current,
-        style: 'mapbox://styles/mapbox/satellite-streets-v12', // Base satellite style with streets overlay
+        style: 'mapbox://styles/mapbox/satellite-streets-v12',
         center: [146.5, -41.5],
-        zoom: 6,
-        minZoom: 3,
+        zoom: 13,
+        minZoom: 8,
         maxZoom: 18,
-        pitch: 0,
-      });
+        pitch: 60,
+        terrain: {
+          source: 'mapbox-dem',
+          exaggeration: 1.5
+        },
+      } as any);
 
       map.current = newMap;
 
@@ -607,107 +398,55 @@ useEffect(() => {
         console.log('Base map loaded');
         
         try {
-// Add our custom road tiles source with broader zoom range
-newMap.addSource('australia-roads', {
-  type: 'vector',
-  tiles: ['https://api.maptiler.com/tiles/7ed93f08-6f83-46f8-9319-96d8962f82bc/{z}/{x}/{y}.pbf?key=DFSAZFJXzvprKbxHrHXv'],
-  minzoom: 10,  // Allow loading at lower zooms
-  maxzoom: 14   // Allow higher detail when needed
-});
-
-console.log('Source loaded:', newMap.getSource('australia-roads'));
-
-// Add a layer for our custom road data with improved visibility
-newMap.addLayer({
-  id: 'custom-roads',
-  type: 'line',
-  source: 'australia-roads',
-  'source-layer': 'roads',
-  minzoom: 10,
-  layout: {
-    visibility: 'visible'
-  },
-  paint: {
-    'line-opacity': [
-      'interpolate',
-      ['linear'],
-      ['zoom'],
-      10, 0.3,
-      13, 0.8
-    ],
-    'line-color': [
-      'match',
-      ['get', 'surface'],
-      ['asphalt', 'paved', 'concrete'], '#4A90E2',
-      ['unpaved', 'gravel', 'dirt'], '#D35400',
-      '#888888'
-    ],
-    'line-width': [
-      'interpolate',
-      ['linear'],
-      ['zoom'],
-      10, 1,
-      13, 2,
-      16, 4
-    ]
-  },
-  filter: ['has', 'surface']
-});
-
-console.log('Layer ID check:', newMap.getLayer('custom-roads')?.id);
-console.log('Layer visibility:', newMap.getLayoutProperty('custom-roads', 'visibility'));
-
-// Keep just one listener, combining both log formats
-newMap.on('sourcedata', (e) => {
-  if (e.sourceId === 'australia-roads' && e.isSourceLoaded) {
-    const features = newMap.querySourceFeatures('australia-roads', {
-      sourceLayer: 'roads'
-    });
-    if (features.length > 0) {
-      console.log('Sample road feature properties:', 
-        features.slice(0, 3).map(f => ({
-          surface: f.properties?.surface,
-          highway: f.properties?.highway,
-          type: f.properties?.type,
-          name: f.properties?.name,
-          all: f.properties || {}
-        }))
-      );
-    }
-  }
-});
-          // Add terrain
+          // Add terrain source
           newMap.addSource('mapbox-dem', {
             type: 'raster-dem',
             url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
             tileSize: 512,
             maxzoom: 14
           });
+          
+          // Enable terrain
+          newMap.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
+          
+          // Add our custom road tiles source
+          newMap.addSource('australia-roads', {
+            type: 'vector',
+            tiles: ['https://api.maptiler.com/tiles/7ed93f08-6f83-46f8-9319-96d8962f82bc/{z}/{x}/{y}.pbf?key=DFSAZFJXzvprKbxHrHXv'],
+            minzoom: 13,
+            maxzoom: 13
+          });
 
-          newMap.setTerrain({ source: 'mapbox-dem', exaggeration: 1.0 });
-
+          // Add the custom roads layer
           newMap.addLayer({
-            id: 'sky',
-            type: 'sky',
+            id: 'custom-roads',
+            type: 'line',
+            source: 'australia-roads',
+            'source-layer': 'roads',
+            minzoom: 13,
+            maxzoom: 13,
+            layout: {
+              visibility: 'none'
+            },
             paint: {
-              'sky-type': 'atmosphere',
-              'sky-atmosphere-sun': [0.0, 90.0],
-              'sky-atmosphere-sun-intensity': 15
+              'line-opacity': 1,
+              'line-color': [
+                'match',
+                ['get', 'surface'],
+                'paved', '#4A90E2',
+                'unpaved', '#D35400',
+                '#888888'
+              ],
+              'line-width': 2
             }
           });
 
           setStreetsLayersLoaded(true);
-          console.log('Road layers added and ready for querying');
-
-          // List all layers for debugging
-          const allLayers = newMap.getStyle().layers;
-          console.log('All available layers:', allLayers.map(layer => layer.id));
+          setIsMapReady(true);
 
         } catch (error) {
           console.error('Error loading streets style:', error);
         }
-
-        setIsMapReady(true);
       });
 
       // Add controls
@@ -734,17 +473,17 @@ newMap.on('sourcedata', (e) => {
     };
   }, []);
 
-return (
-<div className="w-full h-full relative">
-<div ref={mapContainer} className="w-full h-full" />
-{surfaceProgress.isProcessing && (
-<LoadingOverlay 
-progress={surfaceProgress.progress} 
-total={surfaceProgress.total}
-/>
-)}
-</div>
-);
+  return (
+    <div className="w-full h-full relative">
+      <div ref={mapContainer} className="w-full h-full" />
+      {surfaceProgress.isProcessing && (
+        <LoadingOverlay 
+          progress={surfaceProgress.progress} 
+          total={surfaceProgress.total}
+        />
+      )}
+    </div>
+  );
 });
 
 MapContainer.displayName = 'MapContainer';
