@@ -210,33 +210,17 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       
       for (const [batchIndex, point] of batch.entries()) {
         try {
-              // Force zoom to 13 before querying
-    if (map.current.getZoom() !== 13) {
-      map.current.setZoom(13);
-      // Wait for zoom to complete
-      await new Promise<void>(resolve => {
-        map.current?.once('moveend', () => resolve());
-      });
-    }
-
-        // ADD THESE DEBUG LOGS HERE
-        console.log('Available source data:', map.current.getSource('australia-roads'));
-        console.log('Source features at zoom 13:', map.current.querySourceFeatures('australia-roads', {
-          sourceLayer: 'roads'
-        }));
-    
-
-          // Convert point coordinates to pixel coordinates
+          // Force zoom to 13 before querying
+          if (map.current.getZoom() !== 13) {
+            map.current.setZoom(13);
+            // Wait for zoom to complete
+            await new Promise<void>(resolve => {
+              map.current?.once('moveend', () => resolve());
+            });
+          }
+      
           const pixelPoint = map.current.project([point.lon, point.lat]);
           
-    // ADD THE DEBUG LOG HERE
-    console.log('Current map state:', {
-      zoom: map.current.getZoom(),
-      layers: map.current.getStyle().layers.map(l => l.id),
-      center: map.current.getCenter()
-    });
-    
-
           // Query rendered features at this point
           const features = map.current.queryRenderedFeatures([
             [pixelPoint.x - 5, pixelPoint.y - 5],
@@ -244,27 +228,30 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
           ], {
             layers: ['custom-roads']
           });
-  
+      
           console.log(`Point ${i + batchIndex}: Found ${features.length} features`);
           
-          let surfaceType: 'paved' | 'unpaved' = 'unpaved';
-  
+          let surfaceType: 'paved' | 'unpaved';
+      
+          // If we find features, determine the surface type
           if (features.length > 0) {
             const roadFeature = features[0];
             const surface = roadFeature.properties?.surface?.toLowerCase();
-            const highway = roadFeature.properties?.highway?.toLowerCase();
-  
-            if (surface) {
-              if (['paved', 'asphalt', 'concrete', 'paving_stones'].includes(surface)) {
-                surfaceType = 'paved';
-              }
-            } else if (highway) {
-              if (['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'residential'].includes(highway)) {
-                surfaceType = 'paved';
-              }
+      
+            if (surface && ['paved', 'asphalt', 'concrete', 'paving_stones'].includes(surface)) {
+              surfaceType = 'paved';
+            } else {
+              surfaceType = 'unpaved';
             }
+          } else {
+            // If no features found, copy the previous point's surface type
+            surfaceType = enhancedCoordinates.length > 0 
+              ? enhancedCoordinates[enhancedCoordinates.length - 1].surface || 'unpaved'
+              : 'unpaved';
+            
+            console.log(`No features found for point ${i + batchIndex}, using previous surface type: ${surfaceType}`);
           }
-  
+      
           enhancedCoordinates.push({ ...point, surface: surfaceType });
           
           setSurfaceProgress(prev => ({
