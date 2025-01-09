@@ -9,66 +9,85 @@ Surface Detection System - Implementation Status
 Current Implementation
 
 Custom vector tileset created in MapTiler containing Australia's road network with surface data
-Tileset optimized for zoom level 13
-Surface information confirmed present in tileset (visible in MapTiler preview)
-Basic integration implemented in map component
+Dataset includes explicit surface information for most roads (e.g., "paved", "unpaved", "asphalt", etc.)
+Successfully loading and displaying surface data at zoom level 13
+Surface information is visually confirmed in MapTiler Cloud preview
+Layer rendering using surface type matching:
+typescriptCopy'line-color': [
+  'match',
+  ['get', 'surface'],
+  ['asphalt', 'paved', 'concrete'], '#4A90E2',
+  ['unpaved', 'gravel', 'dirt'], '#D35400',
+  '#888888'
+]
 
+
+Surface Detection Process
+
+Upload GPX route
+Process points in batches
+For each point:
+
+Ensure zoom level 13 (optimal for surface data)
+Query features at point location
+Extract surface information directly from feature properties
+If surface data found, classify as paved/unpaved
+If no surface data, use previous point's classification
+
+
+
+Data Structure Found
+From successful feature queries, we're getting surface data like:
+typescriptCopy{
+  surface: "paved",
+  highway: "tertiary",
+  name: "Example Road",
+  // other properties...
+}
 Current Issue
-We're experiencing a data loading issue where the surface information isn't being queried correctly:
 
-The GPX route loads successfully (2428 points processed)
-Map correctly zooms to level 13
-Tiles are confirmed to load
-But querySourceFeatures returns 0 features
-
-Debug Status
-Currently investigating if this is a:
-
-Source loading issue (data not loading from MapTiler)
-Query timing issue (querying before data is ready)
-Query parameter issue (wrong source-layer or filter settings)
+Feature querying works intermittently
+When it works, surface data is correctly accessed
+Need to ensure consistent feature querying before surface detection
 
 Next Debug Steps
 
-Add source loading state verification
-Monitor source data events
-Verify feature querying at different zoom levels
-Test direct feature queries without GPX integration
+Verify source data loading state
+Monitor source/feature availability
+Test feature querying with different zoom levels
+Implement graceful fallback for missing data:
 
-Technical Details
-javascriptCopy// Current Source Configuration
-{
-  type: 'vector',
-  tiles: ['https://api.maptiler.com/tiles/7ed93f08-6f83-46f8-9319-96d8962f82bc/{z}/{x}/{y}.pbf'],
-  minzoom: 13,
-  maxzoom: 13
+Use previous point's surface type
+Continue processing instead of stopping
+Allow manual correction later
+
+
+
+Proposed Solution
+
+Keep zoom level at 13 throughout process
+Query features using source layer and surface property
+Maintain previous successful surface type as fallback
+Continue processing even if individual points fail
+Allow batch reprocessing of failed sections
+
+Technical Implementation
+typescriptCopy// Query features with surface data
+const features = map.current.queryRenderedFeatures(
+  [[point.lon, point.lat]], 
+  { layers: ['custom-roads'] }
+);
+
+// Extract surface information
+if (features.length > 0) {
+  const surface = features[0].properties?.surface?.toLowerCase();
+  if (surface) {
+    // Use direct surface property
+    surfaceType = ['paved', 'asphalt', 'concrete'].includes(surface) 
+      ? 'paved' 
+      : 'unpaved';
+  }
 }
-
-// Layer Configuration
-{
-  id: 'custom-roads',
-  type: 'line',
-  source: 'australia-roads',
-  'source-layer': 'roads',
-  layout: { visibility: 'visible' },
-  paint: { 'line-opacity': 0.5, 'line-color': '#FF0000' }
-}
-Timeline
-
-✅ Tileset created with surface data
-✅ Basic map integration
-✅ GPX route loading
-✅ Zoom level management
-🔄 Surface data querying (current blocker)
-⏳ Route surface visualization
-⏳ Performance optimization
-
-Project Goals
-
-Query road surface types for GPX route points
-Visualize route segments based on surface type
-Implement efficient surface detection for long routes
-Provide accurate surface information for route planning
 
 # Lutruwita - Interactive Mapping Application
 

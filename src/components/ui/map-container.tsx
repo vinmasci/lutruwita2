@@ -210,57 +210,58 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       
       for (const [batchIndex, point] of batch.entries()) {
         try {
-          // Force zoom to 13 before querying
-          if (map.current.getZoom() !== 13) {
-            map.current.setZoom(13);
-            // Wait for zoom to complete
-            await new Promise<void>(resolve => {
-              map.current?.once('moveend', () => resolve());
-            });
-          }
-      
+          if (!map.current) continue;
+  
           const pixelPoint = map.current.project([point.lon, point.lat]);
           
-          // Query rendered features at this point
-          const features = map.current.queryRenderedFeatures([
-            [pixelPoint.x - 5, pixelPoint.y - 5],
-            [pixelPoint.x + 5, pixelPoint.y + 5]
-          ], {
-            layers: ['custom-roads']
-          });
-      
-          console.log(`Point ${i + batchIndex}: Found ${features.length} features`);
-          
-          let surfaceType: 'paved' | 'unpaved';
-      
-          // If we find features, determine the surface type
-          if (features.length > 0) {
-            const roadFeature = features[0];
-            const surface = roadFeature.properties?.surface?.toLowerCase();
-      
-            if (surface && ['paved', 'asphalt', 'concrete', 'paving_stones'].includes(surface)) {
-              surfaceType = 'paved';
-            } else {
-              surfaceType = 'unpaved';
-            }
-          } else {
-            // If no features found, copy the previous point's surface type
-            surfaceType = enhancedCoordinates.length > 0 
+          // Get the default surface type from the previous point
+          let surfaceType: 'paved' | 'unpaved' = 
+            enhancedCoordinates.length > 0 
               ? enhancedCoordinates[enhancedCoordinates.length - 1].surface || 'unpaved'
               : 'unpaved';
-            
-            console.log(`No features found for point ${i + batchIndex}, using previous surface type: ${surfaceType}`);
+  
+          try {
+            const features = map.current.queryRenderedFeatures([
+              [pixelPoint.x - 5, pixelPoint.y - 5],
+              [pixelPoint.x + 5, pixelPoint.y + 5]
+            ], {
+              layers: ['custom-roads']
+            });
+  
+            if (features.length > 0) {
+              const roadFeature = features[0];
+              const layerStyle = roadFeature.layer?.paint;
+              
+              if (layerStyle && 'line-color' in layerStyle) {
+                const color = layerStyle['line-color'];
+                // Check the actual color that's rendered
+                if (color === '#4A90E2') {  // Blue color for paved roads
+                  surfaceType = 'paved';
+                } else if (color === '#D35400') {  // Orange/brown color for unpaved roads
+                  surfaceType = 'unpaved';
+                }
+                // If color doesn't match either, keep the default (previous point's surface)
+              }
+            }
+          } catch (queryError) {
+            console.warn(`Query failed for point ${i + batchIndex}, using previous surface type:`, queryError);
+            // Keep using the default surfaceType (previous point's surface)
           }
-      
+  
           enhancedCoordinates.push({ ...point, surface: surfaceType });
           
           setSurfaceProgress(prev => ({
             ...prev,
             progress: i + batchIndex + 1
           }));
+  
         } catch (error) {
           console.warn(`Failed to process point at index ${i + batchIndex}:`, error);
-          enhancedCoordinates.push({ ...point, surface: 'unpaved' });
+          // Use previous point's surface type or default to unpaved
+          const surfaceType = enhancedCoordinates.length > 0 
+            ? enhancedCoordinates[enhancedCoordinates.length - 1].surface || 'unpaved'
+            : 'unpaved';
+          enhancedCoordinates.push({ ...point, surface: surfaceType });
         }
       }
   
