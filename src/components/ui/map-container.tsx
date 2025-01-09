@@ -213,8 +213,18 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
     // Query all road features in view
     const roadFeatures = map.current.querySourceFeatures('australia-roads', {
       sourceLayer: 'roads',
-      filter: ['has', 'surface']
+      filter: ['all',
+        ['has', 'surface'],
+        ['!=', ['get', 'surface'], null],
+        ['!=', ['get', 'surface'], '']
+      ]
     });
+    
+    console.log('Road features with surface:', roadFeatures.map(f => ({
+      surface: f.properties.surface,
+      name: f.properties.name,
+      highway: f.properties.highway
+    })));
   
     console.log('Found road features:', roadFeatures.length);
   
@@ -597,39 +607,30 @@ newMap.addLayer({
     visibility: 'visible'
   },
   paint: {
-    'line-opacity': 0  // Keep invisible but queryable
-  },
-  filter: ['has', 'surface']  // Add this to load only roads with surface data
+    'line-opacity': 0.5,  // Change to 0.5 temporarily to see if data loads
+    'line-color': '#FF0000'  // Make it red to distinguish from base layers
+  }
 });
-          
-          // Add debug logging to confirm layers were added
-          console.log('Added road layers:', newMap.getStyle().layers
-            .filter(layer => layer.id.startsWith('road-'))
-            .map(layer => ({
-              id: layer.id,
-              filter: layer.filter
-            }))
-          );
 
-// Add debug listener to check available properties
+// Keep just one listener, combining both log formats
 newMap.on('sourcedata', (e) => {
   if (e.sourceId === 'australia-roads' && e.isSourceLoaded) {
     const features = newMap.querySourceFeatures('australia-roads', {
       sourceLayer: 'roads'
     });
     if (features.length > 0) {
-      console.log('Available road properties:', {
-        propertySamples: features.slice(0, 5).map(f => ({
-          surface: f.properties?.surface,
-          structure: f.properties?.structure,
-          type: f.properties?.type,
-          class: f.properties?.class
+      console.log('Sample road feature properties:', 
+        features.slice(0, 3).map(f => ({
+          surface: f.properties.surface,
+          highway: f.properties.highway,
+          type: f.properties.type,
+          name: f.properties.name,
+          all: f.properties
         }))
-      });
+      );
     }
   }
 });
-
           // Add terrain
           newMap.addSource('mapbox-dem', {
             type: 'raster-dem',
