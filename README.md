@@ -4,21 +4,96 @@ When making multiple changes to one file, its probably easier just to give me th
 If you dont give me the full file, give me the code in before and after so I can easily copy and paste
 Dont try to edit my code, it wont work
 
-## MOST RECENT UPDATE
-Instead of trying to match routes via an API (which gave us those messy red lines across Tasmania), we're now using a more direct approach:
+## ACTIVE GOAL
+Advanced Surface Type Detection Implementation Roadmap
+Project Goal
+Create a precise, efficient method for identifying road and path surface types in Tasmania using OpenStreetMap data.
+Data Extraction Strategy
+Key Constraints
 
-When a GPX file is uploaded, we look at each point in the route
-For each point, we check what type of road exists at that location using queryRenderedFeatures
-We classify each road segment as either 'paved' or 'unpaved' based on what Mapbox tells us about the road properties (like surface type, road class, etc.)
-While this is happening, we show a loading overlay with a progress counter
-Once we know which segments are paved/unpaved, we draw them differently:
+Source: Full Australia OpenStreetMap (OSM) Dataset
+Target Region: Tasmania
+Zoom Level: 13 (Maximum detail for road surface metadata)
+
+Metadata Capture
+Zoom Level 13 will capture:
+
+All road types (highways, secondary, local, service)
+Path types (hiking trails, cycling paths, tracks)
+Surface type classifications
+Road/path material information
+
+Implementation Workflow
+Step 1: Data Preparation
+
+Download full Australia OSM dataset
+Use MapTiler for processing
+
+Crop to Tasmania bounding box
+Extract only zoom level 13 data
+Focus on road and path layers
+
+
+
+Bounding Box Coordinates for Tasmania
+
+Latitude: Between -43.6 and -40.6
+Longitude: Between 144.3 and 148.3
+
+Extraction Command (Pseudocode)
+bashCopymaptiler-engine extract \
+  --input australia-latest.osm.pbf \
+  --output tasmania_road_surfaces \
+  --zoom 13 \
+  --bounding-box=-43.6,-40.6,144.3,148.3 \
+  --layers=roads,paths
+Technical Implementation Considerations
+Surface Type Identification
+
+Primary source: OpenStreetMap tags
+Key surface type tags:
+
+surface=paved
+surface=unpaved
+surface=gravel
+surface=dirt
+surface=asphalt
+surface=concrete
+
+
+
+Mapbox/Tileset Query Method
+javascriptCopyfunction querySurfaceType(feature) {
+  return {
+    surface: feature.properties.surface,
+    roadClass: feature.properties.class,
+    roadType: feature.properties.type
+  };
+}
+Rendering Strategy
 
 Paved roads: Solid red line
-Unpaved roads: Dashed red line with a lighter red background
+Unpaved roads: Dashed red line
+Gravel paths: Dashed brown line
+Dirt tracks: Dotted earth-tone line
 
+Expected Challenges
 
+Incomplete OSM data in some areas
+Variations in surface type reporting
+Performance optimization
 
-This way, we're using actual map data to determine road surfaces rather than trying to guess or match routes through an API. It might take a few seconds longer to process, but it should give much more accurate results.
+Future Improvements
+
+Implement caching mechanism
+Add machine learning for surface type prediction
+Expand surface type classification granularity
+
+Performance Optimization
+
+Single zoom level (13) minimizes dataset size
+Focused metadata extraction
+Reduced processing overhead
 
 # Lutruwita - Interactive Mapping Application
 

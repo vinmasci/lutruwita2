@@ -31,7 +31,7 @@ const LoadingOverlay = ({ progress, total }: { progress: number; total: number }
       top: 0,
       left: 0,
       right: 0,
-      bottom: 0,
+      bottom: '48px', // Leave space for bottom tabs
       backgroundColor: 'rgba(0, 0, 0, 0.7)',
       display: 'flex',
       flexDirection: 'column',
@@ -100,36 +100,23 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
     }
   
     const projectedPoint = map.current.project([point.lon, point.lat]);
-    console.log('Making query:', {
-      point: [point.lon, point.lat],
-      projected: [projectedPoint.x, projectedPoint.y],
-      zoom: map.current.getZoom(),
-      tilesLoaded: map.current.areTilesLoaded()
-    });
-  
-    // Try to query with a small radius around the point for better detection
-    const radius = 5; // pixels
+    
+    // Query our custom road layer
     const features = map.current.queryRenderedFeatures(
       [
-        [projectedPoint.x - radius, projectedPoint.y - radius],
-        [projectedPoint.x + radius, projectedPoint.y + radius]
+        [projectedPoint.x - 5, projectedPoint.y - 5],
+        [projectedPoint.x + 5, projectedPoint.y + 5]
       ],
-      { layers: [
-        'road-motorway-trunk',
-        'road-primary',
-        'road-secondary-tertiary',
-        'road-street'
-      ]}
+      { 
+        layers: ['custom-roads']
+      }
     );
   
-    // More detailed logging
     console.log('Query results:', {
       location: [point.lon, point.lat],
       featuresFound: features.length,
       features: features.map(f => ({
         id: f.id,
-        layer: f.layer.id,
-        class: f.properties?.class,
         surface: f.properties?.surface,
         highway: f.properties?.highway
       }))
@@ -138,21 +125,17 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
     if (features.length > 0) {
       const roadFeature = features[0];
       const properties = roadFeature.properties;
-      const surface = properties?.surface;
-      const highway = properties?.highway;
-      const class_ = properties?.class;
+      
+      console.log('Road properties found:', properties);
   
-      console.log('Road properties:', { surface, highway, class: class_ });
-      console.log('All properties:', properties);
-  
-      // Check surface type explicitly first
-      if (surface) {
+      // Check surface type
+      if (properties.surface) {
         const unpavedSurfaces = [
           'unpaved', 'dirt', 'gravel', 'grass', 'ground',
           'fine_gravel', 'compacted', 'earth', 'mud', 'sand', 'woodchips'
         ];
         
-        if (unpavedSurfaces.includes(surface.toLowerCase())) {
+        if (unpavedSurfaces.includes(properties.surface.toLowerCase())) {
           return 'unpaved';
         }
         
@@ -161,29 +144,20 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
           'cobblestone', 'metal', 'wood', 'concrete:plates'
         ];
         
-        if (pavedSurfaces.includes(surface.toLowerCase())) {
+        if (pavedSurfaces.includes(properties.surface.toLowerCase())) {
           return 'paved';
         }
       }
   
-      // Check road class
-      if (class_ === 'track' || class_ === 'service') {
-        return 'unpaved';
-      }
-  
-      // Major roads are typically paved
-      if (class_ === 'motorway' || class_ === 'trunk' || 
-          class_ === 'primary' || class_ === 'secondary' || 
-          class_ === 'tertiary' || class_ === 'residential' ||
-          class_ === 'street') {
-        return 'paved';
-      }
-  
-      // Fallback highway type check
-      if (highway === 'motorway' || highway === 'trunk' ||
-          highway === 'primary' || highway === 'secondary' ||
-          highway === 'tertiary' || highway === 'residential') {
-        return 'paved';
+      // Check highway type
+      if (properties.highway) {
+        if (['track', 'path', 'bridleway', 'cycleway'].includes(properties.highway)) {
+          return 'unpaved';
+        }
+        
+        if (['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'residential'].includes(properties.highway)) {
+          return 'paved';
+        }
       }
     }
   
@@ -196,24 +170,51 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       progress: 0,
       total: coordinates.length
     });
-
+  
     const enhancedCoordinates: Point[] = [];
-
-    for (const [index, point] of coordinates.entries()) {
-      const surface = await querySurfaceType(point);
-      enhancedCoordinates.push({ ...point, surface });
+    const batchSize = 10; // Process 10 points at a time
+  
+    for (let i = 0; i < coordinates.length; i += batchSize) {
+      // Process a batch of points
+      const batch = coordinates.slice(i, i + batchSize);
       
-      setSurfaceProgress(prev => ({
-        ...prev,
-        progress: index + 1
-      }));
+      // Wait between batches to prevent overwhelming the tile loading
+      if (i > 0) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+  
+      // Process each point in the batch
+      for (const [batchIndex, point] of batch.entries()) {
+        try {
+          const surface = await querySurfaceType(point);
+          enhancedCoordinates.push({ ...point, surface });
+          
+          setSurfaceProgress(prev => ({
+            ...prev,
+            progress: i + batchIndex + 1
+          }));
+        } catch (error) {
+          console.warn(`Failed to process point at index ${i + batchIndex}:`, error);
+          // If a point fails, still include it but mark as unknown
+          enhancedCoordinates.push({ ...point, surface: 'unpaved' });
+        }
+      }
+  
+      // Update the map every batch to show progress
+      if (enhancedCoordinates.length > 0) {
+        try {
+          await addRouteToMap(enhancedCoordinates);
+        } catch (error) {
+          console.warn('Failed to update route display:', error);
+        }
+      }
     }
-
+  
     setSurfaceProgress(prev => ({
       ...prev,
       isProcessing: false
     }));
-
+  
     return enhancedCoordinates;
   };
 
@@ -418,6 +419,10 @@ const bounds = coordinates.reduce(
   { minLat: 90, maxLat: -90, minLon: 180, maxLon: -180 }
 );
 
+if (!map.current) {
+  throw new Error('Map not initialized');
+}
+
 map.current.fitBounds(
   [[bounds.minLon, bounds.minLat], [bounds.maxLon, bounds.maxLat]],
   { padding: 50 }
@@ -435,7 +440,8 @@ await new Promise<void>(moveResolve => {
     }
   };
 
-  map.current!.once('moveend', () => {
+  const mapRef = map.current;
+  mapRef.once('moveend', () => {
     console.log('Map moved, checking tiles...');
     checkLoadStatus();
   });
@@ -491,7 +497,7 @@ useEffect(() => {
 
       const newMap = new mapboxgl.Map({
         container: mapContainer.current,
-        style: 'mapbox://styles/mapbox/satellite-v9', // Base satellite style
+        style: 'mapbox://styles/mapbox/satellite-streets-v12', // Base satellite style with streets overlay
         center: [146.5, -41.5],
         zoom: 6,
         minZoom: 3,
@@ -505,47 +511,27 @@ useEffect(() => {
         console.log('Base map loaded');
         
         try {
-          // Add Mapbox Streets source directly
-          newMap.addSource('streets', {
-            type: 'vector',
-            url: 'mapbox://mapbox.mapbox-streets-v8'
-          });
-          
-          // Add specific road layers - keep them invisible but queryable
-          const roadLayers = [
-            {
-              id: 'road-motorway-trunk',
-              filter: ['in', 'class', 'motorway', 'trunk']
-            },
-            {
-              id: 'road-primary',
-              filter: ['==', 'class', 'primary']
-            },
-            {
-              id: 'road-secondary-tertiary',
-              filter: ['in', 'class', 'secondary', 'tertiary']
-            },
-            {
-              id: 'road-street',
-              filter: ['in', 'class', 'street', 'residential', 'service']
-            }
-          ];
-          
-          for (const layer of roadLayers) {
-            newMap.addLayer({
-              id: layer.id,
-              type: 'line',
-              source: 'streets',
-              'source-layer': 'road',
-              filter: layer.filter,  // Use the more complex filter
-              layout: {
-                visibility: 'visible'
-              },
-              paint: {
-                'line-opacity': 0  // Keep invisible but queryable
-              }
-            });
-          }
+// Add our custom road tiles source
+newMap.addSource('australia-roads', {
+  type: 'vector',
+  tiles: ['https://api.maptiler.com/tiles/7ed93f08-6f83-46f8-9319-96d8962f82bc/{z}/{x}/{y}.pbf?key=DFSAZFJXzvprKbxHrHXv'],
+  minzoom: 13,
+  maxzoom: 13
+});
+
+// Add a layer for our custom road data
+newMap.addLayer({
+  id: 'custom-roads',
+  type: 'line',
+  source: 'australia-roads',
+  'source-layer': 'roads',
+  layout: {
+    visibility: 'visible'
+  },
+  paint: {
+    'line-opacity': 0  // Keep invisible but queryable
+  }
+});
           
           // Add debug logging to confirm layers were added
           console.log('Added road layers:', newMap.getStyle().layers
