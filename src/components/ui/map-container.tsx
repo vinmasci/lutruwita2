@@ -1,39 +1,46 @@
+// --------------------------------------------
+// Core imports required for the component
+// --------------------------------------------
 import React, {
   useEffect,
   useRef,
   useCallback,
   forwardRef
 } from 'react';
-import { parseString } from 'xml2js';
-import mapboxgl from 'mapbox-gl';
-import { CircularProgress, Box, Typography } from '@mui/material';
+import { parseString } from 'xml2js';  // For parsing GPX files
+import mapboxgl from 'mapbox-gl';      // Main mapping library
+import { CircularProgress, Box, Typography } from '@mui/material';  // UI components
 import 'mapbox-gl/dist/mapbox-gl.css';
-import * as turf from '@turf/turf';
+import * as turf from '@turf/turf';    // For geospatial calculations
 
 // --------------------------------------------
-// Types
+// Type definitions for the component
 // --------------------------------------------
 interface MapRef {
-  handleGpxUpload: (content: string) => Promise<void>;
-  isReady: () => boolean;
-  on: (event: string, callback: () => void) => void;
-  off: (event: string, callback: () => void) => void;
+  // Methods exposed to parent components
+  handleGpxUpload: (content: string) => Promise<void>;  // Main GPX processing function
+  isReady: () => boolean;                               // Map readiness check
+  on: (event: string, callback: () => void) => void;    // Event listener binding
+  off: (event: string, callback: () => void) => void;   // Event listener removal
 }
 
 interface Point {
+  // Definition of a geographic point with surface type
   lat: number;
   lon: number;
   surface?: 'paved' | 'unpaved';
 }
 
 interface SurfaceProgressState {
+  // State tracking for surface detection progress
   isProcessing: boolean;
   progress: number;
   total: number;
 }
 
 // --------------------------------------------
-// Loading Overlay UI
+// Loading Overlay UI Component
+// Shows progress during GPX processing
 // --------------------------------------------
 const LoadingOverlay = ({
   progress,
@@ -68,7 +75,8 @@ const LoadingOverlay = ({
 );
 
 // --------------------------------------------
-// Synonym sets for maximum coverage
+// Surface Type Classification Arrays
+// Used to categorize different road surface types
 // --------------------------------------------
 const PAVED_SURFACES = [
   'paved', 'asphalt', 'concrete', 'compacted',
@@ -81,19 +89,20 @@ const UNPAVED_SURFACES = [
 ];
 
 // --------------------------------------------
-// The main MapContainer
+// Main MapContainer Component
+// Handles all map rendering and GPX processing
 // --------------------------------------------
 const MapContainer = forwardRef<MapRef>((props, ref) => {
+  // Constants for identifying map layers
   const routeSourceId = 'route';
   const routeLayerId = 'route-layer';
 
-  // Standard references
-  const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<mapboxgl.Map | null>(null);
+  // Core references
+  const mapContainer = useRef<HTMLDivElement>(null);         // DOM element for map
+  const map = useRef<mapboxgl.Map | null>(null);            // Mapbox instance
+  const cachedRoadsRef = useRef<turf.FeatureCollection | null>(null);  // Temporary road data cache
 
-  // We'll load roads for each vantage, then discard them
-  const cachedRoadsRef = useRef<turf.FeatureCollection | null>(null);
-
+  // State management
   const [isMapReady, setIsMapReady] = React.useState(false);
   const [streetsLayersLoaded, setStreetsLayersLoaded] = React.useState(false);
   const [surfaceProgress, setSurfaceProgress] = React.useState<SurfaceProgressState>({
@@ -103,7 +112,8 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
   });
 
   // ------------------------------------------------------------------
-  // isReady => Has map loaded & are layers ready
+  // isReady => Checks if map and all layers are fully loaded
+  // Used to ensure map is ready before processing GPX data
   // ------------------------------------------------------------------
   const isReady = useCallback((): boolean => {
     const ready = Boolean(map.current) && isMapReady && streetsLayersLoaded;
@@ -112,7 +122,10 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
   }, [isMapReady, streetsLayersLoaded]);
 
   // ------------------------------------------------------------------
-  // addRouteToMap => splits coords by surface => multiple line segments
+  // addRouteToMap => Takes processed points and renders route on map
+  // - Splits route into segments based on surface type
+  // - Creates different styles for paved/unpaved sections
+  // - Handles map layer management
   // ------------------------------------------------------------------
   const addRouteToMap = useCallback(
     (coordinates: Point[]) => {
@@ -121,14 +134,16 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
         return;
       }
 
+      // Split route into segments based on surface changes
       console.log('[addRouteToMap] Splitting route into segments by surface...');
       let segments: { points: Point[]; surface: 'paved' | 'unpaved' }[] = [];
       let currentSegment: Point[] = [];
       let currentSurface: 'paved' | 'unpaved' = coordinates[0]?.surface || 'unpaved';
 
-      // Build segments based on changes in surface
+      // Process each point to build segments
       for (let i = 0; i < coordinates.length; i++) {
         const c = coordinates[i];
+        // Start new segment if surface type changes
         if (c.surface !== currentSurface && currentSegment.length > 0) {
           segments.push({
             points: [...currentSegment],
@@ -139,6 +154,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
         } else {
           currentSegment.push(c);
         }
+        // Handle last point
         if (i === coordinates.length - 1) {
           segments.push({
             points: [...currentSegment],
@@ -149,7 +165,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
 
       console.log('[addRouteToMap] Created', segments.length, 'segments total.');
 
-      // Remove old route if any
+      // Clean up any existing route layers
       if (map.current.getSource(routeSourceId)) {
         if (map.current.getLayer(routeLayerId)) {
           map.current.removeLayer(routeLayerId);
@@ -157,7 +173,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
         map.current.removeSource(routeSourceId);
       }
 
-      // Make a FeatureCollection
+      // Create GeoJSON feature collection from segments
       const featureColl = {
         type: 'FeatureCollection',
         features: segments.map((seg, idx) => ({
@@ -173,13 +189,13 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
         }))
       };
 
-      // Add the route source/layer
+      // Add source data to map
       map.current.addSource(routeSourceId, {
         type: 'geojson',
         data: featureColl
       });
 
-      // Base layer - solid lines for all segments
+      // Add base layer - solid lines for all segments
       map.current.addLayer({
         id: routeLayerId,
         type: 'line',
@@ -189,12 +205,12 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
           'line-cap': 'round'
         },
         paint: {
-          'line-color': '#FF4444',  // Original red for all segments
+          'line-color': '#FF4444',  // Base red color
           'line-width': 4
         }
       });
 
-      // Overlay layer - dashed lines only for unpaved segments
+      // Add overlay layer - dashed lines for unpaved segments
       map.current.addLayer({
         id: routeLayerId + '-unpaved-overlay',
         type: 'line',
@@ -204,7 +220,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
           'line-cap': 'round'
         },
         paint: {
-          'line-color': '#FFB3B3',  // Much lighter red for unpaved overlay
+          'line-color': '#FFB3B3',  // Lighter red for dashed overlay
           'line-width': 4,
           'line-opacity': [
             'case',
@@ -212,7 +228,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
             1,
             0
           ],
-          'line-dasharray': [1, 0.5]  // Very small, very frequent dashes for unpaved
+          'line-dasharray': [1, 0.5]  // Dashed pattern for unpaved
         }
       });
       console.log('[addRouteToMap] -> route layers added.');
@@ -221,9 +237,15 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
   );
 
   // ------------------------------------------------------------------
-  // For each point, we load roads around that point by fitting
-  // a small bounding box, then query the rendered roads (fresh),
-  // and then discard them once we've assigned surfaces for ~5 points.
+  // assignSurfacesViaNearest => Core surface detection function
+  // Process:
+  // 1. Takes GPX points in chunks of 5
+  // 2. For each chunk:
+  //    - Moves map to first point's location
+  //    - Loads road data for that area
+  //    - Finds nearest road for each point
+  //    - Assigns surface type based on road properties
+  // 3. Updates progress as it goes
   // ------------------------------------------------------------------
   const assignSurfacesViaNearest = useCallback(
     async (coords: Point[]) => {
@@ -232,7 +254,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
         return coords;
       }
 
-      // Let the user see the progress
+      // Initialize progress tracking
       setSurfaceProgress({
         isProcessing: true,
         progress: 0,
@@ -241,23 +263,19 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
 
       const results: Point[] = [];
 
-      // We'll process in small "chunks" of 5 to avoid stale caching
+      // Process points in chunks of 5 to avoid stale data
       for (let i = 0; i < coords.length; i += 5) {
-        // These are the 5 points we'll handle in this vantage
+        // Get next 5 points to process
         const slice = coords.slice(i, i + 5);
+        const pt = slice[0];  // Use first point for positioning
 
-        // We'll use the FIRST point of the slice to focus bounding box
-        // (Alternatively, you could do the bounding box of all 5 for more coverage)
-        const pt = slice[0];
-
-        // 1) Fit bounding box forcibly at zoom=13 (no caching from previous vantage)
+        // Load road data for this area
         await new Promise<void>((resolve) => {
           let attempts = 0;
           const maxAttempts = 15;
 
           const checkTiles = () => {
-            // bounding box ~0.001 deg => ~100m in each direction
-            // Increase to 0.002 or 0.003 if you need a bigger area
+            // Create bounding box around point (~100m each direction)
             const bbox = [
               pt.lon - 0.001, 
               pt.lat - 0.001,
@@ -265,6 +283,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
               pt.lat + 0.001
             ];
 
+            // Move map to this area
             map.current?.fitBounds(
               [[bbox[0], bbox[1]], [bbox[2], bbox[3]]],
               {
@@ -275,7 +294,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
               }
             );
 
-            // Now query roads (fresh)
+            // Query all visible roads
             const features = map.current?.queryRenderedFeatures(undefined, {
               layers: ['custom-roads']
             });
@@ -287,6 +306,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
               location: [pt.lat, pt.lon]
             });
 
+            // If roads found, cache them and continue
             if (features && features.length > 0) {
               cachedRoadsRef.current = turf.featureCollection(
                 features.map((f) => turf.feature(f.geometry, f.properties))
@@ -298,6 +318,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
               return;
             }
 
+            // Retry logic if no roads found
             attempts++;
             if (attempts >= maxAttempts) {
               console.warn('[assignSurfacesViaNearest] Max attempts reached => no roads found for chunk:', i);
@@ -312,28 +333,29 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
           checkTiles();
         });
 
-        // 2) Now do nearest-line logic for these 5 points
+        // Process each point in the chunk using loaded road data
         const vantageRoads = cachedRoadsRef.current;
         for (let s = 0; s < slice.length; s++) {
           const realIndex = i + s;
-          if (realIndex >= coords.length) break; // safety
+          if (realIndex >= coords.length) break;
 
           const pt2 = slice[s];
           let bestSurface: 'paved' | 'unpaved' = 'unpaved';
           let minDist = Infinity;
           const pointGeo = turf.point([pt2.lon, pt2.lat]);
 
+          // Log progress for monitoring
           if (realIndex % 100 === 0) {
             console.log(
               `[assignSurfacesViaNearest] Processing point #${realIndex}, coords=(${pt2.lat}, ${pt2.lon})`
             );
           }
 
-          // If vantageRoads is empty, default to unpaved
+          // If no roads found, default to unpaved
           if (!vantageRoads || vantageRoads.features.length === 0) {
             results.push({ ...pt2, surface: 'unpaved' });
           } else {
-            // Evaluate each road
+            // Find nearest road and its surface type
             for (const road of vantageRoads.features) {
               if (
                 road.geometry.type !== 'LineString' &&
@@ -342,33 +364,35 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
                 continue;
               }
               const snap = turf.nearestPointOnLine(road, pointGeo);
-              const dist = snap.properties.dist; // in km
+              const dist = snap.properties.dist; // Distance in km
               if (dist < minDist) {
                 minDist = dist;
                 const sRaw = (road.properties?.surface || '').toLowerCase();
+                // Categorize surface type
                 if (PAVED_SURFACES.includes(sRaw)) {
                   bestSurface = 'paved';
                 } else if (UNPAVED_SURFACES.includes(sRaw)) {
                   bestSurface = 'unpaved';
                 } else {
-                  bestSurface = 'unpaved'; // fallback
+                  bestSurface = 'unpaved'; // Default fallback
                 }
               }
             }
             results.push({ ...pt2, surface: bestSurface });
           }
 
+          // Update progress
           setSurfaceProgress((prev) => ({
             ...prev,
             progress: realIndex + 1
           }));
         }
 
-        // 3) Discard vantage roads so next chunk doesn't re-use them
+        // Clear cached roads before next chunk
         cachedRoadsRef.current = null;
       }
 
-      // All done
+      // Finalize processing
       setSurfaceProgress((prev) => ({
         ...prev,
         isProcessing: false
@@ -380,7 +404,12 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
   );
 
   // ------------------------------------------------------------------
-  // handleGpxUpload => parse, call assignSurfacesViaNearest, then add route
+  // handleGpxUpload => Main entry point for GPX processing
+  // Process:
+  // 1. Validates input and map readiness
+  // 2. Parses GPX file into coordinate points
+  // 3. Processes points to detect surface types
+  // 4. Renders final route on map
   // ------------------------------------------------------------------
   const handleGpxUpload = useCallback(
     async (gpxContent: string) => {
@@ -393,29 +422,36 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
         throw new Error('Invalid GPX content');
       }
 
+      // Parse GPX file
       console.log('[handleGpxUpload] Parsing GPX...');
       const rawCoords = await new Promise<Point[]>((resolve, reject) => {
         parseString(gpxContent, { explicitArray: false }, (err: Error | null, result: any) => {
           if (err) {
+            // If XML parsing fails, reject with error
             console.error('[handleGpxUpload] parseString error:', err);
             reject(new Error('Failed to parse GPX file'));
             return;
           }
           try {
+            // Check for required GPX root element
             if (!result?.gpx) {
               throw new Error('Invalid GPX structure: missing root gpx element');
             }
+            // Try to get points from either route (rte/rtept) or track (trk/trkseg/trkpt)
             const points = result.gpx?.rte?.rtept || result.gpx?.trk?.trkseg?.trkpt;
             if (!points) {
               throw new Error('Invalid GPX format: missing track points');
             }
 
+            // Handle both single point and array of points
             const arr = Array.isArray(points) ? points : [points];
             console.log('[handleGpxUpload] Points found:', arr.length);
 
+            // Transform each point to our internal format
             const coords = arr
               .map((pt: any) => {
                 try {
+                  // Extract lat/lon from GPX format
                   if (!pt?.$?.lat || !pt?.$?.lon) {
                     throw new Error('Missing lat/lon attributes');
                   }
@@ -426,10 +462,12 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
                   }
                   return { lat, lon };
                 } catch (err2) {
+                  // Log and skip invalid points
                   console.warn('[handleGpxUpload] Skipping invalid point:', pt, err2);
                   return null;
                 }
               })
+              // Remove any invalid points that returned null
               .filter((x: Point | null): x is Point => x !== null);
 
             if (coords.length === 0) {
@@ -443,27 +481,28 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       });
 
       console.log('[handleGpxUpload] => Starting nearest-line logic for', rawCoords.length, 'pts');
-      // Clear any leftover roads
+      // Clear any leftover roads from previous operations
       cachedRoadsRef.current = null;
 
+      // Process all points to detect surface types
       const finalCoords = await assignSurfacesViaNearest(rawCoords);
 
-      // Count results
+      // Calculate surface statistics
       const pavedCount = finalCoords.filter((c) => c.surface === 'paved').length;
       const unpavedCount = finalCoords.length - pavedCount;
       console.log(
         `[handleGpxUpload] Surfaces assigned => paved=${pavedCount}, unpaved=${unpavedCount}, total=${finalCoords.length}`
       );
 
-      // Now add to map
+      // Add the processed route to the map
       addRouteToMap(finalCoords);
       console.log('[handleGpxUpload] => Route displayed with surfaces');
     },
     [isReady, assignSurfacesViaNearest, addRouteToMap]
   );
-
   // ------------------------------------------------------------------
-  // Expose methods to parent
+  // Expose methods to parent component
+  // Makes key functionality available to parent components
   // ------------------------------------------------------------------
   React.useImperativeHandle(
     ref,
@@ -485,7 +524,9 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
   );
 
   // ------------------------------------------------------------------
-  // Map init => start at zoom=13, user can move freely
+  // Map initialization
+  // Sets up the map and loads necessary layers
+  // Called once when component mounts
   // ------------------------------------------------------------------
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
@@ -498,10 +539,11 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
     try {
       mapboxgl.accessToken = mapboxToken;
 
+      // Create new map instance
       const newMap = new mapboxgl.Map({
         container: mapContainer.current,
         style: 'mapbox://styles/mapbox/satellite-streets-v12',
-        center: [146.5, -41.5],
+        center: [146.5, -41.5],  // Tasmania center
         zoom: 13
       } as any);
 
@@ -510,7 +552,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       newMap.on('load', () => {
         console.log('[MapContainer] Base map loaded');
         try {
-          // Add your vector roads
+          // Add MapTiler vector tile source containing road data
           const tileUrl =
             'https://api.maptiler.com/tiles/5dd3666f-1ce4-4df6-9146-eda62a200bcb/{z}/{x}/{y}.pbf?key=DFSAZFJXzvprKbxHrHXv';
           newMap.addSource('australia-roads', {
@@ -520,6 +562,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
             maxzoom: 14
           });
 
+          // Add custom roads layer with surface-based styling
           newMap.addLayer({
             id: 'custom-roads',
             type: 'line',
@@ -536,21 +579,23 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
                 'match',
                 ['get', 'surface'],
 
-                // Paved synonyms
+                // Color roads based on surface type
+                // Paved roads in blue
                 ['paved', 'asphalt', 'concrete', 'compacted', 'sealed', 'bitumen', 'tar'],
                 '#4A90E2',
 
-                // Unpaved synonyms
+                // Unpaved roads in orange
                 ['unpaved', 'gravel', 'fine', 'fine_gravel', 'dirt', 'earth'],
                 '#D35400',
 
-                // fallback color
+                // Unknown surfaces in grey
                 '#888888'
               ],
               'line-width': 2
             }
           });
 
+          // Mark map as ready
           setStreetsLayersLoaded(true);
           setIsMapReady(true);
           console.log('[MapContainer] Roads layer added, map is ready.');
@@ -559,12 +604,14 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
         }
       });
 
+      // Add standard map controls
       newMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
       newMap.addControl(new mapboxgl.FullscreenControl());
     } catch (err) {
       console.error('[MapContainer] Error creating map:', err);
     }
 
+    // Cleanup on unmount
     return () => {
       if (map.current) {
         map.current.remove();
@@ -574,7 +621,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
   }, []);
 
   // ------------------------------------------------------------------
-  // Render
+  // Render the map component with loading overlay when processing
   // ------------------------------------------------------------------
   return (
     <div className="w-full h-full relative">
