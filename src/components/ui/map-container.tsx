@@ -72,49 +72,52 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
 
   const querySurfaceType = async (point: Point): Promise<'paved' | 'unpaved'> => {
     if (!map.current) return 'unpaved';
-  
-    // Ensure we're at zoom level 13
-    if (map.current.getZoom() !== 13) {
-      map.current.setZoom(13);
-      // Wait for zoom to complete
-      await new Promise<void>(resolve => {
-        map.current?.once('moveend', () => resolve());
-      });
-    }
-  
-    // Wait for tiles to load
+
+    // Ensure we're at zoom level 13 AND source is loaded
     await new Promise<void>(resolve => {
-      if (map.current?.areTilesLoaded()) {
-        resolve();
-      } else {
-        map.current?.once('idle', () => resolve());
-      }
+        const waitForLoad = () => {
+            if (map.current?.isSourceLoaded('australia-roads')) {
+                resolve();
+            } else {
+                map.current?.on('sourcedata', function onSourceData(e) {
+                    if (e.sourceId === 'australia-roads' && e.isSourceLoaded) {
+                        map.current?.off('sourcedata', onSourceData);
+                        resolve();
+                    }
+                });
+            }
+        };
+
+        if (map.current.getZoom() !== 13) {
+            map.current.setZoom(13);
+            map.current.once('zoomend', waitForLoad);
+        } else {
+            waitForLoad();
+        }
     });
-  
-    // Query the exact point
-    const projectedPoint = map.current.project([point.lon, point.lat]);
-    const features = map.current.queryRenderedFeatures(
-      projectedPoint,  // Just query the exact point, not a box
-      { layers: ['custom-roads'] }  // Only query your custom roads layer
-    );
-  
-    // Log features for debugging
+
+    // Query the exact point using sourceFeatures
+    const features = map.current.querySourceFeatures('australia-roads', {
+        sourceLayer: 'roads',
+        filter: ['has', 'surface']  // Only get features that have surface data
+    });
+
     console.log('Features at point:', [point.lon, point.lat], features.map(f => ({
-      surface: f.properties?.surface
+        surface: f.properties?.surface
     })));
-  
+
     // If we found a feature with surface type
     if (features.length > 0 && features[0].properties?.surface) {
-      const surfaceType = features[0].properties.surface.toLowerCase();
-      // Check explicitly for paved
-      if (surfaceType === 'paved' || surfaceType === 'asphalt' || surfaceType === 'concrete') {
-        return 'paved';
-      }
+        const surfaceType = features[0].properties.surface.toLowerCase();
+        // Check explicitly for paved
+        if (surfaceType === 'paved' || surfaceType === 'asphalt' || surfaceType === 'concrete') {
+            return 'paved';
+        }
     }
-  
+
     // Default to unpaved if no paved surface found
     return 'unpaved';
-  };
+};
 
   // Rest of the component implementation remains the same...
   const processCoordinatesWithSurface = async (coordinates: Point[]): Promise<Point[]> => {
