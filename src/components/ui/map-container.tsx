@@ -73,74 +73,88 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
   const querySurfaceType = async (point: Point): Promise<'paved' | 'unpaved'> => {
     if (!map.current) return 'unpaved';
 
-// Ensure we're at zoom level 13 AND source and tiles are loaded
-await new Promise<void>(resolve => {
-  let tilesLoaded = false;
-  let sourceLoaded = false;
-  let zoomCorrect = false;
+    // Ensure we're at zoom level 13 AND source and tiles are loaded
+    await new Promise<void>((resolve, reject) => {
+        let attempts = 0;
+        const maxAttempts = 10; // Maximum number of attempts to prevent infinite loops
+        let checkInterval: NodeJS.Timeout;
 
-  const checkAllReady = () => {
-      if (tilesLoaded && sourceLoaded && zoomCorrect) {
-          resolve();
-      }
-  };
+        const cleanup = () => {
+            if (checkInterval) clearInterval(checkInterval);
+            if (map.current) {
+                map.current.off('data', tileHandler);
+                map.current.off('sourcedata', sourceHandler);
+            }
+        };
 
-  // Listen for tile loading
-  const tileHandler = (e: any) => {
-      if (e.dataType === 'tile' && e.sourceId === 'australia-roads' && e.tile) {
-          console.log('Tile loaded:', {
-              coord: e.coord,
-              hasData: e.tile.hasData
-          });
-          if (e.tile.hasData) {
-              tilesLoaded = true;
-              checkAllReady();
-          }
-      }
-  };
+        const verifyDataAvailability = () => {
+            attempts++;
+            
+            // Check if we have actual feature data
+            const features = map.current?.querySourceFeatures('australia-roads', {
+                sourceLayer: 'lutruwita'
+            });
 
-  // Listen for source loading
-  const sourceHandler = (e: any) => {
-      if (e.sourceId === 'australia-roads') {
-          console.log('Source data event:', {
-              sourceLoaded: e.isSourceLoaded,
-              dataType: e.dataType,
-              tileID: e.tile?.tileID
-          });
-          if (e.isSourceLoaded) {
-              sourceLoaded = true;
-              checkAllReady();
-          }
-      }
-  };
+            const currentZoom = map.current?.getZoom();
+            const tilesLoaded = map.current?.areTilesLoaded();
+            
+            console.log('Verification check:', {
+                attempt: attempts,
+                featureCount: features?.length,
+                zoom: currentZoom,
+                tilesLoaded
+            });
 
-  // Handle zoom
-  const handleZoom = () => {
-      const currentZoom = map.current?.getZoom();
-      console.log('Current zoom:', currentZoom);
-      if (currentZoom === 13) {
-          zoomCorrect = true;
-          checkAllReady();
-      }
-  };
+            if (features && features.length > 0 && currentZoom === 13 && tilesLoaded) {
+                cleanup();
+                resolve();
+                return true;
+            }
 
-  map.current?.on('data', tileHandler);
-  map.current?.on('sourcedata', sourceHandler);
+            if (attempts >= maxAttempts) {
+                cleanup();
+                // Don't reject, just resolve and let the code continue with default surface
+                resolve();
+                return true;
+            }
 
-  if (map.current?.getZoom() !== 13) {
-      map.current?.setZoom(13);
-      map.current?.once('zoomend', handleZoom);
-  } else {
-      zoomCorrect = true;
-      checkAllReady();
-  }
+            return false;
+        };
 
-  // Cleanup
-  return () => {
-      map.current?.off('data', tileHandler);
-      map.current?.off('sourcedata', sourceHandler);
-  };
-});
+        // Set up event listeners for tile and source loading
+        const tileHandler = (e: any) => {
+            if (e.dataType === 'tile' && e.sourceId === 'australia-roads') {
+                verifyDataAvailability();
+            }
+        };
+
+        const sourceHandler = (e: any) => {
+            if (e.sourceId === 'australia-roads' && e.isSourceLoaded) {
+                verifyDataAvailability();
+            }
+        };
+
+        map.current?.on('data', tileHandler);
+        map.current?.on('sourcedata', sourceHandler);
+
+        // Set zoom level if needed
+        if (map.current?.getZoom() !== 13) {
+            map.current?.setZoom(13);
+            map.current?.once('zoomend', () => {
+                verifyDataAvailability();
+            });
+        }
+
+        // Start periodic checks
+        checkInterval = setInterval(() => {
+            if (verifyDataAvailability()) {
+                clearInterval(checkInterval);
+            }
+        }, 200);
+
+        // Initial check
+        verifyDataAvailability();
+    });
 
     // Debug state before query
     console.log('Pre-query state:', {
