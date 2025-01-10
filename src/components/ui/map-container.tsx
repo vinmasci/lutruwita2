@@ -197,7 +197,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
         return coords;
       }
 
-      // Compute bounding box
+      // 1) Compute bounding box
       const bounds = coords.reduce(
         (acc, c) => ({
           minLat: Math.min(acc.minLat, c.lat),
@@ -207,45 +207,47 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
         }),
         { minLat: 90, maxLat: -90, minLon: 180, maxLon: -180 }
       );
+      console.log('[assignSurfacesViaNearest] Computed bounding box =>', bounds);
 
-      // Load all road data first
-      await new Promise<void>((resolve) => {
-        const onSourceData = (e: any) => {
-          if (e.sourceId === 'australia-roads' && e.isSourceLoaded) {
-            const features = map.current?.queryRenderedFeatures(undefined, {
-              layers: ['custom-roads']
-            });
-            
-            if (features && features.length > 0) {
-              console.log('[assignSurfacesViaNearest] Found roads:', features.length);
-              map.current?.off('sourcedata', onSourceData);
-              cachedRoadsRef.current = turf.featureCollection(
-                features.map(f => turf.feature(f.geometry, f.properties))
-              );
-              resolve();
-            }
-          }
-        };
+      // 2) Compute a center for that bounding box
+      const centerLon = (bounds.minLon + bounds.maxLon) / 2;
+      const centerLat = (bounds.minLat + bounds.maxLat) / 2;
+      console.log(
+        '[assignSurfacesViaNearest] Jumping instantly to center =>',
+        [centerLon, centerLat],
+        'at z=13'
+      );
 
-        map.current?.on('sourcedata', onSourceData);
-        
-        // Fit to bounds instead of center
-        map.current?.fitBounds(
-          [[bounds.minLon, bounds.minLat], [bounds.maxLon, bounds.maxLat]],
-          {
-            padding: 50,
-            duration: 0,
-            maxZoom: 13,
-            minZoom: 13  // Add this line to force zoom level 13
-          }
-        );
-
-        // Failsafe after 5 seconds
-        setTimeout(() => {
-          map.current?.off('sourcedata', onSourceData);
-          resolve();
-        }, 5000);
+      // 1Force jump (no animation), so no waiting for moveend
+      // The user can still zoom in/out afterward, because we do NOT enforce minZoom=13, maxZoom=13.
+// Move map and wait for tiles
+await new Promise<void>((resolve) => {
+  const onSourceData = (e: any) => {
+    if (e.sourceId === 'australia-roads' && e.isSourceLoaded && e.tile) {
+      console.log('[assignSurfacesViaNearest] Tile loaded:', {
+        coord: e.tile.tileID.canonical,
+        hasData: e.tile.hasData
       });
+      if (e.tile.hasData) {
+        map.current?.off('sourcedata', onSourceData);
+        setTimeout(resolve, 200); // Extra 200ms to be safe
+      }
+    }
+  };
+
+  map.current?.on('sourcedata', onSourceData);
+  map.current?.jumpTo({
+    center: [centerLon, centerLat],
+    zoom: 13
+  });
+
+  // Failsafe timeout after 3 seconds
+  setTimeout(() => {
+    map.current?.off('sourcedata', onSourceData);
+    console.log('[assignSurfacesViaNearest] Failsafe timeout - proceeding anyway');
+    resolve();
+  }, 3000);
+});
 
 // Debug current state
 debugRoadSource();
@@ -269,7 +271,17 @@ debugRoadSource();
 
       const results: Point[] = [];
       for (let i = 0; i < coords.length; i++) {
-
+        // Every 100 points, move the viewport
+        if (i % 100 === 0) {
+          const pt = coords[i];
+          map.current.jumpTo({
+            center: [pt.lon, pt.lat],
+            zoom: 13
+          });
+          // Wait for tiles to load
+          await new Promise<void>((resolve) => setTimeout(resolve, 500));
+          debugRoadSource();
+        }
       
         const pt = coords[i];
         try {
