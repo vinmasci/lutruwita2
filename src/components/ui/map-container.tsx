@@ -179,6 +179,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
         data: featureColl
       });
 
+      // Base layer - solid lines for all segments
       map.current.addLayer({
         id: routeLayerId,
         type: 'line',
@@ -188,17 +189,33 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
           'line-cap': 'round'
         },
         paint: {
-          'line-color': '#FF4444',
-          'line-width': 4,
-          'line-dasharray': [
-            'case',
-            ['==', ['get', 'surface'], 'unpaved'],
-            ['literal', [2, 2]],
-            ['literal', [1, 0]]
-          ]
+          'line-color': '#FF4444',  // Original red for all segments
+          'line-width': 4
         }
       });
-      console.log('[addRouteToMap] -> route-layer added.');
+
+      // Overlay layer - dashed lines only for unpaved segments
+      map.current.addLayer({
+        id: routeLayerId + '-unpaved-overlay',
+        type: 'line',
+        source: routeSourceId,
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round'
+        },
+        paint: {
+          'line-color': '#FFB3B3',  // Much lighter red for unpaved overlay
+          'line-width': 4,
+          'line-opacity': [
+            'case',
+            ['==', ['get', 'surface'], 'unpaved'],
+            1,
+            0
+          ],
+          'line-dasharray': [1, 0.5]  // Very small, very frequent dashes for unpaved
+        }
+      });
+      console.log('[addRouteToMap] -> route layers added.');
     },
     [isReady]
   );
