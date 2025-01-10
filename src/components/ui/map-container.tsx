@@ -578,8 +578,9 @@ console.log('Final surface type:', surfaceType);
       throw new Error('Invalid GPX content');
     }
   
-    return new Promise((resolve, reject) => {
-      parseString(gpxContent, { explicitArray: false }, async (err: Error | null, result: any) => {
+    // Step 1: Parse GPX and get coordinates
+    const coordinates = await new Promise<Point[]>((resolve, reject) => {
+      parseString(gpxContent, { explicitArray: false }, (err: Error | null, result: any) => {
         if (err) {
           console.error('Error parsing GPX:', err);
           reject(new Error('Failed to parse GPX file'));
@@ -600,7 +601,7 @@ console.log('Final surface type:', surfaceType);
           const pointsArray = Array.isArray(points) ? points : [points];
           console.log('Points found:', pointsArray.length);
   
-          const coordinates: Point[] = pointsArray
+          const coords = pointsArray
             .map((point: any) => {
               try {
                 if (!point?.$?.lat || !point?.$?.lon) {
@@ -626,21 +627,74 @@ console.log('Final surface type:', surfaceType);
             })
             .filter((point: Point | null): point is Point => point !== null);
   
-          if (coordinates.length === 0) {
+          if (coords.length === 0) {
             throw new Error('No valid coordinates found in GPX file');
           }
 
-// Remove the separate processing step and directly add to map with surface detection
-console.log('Map ready, drawing route...');
-await addRouteToMap(coordinates);
-          
-          resolve();
+          resolve(coords);
         } catch (error) {
-          console.error('Error processing GPX:', error);
           reject(error);
         }
       });
     });
+
+    // Step 2: Calculate bounds and prepare map view
+    const bounds = coordinates.reduce(
+      (acc, coord) => ({
+        minLat: Math.min(acc.minLat, coord.lat),
+        maxLat: Math.max(acc.maxLat, coord.lat),
+        minLon: Math.min(acc.minLon, coord.lon),
+        maxLon: Math.max(acc.maxLon, coord.lon),
+      }),
+      { minLat: 90, maxLat: -90, minLon: 180, maxLon: -180 }
+    );
+
+    // Step 3: Move map and wait for tiles to load
+    await new Promise<void>((resolve) => {
+      let tilesChecked = false;
+      const checkInterval = setInterval(() => {
+        if (!tilesChecked) {
+          const features = map.current?.querySourceFeatures('australia-roads', {
+            sourceLayer: 'lutruwita'
+          });
+          
+          console.log('Checking tile data availability:', {
+            featureCount: features?.length,
+            zoom: map.current?.getZoom()
+          });
+
+          if (features && features.length > 0) {
+            tilesChecked = true;
+            clearInterval(checkInterval);
+            resolve();
+          }
+        }
+      }, 200);
+
+      // Move map to the GPX area
+      map.current?.fitBounds(
+        [[bounds.minLon, bounds.minLat], [bounds.maxLon, bounds.maxLat]],
+        { 
+          padding: 50,
+          maxZoom: 13,
+          minZoom: 13
+        }
+      );
+
+      // Safety timeout after 5 seconds
+      setTimeout(() => {
+        if (!tilesChecked) {
+          console.warn('Timeout waiting for tiles, proceeding anyway');
+          clearInterval(checkInterval);
+          resolve();
+        }
+      }, 5000);
+    });
+
+    // Step 4: Now that tiles are loaded, add route to map
+    console.log('Tiles ready, drawing route...');
+    await addRouteToMap(coordinates);
+
   }, [addRouteToMap, isReady]);
 
   React.useImperativeHandle(
