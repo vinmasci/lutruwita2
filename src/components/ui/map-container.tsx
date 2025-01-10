@@ -236,19 +236,45 @@ await new Promise<void>(resolve => {
       }
     );
 
-    // Wait for map to settle and tiles to load
-    await new Promise<void>(resolve => {
-      const checkReady = () => {
-        if (map.current?.areTilesLoaded() && map.current?.getZoom() === 13) {
-          resolve();
-        } else {
-          setTimeout(checkReady, 100);
-        }
-      };
-      map.current?.once('moveend', () => {
-        setTimeout(checkReady, 500); // Give extra time for tiles to load
-      });
+// Wait for map to settle, tiles to load, AND features to be available
+await new Promise<void>(resolve => {
+  const checkReady = () => {
+    // First check zoom and basic tile loading
+    if (!map.current?.areTilesLoaded() || map.current?.getZoom() !== 13) {
+      setTimeout(checkReady, 100);
+      return;
+    }
+
+    // Then check if we have actual feature data
+    const features = map.current.querySourceFeatures('australia-roads', {
+      sourceLayer: 'lutruwita'
     });
+
+    console.log('Checking data readiness:', {
+      tilesLoaded: map.current.areTilesLoaded(),
+      zoom: map.current.getZoom(),
+      featureCount: features.length,
+      sourceLoaded: map.current.isSourceLoaded('australia-roads')
+    });
+
+    if (features.length > 0) {
+      // We have actual data
+      resolve();
+    } else {
+      // Keep checking if we don't have features yet
+      setTimeout(checkReady, 100);
+    }
+  };
+
+  // Initial moveend handler
+  map.current?.once('moveend', () => {
+    console.log('Move ended, starting readiness checks');
+    setTimeout(checkReady, 500);
+  });
+
+  // Also start checking immediately in case we're already at the right position
+  checkReady();
+});
 
     const enhancedCoordinates: Point[] = [];
 
