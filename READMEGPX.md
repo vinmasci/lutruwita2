@@ -206,3 +206,15 @@ Need to shift to:
 - Small, focused queries
 - No caching
 - Minimal map movement
+
+
+
+Current Batching Problem
+
+The code is processing points in batches of 5
+
+It only loads road data for the first point in each batch
+
+This means points 2-5 in each batch might be trying to use road data from the wrong location
+
+Example: If point 5 is far from point 1, it won't find any nearby roads

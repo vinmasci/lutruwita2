@@ -264,133 +264,118 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       const results: Point[] = [];
 
       // Process points in chunks of 5 to avoid stale data
-      for (let i = 0; i < coords.length; i += 5) {
-        // Get next 5 points to process
-        const slice = coords.slice(i, i + 5);
-        const pt = slice[0];  // Use first point for positioning
+// Process one point at a time
+for (let i = 0; i < coords.length; i++) {
+  const pt = coords[i];
 
-        // Load road data for this area
-        await new Promise<void>((resolve) => {
-          let attempts = 0;
-          const maxAttempts = 15;
+  await new Promise<void>((resolve) => {
+    let attempts = 0;
+    const maxAttempts = 15;
 
-          const checkTiles = () => {
-            // Create bounding box around point (~100m each direction)
-            const bbox = [
-              pt.lon - 0.001, 
-              pt.lat - 0.001,
-              pt.lon + 0.001,
-              pt.lat + 0.001
-            ];
+    const checkTiles = () => {
+      // bounding box ~0.001 deg => ~100m in each direction
+      const bbox = [
+        pt.lon - 0.001, 
+        pt.lat - 0.001,
+        pt.lon + 0.001,
+        pt.lat + 0.001
+      ];
 
-            // Move map to this area
-            map.current?.fitBounds(
-              [[bbox[0], bbox[1]], [bbox[2], bbox[3]]],
-              {
-                padding: 50,
-                duration: 0,
-                maxZoom: 13,
-                minZoom: 13
-              }
-            );
-
-            // Query all visible roads
-            const features = map.current?.queryRenderedFeatures(undefined, {
-              layers: ['custom-roads']
-            });
-
-            console.log('[assignSurfacesViaNearest] Attempt vantage for chunk:', {
-              startIndex: i,
-              boundingBox: bbox,
-              found: features?.length || 0,
-              location: [pt.lat, pt.lon]
-            });
-
-            // If roads found, cache them and continue
-            if (features && features.length > 0) {
-              cachedRoadsRef.current = turf.featureCollection(
-                features.map((f) => turf.feature(f.geometry, f.properties))
-              );
-              console.log('[assignSurfacesViaNearest] => Found roads for chunk', {
-                roadsCount: features.length
-              });
-              resolve();
-              return;
-            }
-
-            // Retry logic if no roads found
-            attempts++;
-            if (attempts >= maxAttempts) {
-              console.warn('[assignSurfacesViaNearest] Max attempts reached => no roads found for chunk:', i);
-              cachedRoadsRef.current = null;
-              resolve();
-              return;
-            }
-
-            setTimeout(checkTiles, 400);
-          };
-
-          checkTiles();
-        });
-
-        // Process each point in the chunk using loaded road data
-        const vantageRoads = cachedRoadsRef.current;
-        for (let s = 0; s < slice.length; s++) {
-          const realIndex = i + s;
-          if (realIndex >= coords.length) break;
-
-          const pt2 = slice[s];
-          let bestSurface: 'paved' | 'unpaved' = 'unpaved';
-          let minDist = Infinity;
-          const pointGeo = turf.point([pt2.lon, pt2.lat]);
-
-          // Log progress for monitoring
-          if (realIndex % 100 === 0) {
-            console.log(
-              `[assignSurfacesViaNearest] Processing point #${realIndex}, coords=(${pt2.lat}, ${pt2.lon})`
-            );
-          }
-
-          // If no roads found, default to unpaved
-          if (!vantageRoads || vantageRoads.features.length === 0) {
-            results.push({ ...pt2, surface: 'unpaved' });
-          } else {
-            // Find nearest road and its surface type
-            for (const road of vantageRoads.features) {
-              if (
-                road.geometry.type !== 'LineString' &&
-                road.geometry.type !== 'MultiLineString'
-              ) {
-                continue;
-              }
-              const snap = turf.nearestPointOnLine(road, pointGeo);
-              const dist = snap.properties.dist; // Distance in km
-              if (dist < minDist) {
-                minDist = dist;
-                const sRaw = (road.properties?.surface || '').toLowerCase();
-                // Categorize surface type
-                if (PAVED_SURFACES.includes(sRaw)) {
-                  bestSurface = 'paved';
-                } else if (UNPAVED_SURFACES.includes(sRaw)) {
-                  bestSurface = 'unpaved';
-                } else {
-                  bestSurface = 'unpaved'; // Default fallback
-                }
-              }
-            }
-            results.push({ ...pt2, surface: bestSurface });
-          }
-
-          // Update progress
-          setSurfaceProgress((prev) => ({
-            ...prev,
-            progress: realIndex + 1
-          }));
+      map.current?.fitBounds(
+        [[bbox[0], bbox[1]], [bbox[2], bbox[3]]],
+        {
+          padding: 50,
+          duration: 0,
+          maxZoom: 13,
+          minZoom: 13
         }
+      );
 
-        // Clear cached roads before next chunk
-        cachedRoadsRef.current = null;
+      const features = map.current?.queryRenderedFeatures(undefined, {
+        layers: ['custom-roads']
+      });
+
+      console.log('[assignSurfacesViaNearest] Attempt vantage for point:', {
+        index: i,
+        boundingBox: bbox,
+        found: features?.length || 0,
+        location: [pt.lat, pt.lon]
+      });
+
+      if (features && features.length > 0) {
+        cachedRoadsRef.current = turf.featureCollection(
+          features.map((f) => turf.feature(f.geometry, f.properties))
+        );
+        console.log('[assignSurfacesViaNearest] => Found roads:', {
+          roadsCount: features.length
+        });
+        resolve();
+        return;
       }
+
+      attempts++;
+      if (attempts >= maxAttempts) {
+        console.warn('[assignSurfacesViaNearest] Max attempts reached => no roads found for point:', i);
+        cachedRoadsRef.current = null;
+        resolve();
+        return;
+      }
+
+      setTimeout(checkTiles, 400);
+    };
+
+    checkTiles();
+  });
+
+  // Process the single point
+  const vantageRoads = cachedRoadsRef.current;
+  let bestSurface: 'paved' | 'unpaved' = 'unpaved';
+  let minDist = Infinity;
+  const pointGeo = turf.point([pt.lon, pt.lat]);
+
+  if (i % 100 === 0) {
+    console.log(
+      `[assignSurfacesViaNearest] Processing point #${i}, coords=(${pt.lat}, ${pt.lon})`
+    );
+  }
+
+  // If vantageRoads is empty, default to unpaved
+  if (!vantageRoads || vantageRoads.features.length === 0) {
+    results.push({ ...pt, surface: 'unpaved' });
+  } else {
+    // Evaluate each road
+    for (const road of vantageRoads.features) {
+      if (
+        road.geometry.type !== 'LineString' &&
+        road.geometry.type !== 'MultiLineString'
+      ) {
+        continue;
+      }
+      const snap = turf.nearestPointOnLine(road, pointGeo);
+      const dist = snap.properties.dist; // in km
+      if (dist < minDist) {
+        minDist = dist;
+        const sRaw = (road.properties?.surface || '').toLowerCase();
+        if (PAVED_SURFACES.includes(sRaw)) {
+          bestSurface = 'paved';
+        } else if (UNPAVED_SURFACES.includes(sRaw)) {
+          bestSurface = 'unpaved';
+        } else {
+          bestSurface = 'unpaved'; // fallback
+        }
+      }
+    }
+    results.push({ ...pt, surface: bestSurface });
+  }
+
+  setSurfaceProgress((prev) => ({
+    ...prev,
+    progress: i + 1
+  }));
+
+  // Clear roads cache after each point
+  cachedRoadsRef.current = null;
+}
 
       // Finalize processing
       setSurfaceProgress((prev) => ({
