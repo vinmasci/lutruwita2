@@ -652,47 +652,50 @@ console.log('Final surface type:', surfaceType);
 // Step 3: Move map and wait for tiles to load
 await new Promise<void>((resolve) => {
   let tilesChecked = false;
-  const checkInterval = setInterval(() => {
-    const currentZoom = map.current?.getZoom();
-    
-    if (!tilesChecked && currentZoom === 13) {
+  let checkInterval: NodeJS.Timeout;
+
+  const startFeatureCheck = () => {
+    console.log('Starting feature checks...');
+    checkInterval = setInterval(() => {
       const features = map.current?.querySourceFeatures('australia-roads', {
         sourceLayer: 'lutruwita'
       });
       
       console.log('Checking tile data availability:', {
         featureCount: features?.length,
-        zoom: currentZoom,
+        zoom: map.current?.getZoom(),
         tilesLoaded: map.current?.areTilesLoaded()
       });
 
       if (features && features.length > 0) {
+        console.log('Found features, proceeding');
         tilesChecked = true;
         clearInterval(checkInterval);
         resolve();
       }
-    } else {
-      console.log('Waiting for zoom 13, current zoom:', currentZoom);
-    }
-  }, 200);
+    }, 200);
+  };
 
-  // Move map to the GPX area and force zoom 13
+  // First fit bounds without zoom constraints
   map.current?.fitBounds(
     [[bounds.minLon, bounds.minLat], [bounds.maxLon, bounds.maxLat]],
     { 
       padding: 50,
-      maxZoom: 13,
-      minZoom: 13,
       duration: 0  // Immediate move
     }
   );
 
-  // Add a moveend listener to ensure we're at the right zoom
+  // After fitBounds completes, set zoom and start checking
   map.current?.once('moveend', () => {
-    const endZoom = map.current?.getZoom();
-    if (endZoom !== 13) {
-      map.current?.setZoom(13);
-    }
+    console.log('Initial bounds fit complete, setting zoom 13');
+    map.current?.setZoom(13);
+    
+    // Start feature check after zoom is set
+    map.current?.once('zoomend', () => {
+      console.log('Zoom 13 set, center:', map.current?.getCenter());
+      // Wait a moment for tiles to start loading
+      setTimeout(startFeatureCheck, 500);
+    });
   });
 
   // Safety timeout after 5 seconds
