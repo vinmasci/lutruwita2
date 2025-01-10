@@ -649,47 +649,61 @@ console.log('Final surface type:', surfaceType);
       { minLat: 90, maxLat: -90, minLon: 180, maxLon: -180 }
     );
 
-    // Step 3: Move map and wait for tiles to load
-    await new Promise<void>((resolve) => {
-      let tilesChecked = false;
-      const checkInterval = setInterval(() => {
-        if (!tilesChecked) {
-          const features = map.current?.querySourceFeatures('australia-roads', {
-            sourceLayer: 'lutruwita'
-          });
-          
-          console.log('Checking tile data availability:', {
-            featureCount: features?.length,
-            zoom: map.current?.getZoom()
-          });
+// Step 3: Move map and wait for tiles to load
+await new Promise<void>((resolve) => {
+  let tilesChecked = false;
+  const checkInterval = setInterval(() => {
+    const currentZoom = map.current?.getZoom();
+    
+    if (!tilesChecked && currentZoom === 13) {
+      const features = map.current?.querySourceFeatures('australia-roads', {
+        sourceLayer: 'lutruwita'
+      });
+      
+      console.log('Checking tile data availability:', {
+        featureCount: features?.length,
+        zoom: currentZoom,
+        tilesLoaded: map.current?.areTilesLoaded()
+      });
 
-          if (features && features.length > 0) {
-            tilesChecked = true;
-            clearInterval(checkInterval);
-            resolve();
-          }
-        }
-      }, 200);
+      if (features && features.length > 0) {
+        tilesChecked = true;
+        clearInterval(checkInterval);
+        resolve();
+      }
+    } else {
+      console.log('Waiting for zoom 13, current zoom:', currentZoom);
+    }
+  }, 200);
 
-      // Move map to the GPX area
-      map.current?.fitBounds(
-        [[bounds.minLon, bounds.minLat], [bounds.maxLon, bounds.maxLat]],
-        { 
-          padding: 50,
-          maxZoom: 13,
-          minZoom: 13
-        }
-      );
+  // Move map to the GPX area and force zoom 13
+  map.current?.fitBounds(
+    [[bounds.minLon, bounds.minLat], [bounds.maxLon, bounds.maxLat]],
+    { 
+      padding: 50,
+      maxZoom: 13,
+      minZoom: 13,
+      duration: 0  // Immediate move
+    }
+  );
 
-      // Safety timeout after 5 seconds
-      setTimeout(() => {
-        if (!tilesChecked) {
-          console.warn('Timeout waiting for tiles, proceeding anyway');
-          clearInterval(checkInterval);
-          resolve();
-        }
-      }, 5000);
-    });
+  // Add a moveend listener to ensure we're at the right zoom
+  map.current?.once('moveend', () => {
+    const endZoom = map.current?.getZoom();
+    if (endZoom !== 13) {
+      map.current?.setZoom(13);
+    }
+  });
+
+  // Safety timeout after 5 seconds
+  setTimeout(() => {
+    if (!tilesChecked) {
+      console.warn('Timeout waiting for tiles, proceeding anyway');
+      clearInterval(checkInterval);
+      resolve();
+    }
+  }, 5000);
+});
 
     // Step 4: Now that tiles are loaded, add route to map
     console.log('Tiles ready, drawing route...');
