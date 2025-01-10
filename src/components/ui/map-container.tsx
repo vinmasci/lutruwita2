@@ -68,13 +68,30 @@ const LoadingOverlay = ({
 );
 
 // --------------------------------------------
+// Synonym sets for maximum coverage
+// --------------------------------------------
+const PAVED_SURFACES = [
+  'paved', 'asphalt', 'concrete', 'compacted',
+  'sealed', 'bitumen', 'tar'
+];
+
+const UNPAVED_SURFACES = [
+  'unpaved', 'gravel', 'fine', 'fine_gravel', 
+  'dirt', 'earth'
+];
+
+// --------------------------------------------
 // The main MapContainer
 // --------------------------------------------
 const MapContainer = forwardRef<MapRef>((props, ref) => {
   const routeSourceId = 'route';
   const routeLayerId = 'route-layer';
+
+  // Standard references
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
+
+  // We'll load roads for each vantage, then discard them
   const cachedRoadsRef = useRef<turf.FeatureCollection | null>(null);
 
   const [isMapReady, setIsMapReady] = React.useState(false);
@@ -95,324 +112,6 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
   }, [isMapReady, streetsLayersLoaded]);
 
   // ------------------------------------------------------------------
-  // debugRoadSource => logs if the "australia-roads" source is loaded
-  // ------------------------------------------------------------------
-  const debugRoadSource = useCallback(() => {
-    if (!map.current) {
-      console.log('[debugRoadSource] No map instance');
-      return;
-    }
-    const style = map.current.getStyle();
-    if (!style) {
-        console.log('[debugRoadSource] No style loaded yet');
-        return;
-    }
-    
-    const currentZoom = map.current.getZoom();
-    const roadsSource = style.sources['australia-roads'];
-    const allLayers = style.layers;
-    const customRoadLayer = allLayers.find(l => l.id === 'custom-roads');
-    const rawSource = map.current.getSource('australia-roads') as any;
-    
-    console.log('[debugRoadSource] Layer state:', {
-        zoom: currentZoom,
-        isZoom13: Math.abs(currentZoom - 13) < 0.1,
-        hasRawSource: !!rawSource,
-        rawSourceType: rawSource ? rawSource.type : null,
-        totalLayers: allLayers.length,
-        customRoadLayer: !!customRoadLayer,
-        sourceLoaded: map.current.isSourceLoaded('australia-roads'),
-        tilesLoaded: map.current.areTilesLoaded()
-    });
-    
-    if (rawSource && rawSource.vectorLayers) {
-        console.log('[debugRoadSource] vectorLayers:', rawSource.vectorLayers);
-    } else {
-        console.warn('[debugRoadSource] No vectorLayers found. Current zoom:', currentZoom);
-    }
-
-    // If we're not at zoom 13, force it
-    if (Math.abs(currentZoom - 13) >= 0.1) {
-      console.log('[debugRoadSource] Forcing zoom to 13');
-      map.current.setZoom(13);
-    }
-}, []);
-
-  // ------------------------------------------------------------------
-  // getRoadsAtZoom13 => queries the "australia-roads" source features at zoom 13
-  // ------------------------------------------------------------------
-  const getRoadsAtZoom13 = useCallback(async () => {
-    if (!map.current) {
-      console.log('[getRoadsAtZoom13] No map instance');
-      return turf.featureCollection([]);
-    }
-
-    // If we have cached roads, use them
-    if (cachedRoadsRef.current) {
-      console.log('[getRoadsAtZoom13] Using cached roads:', cachedRoadsRef.current.features.length);
-      return cachedRoadsRef.current;
-    }
-
-// Wait for tiles to load
-await new Promise<void>((resolve) => {
-  const checkData = () => {
-    const style = map.current?.getStyle();
-    const source = style?.sources['australia-roads'];
-    const layer = style?.layers.find(l => l.id === 'custom-roads');
-    const features = map.current?.querySourceFeatures('australia-roads', {
-      sourceLayer: 'lutruwita'
-    });
-    
-    console.log('[getRoadsAtZoom13] Detailed state:', {
-      featureCount: features?.length || 0,
-      zoom: map.current?.getZoom(),
-      sourceExists: !!source,
-      layerExists: !!layer,
-      sourceState: map.current?.isSourceLoaded('australia-roads'),
-      tileState: map.current?.areTilesLoaded()
-    });
-
-    // Try both querySourceFeatures and queryRenderedFeatures
-    const renderedFeatures = map.current?.queryRenderedFeatures(undefined, {
-      layers: ['custom-roads']
-    });
-    
-    console.log('[getRoadsAtZoom13] Rendered features:', {
-      count: renderedFeatures?.length || 0,
-      firstFeature: renderedFeatures?.[0]
-    });
-
-    if (features && features.length > 0) {
-      resolve();
-    } else {
-      // Add event listeners for one cycle to catch any relevant events
-      const onSourceData = (e: any) => {
-        console.log('[getRoadsAtZoom13] sourcedata event:', {
-          sourceId: e.sourceId,
-          sourceDataType: e.sourceDataType,
-          tile: e.tile ? {
-            hasData: e.tile.hasData,
-            tileID: e.tile.tileID
-          } : null
-        });
-        map.current?.off('sourcedata', onSourceData);
-      };
-      
-      map.current?.on('sourcedata', onSourceData);
-      setTimeout(checkData, 100);
-    }
-  };
-
-  checkData();
-});
-
-    const features = map.current.querySourceFeatures('australia-roads', {
-      sourceLayer: 'lutruwita'
-    });
-
-    if (!features || features.length === 0) {
-      console.warn('[getRoadsAtZoom13] No road features returned at z=13 (or near 13) ...');
-      return turf.featureCollection([]);
-    }
-
-    const roads = features.map((f) => turf.feature(f.geometry, f.properties));
-    console.log(`[getRoadsAtZoom13] Found ${roads.length} road features at z=13 query`);
-    
-    // Cache the road features
-    const roadsFC = turf.featureCollection(roads);
-    cachedRoadsRef.current = roadsFC;
-
-    return roadsFC;
-}, []);
-
-  // ------------------------------------------------------------------
-  // assignSurfacesViaNearest => forcibly jump map to bounding box center @ z=13,
-  // then do a 500ms delay, then query roads
-  // ------------------------------------------------------------------
-  const assignSurfacesViaNearest = useCallback(
-    async (coords: Point[]) => {
-      if (!map.current) {
-        console.log('[assignSurfacesViaNearest] No map.current, returning');
-        return coords;
-      }
-
-      // 1) Compute bounding box
-      const bounds = coords.reduce(
-        (acc, c) => ({
-          minLat: Math.min(acc.minLat, c.lat),
-          maxLat: Math.max(acc.maxLat, c.lat),
-          minLon: Math.min(acc.minLon, c.lon),
-          maxLon: Math.max(acc.maxLon, c.lon)
-        }),
-        { minLat: 90, maxLat: -90, minLon: 180, maxLon: -180 }
-      );
-      console.log('[assignSurfacesViaNearest] Computed bounding box =>', bounds);
-
-      // 2) Compute a center for that bounding box
-      const centerLon = (bounds.minLon + bounds.maxLon) / 2;
-      const centerLat = (bounds.minLat + bounds.maxLat) / 2;
-      console.log(
-        '[assignSurfacesViaNearest] Jumping instantly to center =>',
-        [centerLon, centerLat],
-        'at z=13'
-      );
-
-      // 1Force jump (no animation), so no waiting for moveend
-      // The user can still zoom in/out afterward, because we do NOT enforce minZoom=13, maxZoom=13.
-// Move map and wait for tiles
-await new Promise<void>((resolve) => {
-  const onSourceData = (e: any) => {
-    if (e.sourceId === 'australia-roads' && e.isSourceLoaded && e.tile) {
-      console.log('[assignSurfacesViaNearest] Tile loaded:', {
-        coord: e.tile.tileID.canonical,
-        hasData: e.tile.hasData
-      });
-      if (e.tile.hasData) {
-        map.current?.off('sourcedata', onSourceData);
-        setTimeout(resolve, 200); // Extra 200ms to be safe
-      }
-    }
-  };
-
-  map.current?.on('sourcedata', onSourceData);
-  map.current?.jumpTo({
-    center: [centerLon, centerLat],
-    zoom: 13
-  });
-
-  // Failsafe timeout after 3 seconds
-  setTimeout(() => {
-    map.current?.off('sourcedata', onSourceData);
-    console.log('[assignSurfacesViaNearest] Failsafe timeout - proceeding anyway');
-    resolve();
-  }, 3000);
-});
-
-// Debug current state
-debugRoadSource();
-
-      // 4) Debug the roads source
-      debugRoadSource();
-
-      // 5) Query all roads at z=13
-      const roadsFC = await getRoadsAtZoom13();
-      if (!roadsFC || roadsFC.features.length === 0) {
-        console.warn('[assignSurfacesViaNearest] No roads found at z=13, defaulting to unpaved.');
-        return coords.map((c) => ({ ...c, surface: 'unpaved' }));
-      }
-
-      console.log('[assignSurfacesViaNearest] Starting nearest-line logic...');
-      setSurfaceProgress({
-        isProcessing: true,
-        progress: 0,
-        total: coords.length
-      });
-
-      const results: Point[] = [];
-      for (let i = 0; i < coords.length; i++) {
-// Every 100 points, move the viewport and wait for tiles
-if (i % 100 === 0) {
-  const pt = coords[i];
-  await new Promise<void>((resolve) => {
-      let attempts = 0;
-      const maxAttempts = 10;
-      
-      const checkTiles = () => {
-          const features = map.current?.querySourceFeatures('australia-roads', {
-              sourceLayer: 'lutruwita'
-          });
-          
-          if (features && features.length > 0) {
-              console.log('[assignSurfacesViaNearest] Features found after move:', {
-                  count: features.length,
-                  location: [pt.lat, pt.lon]
-              });
-              resolve();
-              return;
-          }
-          
-          attempts++;
-          if (attempts >= maxAttempts) {
-              console.warn('[assignSurfacesViaNearest] Max attempts reached at location:', [pt.lat, pt.lon]);
-              resolve();
-              return;
-          }
-          
-          setTimeout(checkTiles, 300);
-      };
-      
-      // Move the map
-      map.current?.jumpTo({
-          center: [pt.lon, pt.lat],
-          zoom: 13
-      });
-      
-      // Start checking
-      checkTiles();
-  });
-}
-      
-        const pt = coords[i];
-        try {
-          const pointGeo = turf.point([pt.lon, pt.lat]);
-          let bestSurface: 'paved' | 'unpaved' = 'unpaved';
-          let minDist = Infinity;
-
-          // We'll skip logging for every single road, but let's log every 100 points
-          if (i % 100 === 0) {
-            console.log(
-              `[assignSurfacesViaNearest] Processing point #${i}, coords=(${pt.lat}, ${pt.lon})`
-            );
-          }
-
-          for (const road of roadsFC.features) {
-            if (
-              road.geometry.type !== 'LineString' &&
-              road.geometry.type !== 'MultiLineString'
-            )
-              continue;
-            const snap = turf.nearestPointOnLine(road, pointGeo);
-            const dist = snap.properties.dist; // in km
-            if (dist < minDist) {
-              minDist = dist;
-              const sRaw = road.properties?.surface?.toLowerCase() || '';
-              if (['paved', 'asphalt', 'concrete', 'compacted'].includes(sRaw)) {
-                bestSurface = 'paved';
-              } else if (['unpaved', 'gravel'].includes(sRaw)) {
-                bestSurface = 'unpaved';
-              }
-            }
-          }
-          results.push({ ...pt, surface: bestSurface });
-        } catch (err) {
-          console.warn('[assignSurfacesViaNearest] Error on point', i, err);
-          results.push({ ...pt, surface: 'unpaved' });
-        }
-
-        if (i % 100 === 0) {
-          console.log(
-            `[assignSurfacesViaNearest] -> partial result: point #${i}, bestSurface=`,
-            results[i]?.surface
-          );
-        }
-
-        setSurfaceProgress((prev) => ({
-          ...prev,
-          progress: i + 1
-        }));
-      }
-
-      setSurfaceProgress((prev) => ({
-        ...prev,
-        isProcessing: false
-      }));
-      console.log('[assignSurfacesViaNearest] Finished. Returning processed coords...');
-      return results;
-    },
-    [debugRoadSource, getRoadsAtZoom13]
-  );
-
-  // ------------------------------------------------------------------
   // addRouteToMap => splits coords by surface => multiple line segments
   // ------------------------------------------------------------------
   const addRouteToMap = useCallback(
@@ -427,6 +126,7 @@ if (i % 100 === 0) {
       let currentSegment: Point[] = [];
       let currentSurface: 'paved' | 'unpaved' = coordinates[0]?.surface || 'unpaved';
 
+      // Build segments based on changes in surface
       for (let i = 0; i < coordinates.length; i++) {
         const c = coordinates[i];
         if (c.surface !== currentSurface && currentSegment.length > 0) {
@@ -457,6 +157,7 @@ if (i % 100 === 0) {
         map.current.removeSource(routeSourceId);
       }
 
+      // Make a FeatureCollection
       const featureColl = {
         type: 'FeatureCollection',
         features: segments.map((seg, idx) => ({
@@ -472,6 +173,7 @@ if (i % 100 === 0) {
         }))
       };
 
+      // Add the route source/layer
       map.current.addSource(routeSourceId, {
         type: 'geojson',
         data: featureColl
@@ -502,13 +204,172 @@ if (i % 100 === 0) {
   );
 
   // ------------------------------------------------------------------
-  // handleGpxUpload => parse, assign surfaces, then add route
+  // For each point, we load roads around that point by fitting
+  // a small bounding box, then query the rendered roads (fresh),
+  // and then discard them once we've assigned surfaces for ~5 points.
+  // ------------------------------------------------------------------
+  const assignSurfacesViaNearest = useCallback(
+    async (coords: Point[]) => {
+      if (!map.current) {
+        console.log('[assignSurfacesViaNearest] No map.current, returning coords unmodified');
+        return coords;
+      }
+
+      // Let the user see the progress
+      setSurfaceProgress({
+        isProcessing: true,
+        progress: 0,
+        total: coords.length
+      });
+
+      const results: Point[] = [];
+
+      // We'll process in small "chunks" of 5 to avoid stale caching
+      for (let i = 0; i < coords.length; i += 5) {
+        // These are the 5 points we'll handle in this vantage
+        const slice = coords.slice(i, i + 5);
+
+        // We'll use the FIRST point of the slice to focus bounding box
+        // (Alternatively, you could do the bounding box of all 5 for more coverage)
+        const pt = slice[0];
+
+        // 1) Fit bounding box forcibly at zoom=13 (no caching from previous vantage)
+        await new Promise<void>((resolve) => {
+          let attempts = 0;
+          const maxAttempts = 15;
+
+          const checkTiles = () => {
+            // bounding box ~0.001 deg => ~100m in each direction
+            // Increase to 0.002 or 0.003 if you need a bigger area
+            const bbox = [
+              pt.lon - 0.001, 
+              pt.lat - 0.001,
+              pt.lon + 0.001,
+              pt.lat + 0.001
+            ];
+
+            map.current?.fitBounds(
+              [[bbox[0], bbox[1]], [bbox[2], bbox[3]]],
+              {
+                padding: 50,
+                duration: 0,
+                maxZoom: 13,
+                minZoom: 13
+              }
+            );
+
+            // Now query roads (fresh)
+            const features = map.current?.queryRenderedFeatures(undefined, {
+              layers: ['custom-roads']
+            });
+
+            console.log('[assignSurfacesViaNearest] Attempt vantage for chunk:', {
+              startIndex: i,
+              boundingBox: bbox,
+              found: features?.length || 0,
+              location: [pt.lat, pt.lon]
+            });
+
+            if (features && features.length > 0) {
+              cachedRoadsRef.current = turf.featureCollection(
+                features.map((f) => turf.feature(f.geometry, f.properties))
+              );
+              console.log('[assignSurfacesViaNearest] => Found roads for chunk', {
+                roadsCount: features.length
+              });
+              resolve();
+              return;
+            }
+
+            attempts++;
+            if (attempts >= maxAttempts) {
+              console.warn('[assignSurfacesViaNearest] Max attempts reached => no roads found for chunk:', i);
+              cachedRoadsRef.current = null;
+              resolve();
+              return;
+            }
+
+            setTimeout(checkTiles, 400);
+          };
+
+          checkTiles();
+        });
+
+        // 2) Now do nearest-line logic for these 5 points
+        const vantageRoads = cachedRoadsRef.current;
+        for (let s = 0; s < slice.length; s++) {
+          const realIndex = i + s;
+          if (realIndex >= coords.length) break; // safety
+
+          const pt2 = slice[s];
+          let bestSurface: 'paved' | 'unpaved' = 'unpaved';
+          let minDist = Infinity;
+          const pointGeo = turf.point([pt2.lon, pt2.lat]);
+
+          if (realIndex % 100 === 0) {
+            console.log(
+              `[assignSurfacesViaNearest] Processing point #${realIndex}, coords=(${pt2.lat}, ${pt2.lon})`
+            );
+          }
+
+          // If vantageRoads is empty, default to unpaved
+          if (!vantageRoads || vantageRoads.features.length === 0) {
+            results.push({ ...pt2, surface: 'unpaved' });
+          } else {
+            // Evaluate each road
+            for (const road of vantageRoads.features) {
+              if (
+                road.geometry.type !== 'LineString' &&
+                road.geometry.type !== 'MultiLineString'
+              ) {
+                continue;
+              }
+              const snap = turf.nearestPointOnLine(road, pointGeo);
+              const dist = snap.properties.dist; // in km
+              if (dist < minDist) {
+                minDist = dist;
+                const sRaw = (road.properties?.surface || '').toLowerCase();
+                if (PAVED_SURFACES.includes(sRaw)) {
+                  bestSurface = 'paved';
+                } else if (UNPAVED_SURFACES.includes(sRaw)) {
+                  bestSurface = 'unpaved';
+                } else {
+                  bestSurface = 'unpaved'; // fallback
+                }
+              }
+            }
+            results.push({ ...pt2, surface: bestSurface });
+          }
+
+          setSurfaceProgress((prev) => ({
+            ...prev,
+            progress: realIndex + 1
+          }));
+        }
+
+        // 3) Discard vantage roads so next chunk doesn't re-use them
+        cachedRoadsRef.current = null;
+      }
+
+      // All done
+      setSurfaceProgress((prev) => ({
+        ...prev,
+        isProcessing: false
+      }));
+      console.log('[assignSurfacesViaNearest] => Finished loop. Returning coords...');
+      return results;
+    },
+    []
+  );
+
+  // ------------------------------------------------------------------
+  // handleGpxUpload => parse, call assignSurfacesViaNearest, then add route
   // ------------------------------------------------------------------
   const handleGpxUpload = useCallback(
     async (gpxContent: string) => {
       console.log('[handleGpxUpload] Checking if map is ready...');
       if (!map.current || !isReady()) {
-        console.warn('[handleGpxUpload] Map not fully ready, aborting GPX upload');
+        console.warn('[handleGpxUpload] Map not ready, aborting GPX upload');
         throw new Error('Map not ready. Try again later.');
       }
       if (!gpxContent || typeof gpxContent !== 'string') {
@@ -517,69 +378,69 @@ if (i % 100 === 0) {
 
       console.log('[handleGpxUpload] Parsing GPX...');
       const rawCoords = await new Promise<Point[]>((resolve, reject) => {
-        parseString(
-          gpxContent,
-          { explicitArray: false },
-          (err: Error | null, result: any) => {
-            if (err) {
-              console.error('[handleGpxUpload] parseString error:', err);
-              reject(new Error('Failed to parse GPX file'));
-              return;
-            }
-            try {
-              if (!result?.gpx) {
-                throw new Error('Invalid GPX structure: missing root gpx element');
-              }
-              const points = result.gpx?.rte?.rtept || result.gpx?.trk?.trkseg?.trkpt;
-              if (!points) {
-                throw new Error('Invalid GPX format: missing track points');
-              }
-
-              const arr = Array.isArray(points) ? points : [points];
-              console.log('[handleGpxUpload] Points found:', arr.length);
-
-              const coords = arr
-                .map((pt: any) => {
-                  try {
-                    if (!pt?.$?.lat || !pt?.$?.lon) {
-                      throw new Error('Missing lat/lon attributes');
-                    }
-                    const lat = parseFloat(pt.$.lat);
-                    const lon = parseFloat(pt.$.lon);
-                    if (isNaN(lat) || isNaN(lon)) {
-                      throw new Error('Invalid lat/lon numeric values');
-                    }
-                    return { lat, lon };
-                  } catch (err2) {
-                    console.warn('[handleGpxUpload] Skipping invalid point:', pt, err2);
-                    return null;
-                  }
-                })
-                .filter((x: Point | null): x is Point => x !== null);
-
-              if (coords.length === 0) {
-                throw new Error('No valid coordinates found in GPX');
-              }
-              resolve(coords);
-            } catch (err2) {
-              reject(err2);
-            }
+        parseString(gpxContent, { explicitArray: false }, (err: Error | null, result: any) => {
+          if (err) {
+            console.error('[handleGpxUpload] parseString error:', err);
+            reject(new Error('Failed to parse GPX file'));
+            return;
           }
-        );
+          try {
+            if (!result?.gpx) {
+              throw new Error('Invalid GPX structure: missing root gpx element');
+            }
+            const points = result.gpx?.rte?.rtept || result.gpx?.trk?.trkseg?.trkpt;
+            if (!points) {
+              throw new Error('Invalid GPX format: missing track points');
+            }
+
+            const arr = Array.isArray(points) ? points : [points];
+            console.log('[handleGpxUpload] Points found:', arr.length);
+
+            const coords = arr
+              .map((pt: any) => {
+                try {
+                  if (!pt?.$?.lat || !pt?.$?.lon) {
+                    throw new Error('Missing lat/lon attributes');
+                  }
+                  const lat = parseFloat(pt.$.lat);
+                  const lon = parseFloat(pt.$.lon);
+                  if (isNaN(lat) || isNaN(lon)) {
+                    throw new Error('Invalid lat/lon numeric values');
+                  }
+                  return { lat, lon };
+                } catch (err2) {
+                  console.warn('[handleGpxUpload] Skipping invalid point:', pt, err2);
+                  return null;
+                }
+              })
+              .filter((x: Point | null): x is Point => x !== null);
+
+            if (coords.length === 0) {
+              throw new Error('No valid coordinates found in GPX');
+            }
+            resolve(coords);
+          } catch (err2) {
+            reject(err2);
+          }
+        });
       });
 
-      console.log('[handleGpxUpload] Calling assignSurfacesViaNearest...');
+      console.log('[handleGpxUpload] => Starting nearest-line logic for', rawCoords.length, 'pts');
+      // Clear any leftover roads
+      cachedRoadsRef.current = null;
+
       const finalCoords = await assignSurfacesViaNearest(rawCoords);
 
+      // Count results
       const pavedCount = finalCoords.filter((c) => c.surface === 'paved').length;
       const unpavedCount = finalCoords.length - pavedCount;
       console.log(
-        `[handleGpxUpload] Surfaces assigned. Paved=${pavedCount}, Unpaved=${unpavedCount} (total=${finalCoords.length})`
+        `[handleGpxUpload] Surfaces assigned => paved=${pavedCount}, unpaved=${unpavedCount}, total=${finalCoords.length}`
       );
 
-      console.log('[handleGpxUpload] Adding route to map...');
+      // Now add to map
       addRouteToMap(finalCoords);
-      console.log('[handleGpxUpload] -> Route displayed with surfaces!');
+      console.log('[handleGpxUpload] => Route displayed with surfaces');
     },
     [isReady, assignSurfacesViaNearest, addRouteToMap]
   );
@@ -593,17 +454,21 @@ if (i % 100 === 0) {
       handleGpxUpload,
       isReady,
       on: (evt: string, cb: () => void) => {
-        if (map.current) map.current.on(evt, cb);
+        if (map.current) {
+          map.current.on(evt, cb);
+        }
       },
       off: (evt: string, cb: () => void) => {
-        if (map.current) map.current.off(evt, cb);
+        if (map.current) {
+          map.current.off(evt, cb);
+        }
       }
     }),
     [handleGpxUpload, isReady]
   );
 
   // ------------------------------------------------------------------
-  // Initialize Map => but DO NOT lock at zoom=13
+  // Map init => start at zoom=13, user can move freely
   // ------------------------------------------------------------------
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
@@ -616,13 +481,11 @@ if (i % 100 === 0) {
     try {
       mapboxgl.accessToken = mapboxToken;
 
-      // We START at zoom=13, but do NOT lock minZoom or maxZoom
       const newMap = new mapboxgl.Map({
         container: mapContainer.current,
         style: 'mapbox://styles/mapbox/satellite-streets-v12',
         center: [146.5, -41.5],
         zoom: 13
-        // no minZoom, no maxZoom => user can zoom freely
       } as any);
 
       map.current = newMap;
@@ -647,16 +510,24 @@ if (i % 100 === 0) {
             'source-layer': 'lutruwita',
             minzoom: 12,
             maxzoom: 14,
-            layout: { visibility: 'visible' },
+            layout: {
+              visibility: 'visible'
+            },
             paint: {
               'line-opacity': 1,
               'line-color': [
                 'match',
                 ['get', 'surface'],
-                ['paved', 'asphalt', 'concrete', 'compacted'],
+
+                // Paved synonyms
+                ['paved', 'asphalt', 'concrete', 'compacted', 'sealed', 'bitumen', 'tar'],
                 '#4A90E2',
-                ['unpaved', 'gravel'],
+
+                // Unpaved synonyms
+                ['unpaved', 'gravel', 'fine', 'fine_gravel', 'dirt', 'earth'],
                 '#D35400',
+
+                // fallback color
                 '#888888'
               ],
               'line-width': 2
@@ -671,7 +542,6 @@ if (i % 100 === 0) {
         }
       });
 
-      // The user can zoom in/out freely now
       newMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
       newMap.addControl(new mapboxgl.FullscreenControl());
     } catch (err) {
@@ -686,6 +556,9 @@ if (i % 100 === 0) {
     };
   }, []);
 
+  // ------------------------------------------------------------------
+  // Render
+  // ------------------------------------------------------------------
   return (
     <div className="w-full h-full relative">
       <div ref={mapContainer} className="w-full h-full" />
