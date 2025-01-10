@@ -96,22 +96,57 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
         }
     });
 
-    // Query the exact point using sourceFeatures
-    const features = map.current.querySourceFeatures('australia-roads', {
-        sourceLayer: 'roads',
-        filter: ['has', 'surface']  // Only get features that have surface data
+    // Debug state before query
+    console.log('Pre-query state:', {
+        zoom: map.current.getZoom(),
+        sourceLoaded: map.current.isSourceLoaded('australia-roads'),
+        point: [point.lon, point.lat],
+        layerVisible: map.current.getLayoutProperty('custom-roads', 'visibility')
     });
 
-    console.log('Features at point:', [point.lon, point.lat], features.map(f => ({
-        surface: f.properties?.surface
-    })));
+    // Try both query methods
+    const renderedFeatures = map.current.queryRenderedFeatures(
+        [point.lon, point.lat],
+        {
+            layers: ['custom-roads'],
+            validate: false
+        }
+    );
 
-    // If we found a feature with surface type
-    if (features.length > 0 && features[0].properties?.surface) {
-        const surfaceType = features[0].properties.surface.toLowerCase();
-        // Check explicitly for paved
-        if (surfaceType === 'paved' || surfaceType === 'asphalt' || surfaceType === 'concrete') {
-            return 'paved';
+    const sourceFeatures = map.current.querySourceFeatures('australia-roads', {
+        sourceLayer: 'lutruwita',
+        validate: false
+    });
+
+    // Log all found features
+    console.log('Query results:', {
+        renderedFeatures: {
+            count: renderedFeatures.length,
+            surfaces: renderedFeatures.map(f => f.properties?.surface)
+        },
+        sourceFeatures: {
+            count: sourceFeatures.length,
+            surfaces: sourceFeatures.map(f => f.properties?.surface)
+        }
+    });
+
+    // Check rendered features first
+    for (const feature of renderedFeatures) {
+        if (feature.properties?.surface) {
+            const surface = feature.properties.surface.toLowerCase();
+            if (['paved', 'asphalt', 'concrete'].includes(surface)) {
+                return 'paved';
+            }
+        }
+    }
+
+    // Then check source features
+    for (const feature of sourceFeatures) {
+        if (feature.properties?.surface) {
+            const surface = feature.properties.surface.toLowerCase();
+            if (['paved', 'asphalt', 'concrete'].includes(surface)) {
+                return 'paved';
+            }
         }
     }
 
