@@ -104,23 +104,31 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
     }
     const style = map.current.getStyle();
     if (!style) {
-      console.log('[debugRoadSource] No style loaded yet');
-      return;
+        console.log('[debugRoadSource] No style loaded yet');
+        return;
     }
-
+    
     const currentZoom = map.current.getZoom();
     const roadsSource = style.sources['australia-roads'];
-    console.log('[debugRoadSource] Current state:', {
-      zoom: currentZoom,
-      isZoom13: Math.abs(currentZoom - 13) < 0.1,
-      roadsSource
-    });
-
+    const allLayers = style.layers;
+    const customRoadLayer = allLayers.find(l => l.id === 'custom-roads');
     const rawSource = map.current.getSource('australia-roads') as any;
+    
+    console.log('[debugRoadSource] Layer state:', {
+        zoom: currentZoom,
+        isZoom13: Math.abs(currentZoom - 13) < 0.1,
+        hasRawSource: !!rawSource,
+        rawSourceType: rawSource ? rawSource.type : null,
+        totalLayers: allLayers.length,
+        customRoadLayer: !!customRoadLayer,
+        sourceLoaded: map.current.isSourceLoaded('australia-roads'),
+        tilesLoaded: map.current.areTilesLoaded()
+    });
+    
     if (rawSource && rawSource.vectorLayers) {
-      console.log('[debugRoadSource] vectorLayers:', rawSource.vectorLayers);
+        console.log('[debugRoadSource] vectorLayers:', rawSource.vectorLayers);
     } else {
-      console.warn('[debugRoadSource] No vectorLayers found. Current zoom:', currentZoom);
+        console.warn('[debugRoadSource] No vectorLayers found. Current zoom:', currentZoom);
     }
 
     // If we're not at zoom 13, force it
@@ -306,40 +314,41 @@ debugRoadSource();
 if (i % 100 === 0) {
   const pt = coords[i];
   await new Promise<void>((resolve) => {
-      const onSourceData = (e: any) => {
-          if (e.sourceId === 'australia-roads' && e.isSourceLoaded && e.tile) {
-              console.log('[assignSurfacesViaNearest] New tile loaded:', {
-                  coord: e.tile.tileID.canonical,
-                  hasData: e.tile.hasData
+      let attempts = 0;
+      const maxAttempts = 10;
+      
+      const checkTiles = () => {
+          const features = map.current?.querySourceFeatures('australia-roads', {
+              sourceLayer: 'lutruwita'
+          });
+          
+          if (features && features.length > 0) {
+              console.log('[assignSurfacesViaNearest] Features found after move:', {
+                  count: features.length,
+                  location: [pt.lat, pt.lon]
               });
-              if (e.tile.hasData) {
-                  map.current?.off('sourcedata', onSourceData);
-                  setTimeout(resolve, 200); // Extra 200ms to be safe
-              }
+              resolve();
+              return;
           }
+          
+          attempts++;
+          if (attempts >= maxAttempts) {
+              console.warn('[assignSurfacesViaNearest] Max attempts reached at location:', [pt.lat, pt.lon]);
+              resolve();
+              return;
+          }
+          
+          setTimeout(checkTiles, 300);
       };
-
-      map.current?.on('sourcedata', onSourceData);
+      
+      // Move the map
       map.current?.jumpTo({
           center: [pt.lon, pt.lat],
           zoom: 13
       });
-
-      // Failsafe timeout after 3 seconds
-      setTimeout(() => {
-          map.current?.off('sourcedata', onSourceData);
-          console.log('[assignSurfacesViaNearest] Tile load timeout - proceeding anyway');
-          resolve();
-      }, 3000);
-  });
-
-  // After tiles load, verify we have data
-  const features = map.current?.querySourceFeatures('australia-roads', {
-      sourceLayer: 'lutruwita'
-  });
-  console.log('[assignSurfacesViaNearest] After viewport change:', {
-      location: [pt.lat, pt.lon],
-      featureCount: features?.length || 0
+      
+      // Start checking
+      checkTiles();
   });
 }
       
