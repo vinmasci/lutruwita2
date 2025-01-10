@@ -292,7 +292,7 @@ console.log('Querying at point:', {
 
 // First try source features
 const sourceFeatures = map.current.querySourceFeatures('australia-roads', {
-  sourceLayer: 'roads',
+  sourceLayer: 'lutruwita',  // Updated to new source layer name
   filter: ['has', 'surface']
 });
 
@@ -329,9 +329,12 @@ if (features.length > 0) {
     const surface = features[0].properties.surface.toLowerCase();
     console.log('Surface value found:', surface);
     
-    if (surface === 'paved' || surface === 'asphalt' || surface === 'concrete') {
+    if (['paved', 'asphalt', 'concrete', 'compacted'].includes(surface)) {
       surfaceType = 'paved';
       console.log('Setting surface to paved');
+    } else if (['unpaved', 'gravel'].includes(surface)) {
+      surfaceType = 'unpaved';
+      console.log('Setting surface to unpaved');
     }
   } else {
     console.log('No surface property found on feature');
@@ -619,11 +622,20 @@ newMap.on('sourcedata', (e) => {
       });
 
       const features = newMap.querySourceFeatures('australia-roads', {
-        sourceLayer: 'lutruwita'  // Changed from 'roads'
+        sourceLayer: 'lutruwita'
       });
-
+      
+      // Get all unique surface values
+      const surfaceTypes = new Set();
+      features.forEach(f => {
+        if (f.properties?.surface) {
+          surfaceTypes.add(f.properties.surface);
+        }
+      });
+      
       console.log('Source features found:', {
         count: features.length,
+        uniqueSurfaces: Array.from(surfaceTypes),
         sample: features.slice(0, 2).map(f => ({
           surface: f.properties?.surface,
           geometry: f.geometry.type,
@@ -655,8 +667,8 @@ newMap.addLayer({
     'line-color': [
       'match',
       ['get', 'surface'],
-      'paved', '#4A90E2',
-      'unpaved', '#D35400',
+      ['paved', 'asphalt', 'concrete', 'compacted'], '#4A90E2',
+      ['unpaved', 'gravel'], '#D35400',
       '#888888'
     ],
     'line-width': 2
@@ -675,7 +687,7 @@ newMap.on('sourcedata', (e) => {
   if (e.sourceId === 'australia-roads' && e.isSourceLoaded) {
     // Debug what data is actually in the tiles
     const features = newMap.querySourceFeatures('australia-roads', {
-      sourceLayer: 'roads'
+      sourceLayer: 'lutruwita'  // Updated to new source layer name
     });
     
     console.log('Road source data loaded:', {
@@ -683,7 +695,9 @@ newMap.on('sourcedata', (e) => {
       sampleFeatures: features.slice(0, 3).map(f => ({
         surface: f.properties?.surface,
         properties: f.properties
-      }))
+      })),
+      bounds: map.current?.getBounds(),  // Added to debug query area
+      zoom: map.current?.getZoom()       // Added to debug zoom level
     });
   }
 });
