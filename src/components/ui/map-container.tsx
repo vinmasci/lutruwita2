@@ -73,9 +73,9 @@ const LoadingOverlay = ({
 const MapContainer = forwardRef<MapRef>((props, ref) => {
   const routeSourceId = 'route';
   const routeLayerId = 'route-layer';
-
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
+  const cachedRoadsRef = useRef<turf.FeatureCollection | null>(null);
 
   const [isMapReady, setIsMapReady] = React.useState(false);
   const [streetsLayersLoaded, setStreetsLayersLoaded] = React.useState(false);
@@ -108,38 +108,72 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       return;
     }
 
+    const currentZoom = map.current.getZoom();
     const roadsSource = style.sources['australia-roads'];
-    console.log('[debugRoadSource] roads source object:', roadsSource);
+    console.log('[debugRoadSource] Current state:', {
+      zoom: currentZoom,
+      isZoom13: Math.abs(currentZoom - 13) < 0.1,
+      roadsSource
+    });
 
     const rawSource = map.current.getSource('australia-roads') as any;
     if (rawSource && rawSource.vectorLayers) {
       console.log('[debugRoadSource] vectorLayers:', rawSource.vectorLayers);
     } else {
-      console.warn('[debugRoadSource] No vectorLayers found. Might not be loaded yet.');
+      console.warn('[debugRoadSource] No vectorLayers found. Current zoom:', currentZoom);
     }
-  }, []);
+
+    // If we're not at zoom 13, force it
+    if (Math.abs(currentZoom - 13) >= 0.1) {
+      console.log('[debugRoadSource] Forcing zoom to 13');
+      map.current.setZoom(13);
+    }
+}, []);
 
   // ------------------------------------------------------------------
   // getRoadsAtZoom13 => queries the "australia-roads" source features at zoom 13
   // ------------------------------------------------------------------
-  const getRoadsAtZoom13 = useCallback(() => {
+  const getRoadsAtZoom13 = useCallback(async () => {
     if (!map.current) {
       console.log('[getRoadsAtZoom13] No map instance');
       return turf.featureCollection([]);
     }
-    const z = map.current.getZoom();
-    console.log(`[getRoadsAtZoom13] Checking map zoom => ${z}`);
+
+    // Wait for tiles to load
+    await new Promise<void>((resolve) => {
+      const checkData = () => {
+        const features = map.current?.querySourceFeatures('australia-roads', {
+          sourceLayer: 'lutruwita'
+        });
+        
+        console.log('[getRoadsAtZoom13] Checking for data...', {
+          featureCount: features?.length || 0,
+          zoom: map.current?.getZoom()
+        });
+
+        if (features && features.length > 0) {
+          resolve();
+        } else {
+          setTimeout(checkData, 100);
+        }
+      };
+
+      checkData();
+    });
+
     const features = map.current.querySourceFeatures('australia-roads', {
       sourceLayer: 'lutruwita'
     });
+
     if (!features || features.length === 0) {
       console.warn('[getRoadsAtZoom13] No road features returned at z=13 (or near 13) ...');
       return turf.featureCollection([]);
     }
+
     const roads = features.map((f) => turf.feature(f.geometry, f.properties));
     console.log(`[getRoadsAtZoom13] Found ${roads.length} road features at z=13 query`);
     return turf.featureCollection(roads);
-  }, []);
+}, []);
 
   // ------------------------------------------------------------------
   // assignSurfacesViaNearest => forcibly jump map to bounding box center @ z=13,
@@ -175,20 +209,43 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
 
       // Force jump (no animation), so no waiting for moveend
       // The user can still zoom in/out afterward, because we do NOT enforce minZoom=13, maxZoom=13.
-      map.current.jumpTo({
-        center: [centerLon, centerLat],
-        zoom: 13
+// Move map and wait for tiles
+await new Promise<void>((resolve) => {
+  const onSourceData = (e: any) => {
+    if (e.sourceId === 'australia-roads' && e.isSourceLoaded && e.tile) {
+      console.log('[assignSurfacesViaNearest] Tile loaded:', {
+        coord: e.tile.tileID.canonical,
+        hasData: e.tile.hasData
       });
+      if (e.tile.hasData) {
+        map.current?.off('sourcedata', onSourceData);
+        setTimeout(resolve, 200); // Extra 200ms to be safe
+      }
+    }
+  };
 
-      // 3) Wait 500ms so the tile for z=13 definitely starts loading
-      console.log('[assignSurfacesViaNearest] Waiting 500ms for tiles to load...');
-      await new Promise<void>((resolve) => setTimeout(resolve, 500));
+  map.current?.on('sourcedata', onSourceData);
+  map.current?.jumpTo({
+    center: [centerLon, centerLat],
+    zoom: 13
+  });
+
+  // Failsafe timeout after 3 seconds
+  setTimeout(() => {
+    map.current?.off('sourcedata', onSourceData);
+    console.log('[assignSurfacesViaNearest] Failsafe timeout - proceeding anyway');
+    resolve();
+  }, 3000);
+});
+
+// Debug current state
+debugRoadSource();
 
       // 4) Debug the roads source
       debugRoadSource();
 
       // 5) Query all roads at z=13
-      const roadsFC = getRoadsAtZoom13();
+      const roadsFC = await getRoadsAtZoom13();
       if (!roadsFC || roadsFC.features.length === 0) {
         console.warn('[assignSurfacesViaNearest] No roads found at z=13, defaulting to unpaved.');
         return coords.map((c) => ({ ...c, surface: 'unpaved' }));
@@ -203,6 +260,18 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
 
       const results: Point[] = [];
       for (let i = 0; i < coords.length; i++) {
+        // Every 100 points, move the viewport
+        if (i % 100 === 0) {
+          const pt = coords[i];
+          map.current.jumpTo({
+            center: [pt.lon, pt.lat],
+            zoom: 13
+          });
+          // Wait for tiles to load
+          await new Promise<void>((resolve) => setTimeout(resolve, 500));
+          debugRoadSource();
+        }
+      
         const pt = coords[i];
         try {
           const pointGeo = turf.point([pt.lon, pt.lat]);
