@@ -291,9 +291,20 @@ for (let i = 0; i < coords.length; i++) {
         }
       );
 
-      const features = map.current?.queryRenderedFeatures(undefined, {
-        layers: ['custom-roads']
-      });
+// Convert point to pixel coordinates
+const pointPixel = map.current?.project([pt.lon, pt.lat]);
+if (!pointPixel) {
+  console.warn('Could not convert point to pixel coordinates');
+  return;
+}
+
+// Query in a small box around the point (10 pixels in each direction)
+const features = map.current?.queryRenderedFeatures([
+  [pointPixel.x - 10, pointPixel.y - 10],
+  [pointPixel.x + 10, pointPixel.y + 10]
+], {
+  layers: ['custom-roads']
+});
 
       console.log('[assignSurfacesViaNearest] Attempt vantage for point:', {
         index: i,
