@@ -577,8 +577,8 @@ console.log('Final surface type:', surfaceType);
     if (!gpxContent || typeof gpxContent !== 'string') {
       throw new Error('Invalid GPX content');
     }
-  
-    // Step 1: Parse GPX and get coordinates
+
+    // Step 1: Parse GPX file first
     const coordinates = await new Promise<Point[]>((resolve, reject) => {
       parseString(gpxContent, { explicitArray: false }, (err: Error | null, result: any) => {
         if (err) {
@@ -586,21 +586,21 @@ console.log('Final surface type:', surfaceType);
           reject(new Error('Failed to parse GPX file'));
           return;
         }
-  
+
         try {
           if (!result?.gpx) {
             throw new Error('Invalid GPX structure: missing root gpx element');
           }
-  
+
           const points = result.gpx?.rte?.rtept || result.gpx?.trk?.trkseg?.trkpt;
           
           if (!points) {
             throw new Error('Invalid GPX format: missing track points');
           }
-  
+
           const pointsArray = Array.isArray(points) ? points : [points];
           console.log('Points found:', pointsArray.length);
-  
+
           const coords = pointsArray
             .map((point: any) => {
               try {
@@ -626,7 +626,7 @@ console.log('Final surface type:', surfaceType);
               }
             })
             .filter((point: Point | null): point is Point => point !== null);
-  
+
           if (coords.length === 0) {
             throw new Error('No valid coordinates found in GPX file');
           }
@@ -638,7 +638,7 @@ console.log('Final surface type:', surfaceType);
       });
     });
 
-    // Step 2: Calculate bounds and prepare map view
+    // Step 2: Move map and ensure zoom is correct
     const bounds = coordinates.reduce(
       (acc, coord) => ({
         minLat: Math.min(acc.minLat, coord.lat),
@@ -649,67 +649,61 @@ console.log('Final surface type:', surfaceType);
       { minLat: 90, maxLat: -90, minLon: 180, maxLon: -180 }
     );
 
-// Step 3: Move map and wait for tiles to load
-await new Promise<void>((resolve) => {
-  let tilesChecked = false;
-  let checkInterval: NodeJS.Timeout;
-
-  const startFeatureCheck = () => {
-    console.log('Starting feature checks...');
-    checkInterval = setInterval(() => {
-      const features = map.current?.querySourceFeatures('australia-roads', {
-        sourceLayer: 'lutruwita'
-      });
-      
-      console.log('Checking tile data availability:', {
-        featureCount: features?.length,
-        zoom: map.current?.getZoom(),
-        tilesLoaded: map.current?.areTilesLoaded()
-      });
-
-      if (features && features.length > 0) {
-        console.log('Found features, proceeding');
-        tilesChecked = true;
-        clearInterval(checkInterval);
-        resolve();
-      }
-    }, 200);
-  };
-
-  // First fit bounds without zoom constraints
-  map.current?.fitBounds(
-    [[bounds.minLon, bounds.minLat], [bounds.maxLon, bounds.maxLat]],
-    { 
-      padding: 50,
-      duration: 0  // Immediate move
-    }
-  );
-
-  // After fitBounds completes, set zoom and start checking
-  map.current?.once('moveend', () => {
-    console.log('Initial bounds fit complete, setting zoom 13');
-    map.current?.setZoom(13);
+// Set zoom 13 first
+map.current.setZoom(13);
     
-    // Start feature check after zoom is set
-    map.current?.once('zoomend', () => {
-      console.log('Zoom 13 set, center:', map.current?.getCenter());
-      // Wait a moment for tiles to start loading
-      setTimeout(startFeatureCheck, 500);
+await new Promise<void>(resolve => {
+  map.current?.once('zoomend', () => {
+    // Now fit bounds while maintaining zoom 13
+    map.current?.fitBounds(
+      [[bounds.minLon, bounds.minLat], [bounds.maxLon, bounds.maxLat]],
+      { 
+        padding: 50, 
+        duration: 0,
+        maxZoom: 13,
+        minZoom: 13
+      }
+    );
+    
+    map.current?.once('moveend', () => {
+      console.log('Move complete at zoom:', map.current?.getZoom());
+      resolve();
     });
   });
-
-  // Safety timeout after 5 seconds
-  setTimeout(() => {
-    if (!tilesChecked) {
-      console.warn('Timeout waiting for tiles, proceeding anyway');
-      clearInterval(checkInterval);
-      resolve();
-    }
-  }, 5000);
 });
 
-    // Step 4: Now that tiles are loaded, add route to map
-    console.log('Tiles ready, drawing route...');
+    // Wait for tiles to load
+    await new Promise<void>(resolve => {
+      const checkTiles = () => {
+        const features = map.current?.querySourceFeatures('australia-roads', {
+          sourceLayer: 'lutruwita'
+        });
+        
+        console.log('Checking tiles:', {
+          zoom: map.current?.getZoom(),
+          features: features?.length || 0,
+          tilesLoaded: map.current?.areTilesLoaded()
+        });
+
+        if (features && features.length > 0) {
+          resolve();
+        } else {
+          setTimeout(checkTiles, 100);
+        }
+      };
+
+      // Start checking after a small delay
+      setTimeout(checkTiles, 500);
+
+      // Safety timeout
+      setTimeout(() => {
+        console.warn('Timeout waiting for tiles, proceeding anyway');
+        resolve();
+      }, 5000);
+    });
+
+    // Step 3: Now add route to map
+    console.log('Map ready, drawing route...');
     await addRouteToMap(coordinates);
 
   }, [addRouteToMap, isReady]);
