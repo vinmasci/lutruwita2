@@ -139,6 +139,12 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       return turf.featureCollection([]);
     }
 
+    // If we have cached roads, use them
+    if (cachedRoadsRef.current) {
+      console.log('[getRoadsAtZoom13] Using cached roads:', cachedRoadsRef.current.features.length);
+      return cachedRoadsRef.current;
+    }
+
     // Wait for tiles to load
     await new Promise<void>((resolve) => {
       const checkData = () => {
@@ -172,7 +178,12 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
 
     const roads = features.map((f) => turf.feature(f.geometry, f.properties));
     console.log(`[getRoadsAtZoom13] Found ${roads.length} road features at z=13 query`);
-    return turf.featureCollection(roads);
+    
+    // Cache the road features
+    const roadsFC = turf.featureCollection(roads);
+    cachedRoadsRef.current = roadsFC;
+
+    return roadsFC;
 }, []);
 
   // ------------------------------------------------------------------
