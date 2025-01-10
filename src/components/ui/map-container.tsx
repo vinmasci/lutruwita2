@@ -511,8 +511,8 @@ await addRouteToMap(coordinates);
           // Enable terrain
           newMap.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
           
-// Add our custom road tiles source
-const tileUrl = 'https://api.maptiler.com/tiles/7ed93f08-6f83-46f8-9319-96d8962f82bc/{z}/{x}/{y}.pbf?key=DFSAZFJXzvprKbxHrHXv';
+// Add our custom road tiles source with updated URL
+const tileUrl = 'https://api.maptiler.com/tiles/5dd3666f-1ce4-4df6-9146-eda62a200bcb/{z}/{x}/{y}.pbf?key=DFSAZFJXzvprKbxHrHXv';
 
 // Test a specific tile for Tasmania
 const testTileCoords = {
@@ -544,8 +544,8 @@ console.log('Adding source with URL:', tileUrl);
 const sourceConfig = {
   type: 'vector' as const,
   tiles: [tileUrl],
-  minzoom: 13,
-  maxzoom: 13
+  minzoom: 12,   // Changed from 13
+  maxzoom: 14    // Changed from 13
 };
 
 newMap.addSource('australia-roads', sourceConfig);
@@ -584,7 +584,7 @@ newMap.on('sourcedata', (e) => {
       });
 
       const features = newMap.querySourceFeatures('australia-roads', {
-        sourceLayer: 'roads'
+        sourceLayer: 'lutruwita'  // Changed from 'roads'
       });
 
       console.log('Source features found:', {
@@ -609,9 +609,9 @@ newMap.addLayer({
   id: 'custom-roads',
   type: 'line',
   source: 'australia-roads',
-  'source-layer': 'roads',  // Let's verify this is the correct source layer name
-  minzoom: 13,
-  maxzoom: 13,
+  'source-layer': 'lutruwita',  // Changed from 'roads'
+  minzoom: 12,  // Changed from 13
+  maxzoom: 14,  // Changed from 13
   layout: {
     visibility: 'visible'
   },
