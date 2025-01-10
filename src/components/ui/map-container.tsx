@@ -290,23 +290,93 @@ await new Promise<void>(resolve => {
         map.current.removeSource(routeSourceId);
       }
   
-      // Force zoom level 13
-      const currentZoom = map.current.getZoom();
-      if (currentZoom !== 13) {
-        map.current.setZoom(13);
-        await new Promise<void>(resolve => {
-          map.current?.once('moveend', () => resolve());
-        });
-      }
-  
-      // Wait for tiles to load
-      await new Promise<void>(resolve => {
-        if (map.current?.areTilesLoaded()) {
-          resolve();
-        } else {
-          map.current?.once('idle', () => resolve());
-        }
+// Force zoom level 13 and ensure all tiles are loaded
+await new Promise<void>(resolve => {
+  let tilesLoaded = false;
+  let sourceFullyLoaded = false;
+  let zoomCorrect = false;
+
+  const checkAllReady = () => {
+    if (tilesLoaded && sourceFullyLoaded && zoomCorrect) {
+      console.log('All conditions met:', {
+        tilesLoaded,
+        sourceFullyLoaded,
+        zoomCorrect,
+        currentZoom: map.current?.getZoom()
       });
+      resolve();
+    }
+  };
+
+  // Listen for source data and tile loading
+  const sourceDataHandler = (e: any) => {
+    if (e.sourceId === 'australia-roads') {
+      console.log('Source data update:', {
+        isSourceLoaded: e.isSourceLoaded,
+        dataType: e.dataType,
+        tileID: e.tile?.tileID,
+        hasData: e.tile?.hasData
+      });
+
+      // Only consider source loaded when we have actual tile data
+      if (e.isSourceLoaded && e.tile?.hasData) {
+        sourceFullyLoaded = true;
+        checkAllReady();
+      }
+    }
+  };
+
+  // Listen for overall tile loading state
+  const tileHandler = () => {
+    if (map.current?.areTilesLoaded()) {
+      console.log('All tiles loaded');
+      tilesLoaded = true;
+      checkAllReady();
+    }
+  };
+
+  // Handle zoom level
+  const handleZoom = () => {
+    const currentZoom = map.current?.getZoom();
+    console.log('Zoom changed:', currentZoom);
+    if (currentZoom === 13) {
+      zoomCorrect = true;
+      checkAllReady();
+    }
+  };
+
+  // Set up event listeners
+  map.current?.on('sourcedata', sourceDataHandler);
+  map.current?.on('data', tileHandler);
+
+  // Handle zoom
+  const currentZoom = map.current?.getZoom();
+  if (currentZoom !== 13) {
+    map.current?.setZoom(13);
+    map.current?.once('zoomend', handleZoom);
+  } else {
+    zoomCorrect = true;
+    checkAllReady();
+  }
+
+  // Check initial state
+  if (map.current?.areTilesLoaded()) {
+    tilesLoaded = true;
+  }
+  
+  // Clean up event listeners
+  return () => {
+    map.current?.off('sourcedata', sourceDataHandler);
+    map.current?.off('data', tileHandler);
+  };
+});
+
+// Additional safety check after promise resolves
+console.log('Ready check complete:', {
+  zoom: map.current?.getZoom(),
+  tilesLoaded: map.current?.areTilesLoaded(),
+  sourceLoaded: map.current?.isSourceLoaded('australia-roads')
+});
   
       let segments: { points: Point[], surface: 'paved' | 'unpaved' }[] = [];
       let currentSegment: Point[] = [];
