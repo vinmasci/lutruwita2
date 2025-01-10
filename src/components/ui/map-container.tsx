@@ -145,27 +145,58 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       return cachedRoadsRef.current;
     }
 
-    // Wait for tiles to load
-    await new Promise<void>((resolve) => {
-      const checkData = () => {
-        const features = map.current?.querySourceFeatures('australia-roads', {
-          sourceLayer: 'lutruwita'
-        });
-        
-        console.log('[getRoadsAtZoom13] Checking for data...', {
-          featureCount: features?.length || 0,
-          zoom: map.current?.getZoom()
-        });
-
-        if (features && features.length > 0) {
-          resolve();
-        } else {
-          setTimeout(checkData, 100);
-        }
-      };
-
-      checkData();
+// Wait for tiles to load
+await new Promise<void>((resolve) => {
+  const checkData = () => {
+    const style = map.current?.getStyle();
+    const source = style?.sources['australia-roads'];
+    const layer = style?.layers.find(l => l.id === 'custom-roads');
+    const features = map.current?.querySourceFeatures('australia-roads', {
+      sourceLayer: 'lutruwita'
     });
+    
+    console.log('[getRoadsAtZoom13] Detailed state:', {
+      featureCount: features?.length || 0,
+      zoom: map.current?.getZoom(),
+      sourceExists: !!source,
+      layerExists: !!layer,
+      sourceState: map.current?.isSourceLoaded('australia-roads'),
+      tileState: map.current?.areTilesLoaded()
+    });
+
+    // Try both querySourceFeatures and queryRenderedFeatures
+    const renderedFeatures = map.current?.queryRenderedFeatures(undefined, {
+      layers: ['custom-roads']
+    });
+    
+    console.log('[getRoadsAtZoom13] Rendered features:', {
+      count: renderedFeatures?.length || 0,
+      firstFeature: renderedFeatures?.[0]
+    });
+
+    if (features && features.length > 0) {
+      resolve();
+    } else {
+      // Add event listeners for one cycle to catch any relevant events
+      const onSourceData = (e: any) => {
+        console.log('[getRoadsAtZoom13] sourcedata event:', {
+          sourceId: e.sourceId,
+          sourceDataType: e.sourceDataType,
+          tile: e.tile ? {
+            hasData: e.tile.hasData,
+            tileID: e.tile.tileID
+          } : null
+        });
+        map.current?.off('sourcedata', onSourceData);
+      };
+      
+      map.current?.on('sourcedata', onSourceData);
+      setTimeout(checkData, 100);
+    }
+  };
+
+  checkData();
+});
 
     const features = map.current.querySourceFeatures('australia-roads', {
       sourceLayer: 'lutruwita'
@@ -271,17 +302,46 @@ debugRoadSource();
 
       const results: Point[] = [];
       for (let i = 0; i < coords.length; i++) {
-        // Every 100 points, move the viewport
-        if (i % 100 === 0) {
-          const pt = coords[i];
-          map.current.jumpTo({
-            center: [pt.lon, pt.lat],
-            zoom: 13
-          });
-          // Wait for tiles to load
-          await new Promise<void>((resolve) => setTimeout(resolve, 500));
-          debugRoadSource();
-        }
+// Every 100 points, move the viewport and wait for tiles
+if (i % 100 === 0) {
+  const pt = coords[i];
+  await new Promise<void>((resolve) => {
+      const onSourceData = (e: any) => {
+          if (e.sourceId === 'australia-roads' && e.isSourceLoaded && e.tile) {
+              console.log('[assignSurfacesViaNearest] New tile loaded:', {
+                  coord: e.tile.tileID.canonical,
+                  hasData: e.tile.hasData
+              });
+              if (e.tile.hasData) {
+                  map.current?.off('sourcedata', onSourceData);
+                  setTimeout(resolve, 200); // Extra 200ms to be safe
+              }
+          }
+      };
+
+      map.current?.on('sourcedata', onSourceData);
+      map.current?.jumpTo({
+          center: [pt.lon, pt.lat],
+          zoom: 13
+      });
+
+      // Failsafe timeout after 3 seconds
+      setTimeout(() => {
+          map.current?.off('sourcedata', onSourceData);
+          console.log('[assignSurfacesViaNearest] Tile load timeout - proceeding anyway');
+          resolve();
+      }, 3000);
+  });
+
+  // After tiles load, verify we have data
+  const features = map.current?.querySourceFeatures('australia-roads', {
+      sourceLayer: 'lutruwita'
+  });
+  console.log('[assignSurfacesViaNearest] After viewport change:', {
+      location: [pt.lat, pt.lon],
+      featureCount: features?.length || 0
+  });
+}
       
         const pt = coords[i];
         try {
