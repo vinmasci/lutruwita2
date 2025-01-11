@@ -23,37 +23,65 @@ import { createRoot } from 'react-dom/client';
 // Type definitions for the component
 // --------------------------------------------
 interface MapRef {
-  // Methods exposed to parent components
-  handleGpxUpload: (content: string) => Promise<void>;  // Main GPX processing function
-  isReady: () => boolean;                               // Map readiness check
-  on: (event: string, callback: (event: any) => void) => void;    // Event listener binding
-  off: (event: string, callback: (event: any) => void) => void;   // Event listener removal
+  handleGpxUpload: (content: string) => Promise<void>;
+  isReady: () => boolean;
+  on: (event: string, callback: (event: any) => void) => void;
+  off: (event: string, callback: (event: any) => void) => void;
 }
 
 interface Point {
-  // Definition of a geographic point with surface type
   lat: number;
   lon: number;
   surface?: 'paved' | 'unpaved';
 }
 
-interface SurfaceProgressState {
-  // State tracking for surface detection progress
+interface ProcessingState {
   isProcessing: boolean;
   progress: number;
   total: number;
+  stage: 'parsing' | 'matching' | 'drawing';
+  message: string;
+}
+
+interface MatchingResponse {
+  code: string;
+  matched_points: Array<{
+    coordinates: [number, number];
+    distance: number;
+  }>;
+  tracepoints: Array<{
+    waypoint_index: number;
+    location: [number, number];
+    name?: string;
+  }>;
+  matchings: Array<{
+    confidence: number;
+    geometry: {
+      coordinates: Array<[number, number]>;
+      type: 'LineString';
+    };
+    legs: Array<{
+      summary: string;
+      steps: Array<any>;
+      distance: number;
+      duration: number;
+    }>;
+  }>;
 }
 
 // --------------------------------------------
-// Loading Overlay UI Component
-// Shows progress during GPX processing
+// Loading Overlay UI Component - Updated for multiple stages
 // --------------------------------------------
 const LoadingOverlay = ({
   progress,
-  total
+  total,
+  stage,
+  message
 }: {
   progress: number;
   total: number;
+  stage: 'parsing' | 'matching' | 'drawing';
+  message: string;
 }) => (
   <Box
     sx={{
@@ -72,7 +100,12 @@ const LoadingOverlay = ({
   >
     <CircularProgress size={60} sx={{ mb: 2 }} />
     <Typography variant="h6" color="white" gutterBottom>
-      Processing GPX file...
+      {stage === 'parsing' && 'Processing GPX file...'}
+      {stage === 'matching' && 'Matching route to roads...'}
+      {stage === 'drawing' && 'Drawing route...'}
+    </Typography>
+    <Typography color="white" gutterBottom>
+      {message}
     </Typography>
     <Typography color="white">
       {progress} of {total} points processed
@@ -82,7 +115,6 @@ const LoadingOverlay = ({
 
 // --------------------------------------------
 // Surface Type Classification Arrays
-// Used to categorize different road surface types
 // --------------------------------------------
 const PAVED_SURFACES = [
   'paved', 'asphalt', 'concrete', 'compacted',
@@ -94,13 +126,15 @@ const UNPAVED_SURFACES = [
   'dirt', 'earth'
 ];
 
+// --------------------------------------------
+// Helper Functions
+// --------------------------------------------
 const getDistancePoints = (
   map: mapboxgl.Map,
   lineString: Feature<LineString>,
   totalLength: number
 ) => {
   const zoom = map.getZoom();
-  // Set interval based on zoom level
   let interval = 25; // Default to 25km for zoomed out
   if (zoom >= 14) interval = 5;        // Very close zoom
   else if (zoom >= 12) interval = 10;  // Medium zoom
@@ -135,491 +169,303 @@ const getDistancePoints = (
   return points;
 };
 
+// Queue system for parallel processing
+class RequestQueue {
+  private queue: (() => Promise<any>)[] = [];
+  private running = 0;
+  private maxConcurrent: number;
+
+  constructor(maxConcurrent = 3) {
+    this.maxConcurrent = maxConcurrent;
+  }
+
+  async add(request: () => Promise<any>): Promise<any> {
+    this.queue.push(request);
+    return this.process();
+  }
+
+  private async process(): Promise<any> {
+    if (this.running >= this.maxConcurrent || this.queue.length === 0) {
+      return;
+    }
+
+    this.running++;
+    const request = this.queue.shift();
+    
+    try {
+      const result = await request!();
+      return result;
+    } finally {
+      this.running--;
+      this.process();
+    }
+  }
+}
+
 // --------------------------------------------
 // Main MapContainer Component
-// Handles all map rendering and GPX processing
 // --------------------------------------------
 const MapContainer = forwardRef<MapRef>((props, ref) => {
-  // Constants for identifying map layers
   const routeSourceId = 'route';
   const routeLayerId = 'route-layer';
+  
+  const mapContainer = useRef<HTMLDivElement>(null);
+  const map = useRef<mapboxgl.Map | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const requestQueue = useRef<RequestQueue>(new RequestQueue(3));
 
-  // Core references
-  const mapContainer = useRef<HTMLDivElement>(null);         // DOM element for map
-  const map = useRef<mapboxgl.Map | null>(null);            // Mapbox instance
-  const cachedRoadsRef = useRef<FeatureCollection | null>(null);  // Temporary road data cache
-
-  // State management
   const [isMapReady, setIsMapReady] = React.useState(false);
-  const [streetsLayersLoaded, setStreetsLayersLoaded] = React.useState(false);
-  const [isUploading, setIsUploading] = React.useState(false);
-  const [surfaceProgress, setSurfaceProgress] = React.useState<SurfaceProgressState>({
+  const [processing, setProcessing] = React.useState<ProcessingState>({
     isProcessing: false,
     progress: 0,
-    total: 0
+    total: 0,
+    stage: 'parsing',
+    message: ''
   });
 
-  // ------------------------------------------------------------------
-  // isReady => Checks if map and all layers are fully loaded
-  // Used to ensure map is ready before processing GPX data
-  // ------------------------------------------------------------------
+  // Check if map is ready
   const isReady = useCallback((): boolean => {
-    const ready = Boolean(map.current) && isMapReady && streetsLayersLoaded;
-    console.log('[isReady] Map check =>', { ready, isMapReady, streetsLayersLoaded });
+    const ready = Boolean(map.current) && isMapReady;
+    console.log('[isReady] Map check =>', { ready, isMapReady });
     return ready;
-  }, [isMapReady, streetsLayersLoaded]);
+  }, [isMapReady]);
 
-  // ------------------------------------------------------------------
-  // addRouteToMap => Takes processed points and renders route on map
-  // - Splits route into segments based on surface type
-  // - Creates different styles for paved/unpaved sections
-  // - Handles map layer management
-  // ------------------------------------------------------------------
+  // Match route segment using Mapbox API
+  const matchRouteSegment = async (points: Point[]): Promise<MatchingResponse> => {
+    const coordinates = points.map(p => `${p.lon},${p.lat}`).join(';');
+    const url = `https://api.mapbox.com/matching/v5/mapbox/driving/${coordinates}?access_token=${mapboxgl.accessToken}&tidy=true&geometries=geojson&radiuses=${Array(points.length).fill(25).join(';')}`;
+
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Map matching failed: ${response.statusText}`);
+    }
+    return response.json();
+  };
+
+  // Process route segments in parallel
+  const processRouteSegments = async (coords: Point[]) => {
+    const segments: Point[][] = [];
+    for (let i = 0; i < coords.length; i += 100) {
+      segments.push(coords.slice(i, i + 100));
+    }
+
+    setProcessing(prev => ({
+      ...prev,
+      stage: 'matching',
+      message: 'Matching route segments to roads...',
+      total: segments.length,
+      progress: 0
+    }));
+
+    const matchedSegments: MatchingResponse[] = [];
+    
+    for (let i = 0; i < segments.length; i++) {
+      try {
+        const result = await requestQueue.current.add(() => 
+          matchRouteSegment(segments[i])
+        );
+        matchedSegments.push(result);
+        
+        setProcessing(prev => ({
+          ...prev,
+          progress: i + 1
+        }));
+      } catch (error) {
+        console.error('Error matching segment:', error);
+        // Fall back to original points if matching fails
+        const fallbackResponse: MatchingResponse = {
+          code: 'NoMatch',
+          matched_points: segments[i].map(p => ({
+            coordinates: [p.lon, p.lat],
+            distance: 0
+          })),
+          tracepoints: segments[i].map((p, idx) => ({
+            waypoint_index: idx,
+            location: [p.lon, p.lat]
+          })),
+          matchings: [{
+            confidence: 0,
+            geometry: {
+              type: 'LineString',
+              coordinates: segments[i].map(p => [p.lon, p.lat])
+            },
+            legs: [{
+              summary: 'fallback',
+              steps: [],
+              distance: 0,
+              duration: 0
+            }]
+          }]
+        };
+        matchedSegments.push(fallbackResponse);
+      }
+    }
+
+    return matchedSegments;
+  };
+
+  // Add route to map with animation
   const addRouteToMap = useCallback(
-    (coordinates: Point[]) => {
+    (matchedSegments: MatchingResponse[]) => {
       if (!map.current || !isReady()) {
-        console.error('[addRouteToMap] Map not ready, cannot add route');
+        console.error('[addRouteToMap] Map not ready');
         return;
       }
 
-      // Split route into segments based on surface changes
-      console.log('[addRouteToMap] Splitting route into segments by surface...');
-      let segments: { points: Point[]; surface: 'paved' | 'unpaved' }[] = [];
-      let currentSegment: Point[] = [];
-      let currentSurface: 'paved' | 'unpaved' = coordinates[0]?.surface || 'unpaved';
+      // Combine all matched coordinates
+      const allCoordinates = matchedSegments.flatMap(segment => 
+        segment.matchings[0].geometry.coordinates
+      );
 
-      // Process each point to build segments
-      for (let i = 0; i < coordinates.length; i++) {
-        const c = coordinates[i];
-        // Start new segment if surface type changes
-        if (c.surface !== currentSurface && currentSegment.length > 0) {
-          segments.push({
-            points: [...currentSegment],
-            surface: currentSurface
-          });
-          currentSegment = [c];
-          currentSurface = c.surface || 'unpaved';
-        } else {
-          currentSegment.push(c);
-        }
-        // Handle last point
-        if (i === coordinates.length - 1) {
-          segments.push({
-            points: [...currentSegment],
-            surface: currentSurface
-          });
-        }
-      }
-
-      console.log('[addRouteToMap] Created', segments.length, 'segments total.');
-
-      // Clean up any existing route layers
+      // Clean up existing layers
       if (map.current.getSource(routeSourceId)) {
+        if (map.current.getLayer(routeLayerId + '-white-stroke')) {
+          map.current.removeLayer(routeLayerId + '-white-stroke');
+        }
         if (map.current.getLayer(routeLayerId)) {
           map.current.removeLayer(routeLayerId);
+        }
+        if (map.current.getLayer(routeLayerId + '-unpaved')) {
+          map.current.removeLayer(routeLayerId + '-unpaved');
         }
         map.current.removeSource(routeSourceId);
       }
 
-      // Create GeoJSON feature collection from segments
-      const featureColl: FeatureCollection = {
-        type: 'FeatureCollection',
-        features: segments.map((seg, idx) => ({
-          type: 'Feature',
-          properties: {
-            surface: seg.surface,
-            segmentIndex: idx
-          },
-          geometry: {
-            type: 'LineString',
-            coordinates: seg.points.map((p) => [p.lon, p.lat])
-          }
-        }))
-      } as FeatureCollection;
-
-      // Add source data to map
+      // Add source
       map.current.addSource(routeSourceId, {
         type: 'geojson',
-        data: featureColl
+        data: {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'LineString',
+            coordinates: allCoordinates
+          }
+        }
       });
 
-// Add white stroke base layer
-map.current.addLayer({
-  id: routeLayerId + '-white-stroke',
-  type: 'line',
-  source: routeSourceId,
-  layout: {
-    'line-join': 'round',
-    'line-cap': 'round'
-  },
-  paint: {
-    'line-color': '#FFFFFF',
-    'line-width': 5
-  }
-});
+      // Add white stroke base layer
+      map.current.addLayer({
+        id: routeLayerId + '-white-stroke',
+        type: 'line',
+        source: routeSourceId,
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round',
+        },
+        paint: {
+          'line-color': '#FFFFFF',
+          'line-width': 5,
+          'line-dasharray': [1, 0]
+        }
+      });
 
-// Add base layer - solid lines for paved segments
-map.current.addLayer({
-  id: routeLayerId,
-  type: 'line',
-  source: routeSourceId,
-  layout: {
-    'line-join': 'round',
-    'line-cap': 'round'
-  },
-  paint: {
-    'line-color': '#e17055',
-    'line-width': 3,
-    'line-opacity': [
-      'case',
-      ['==', ['get', 'surface'], 'paved'],
-      1,
-      0
-    ]
-  }
-});
+      // Add main route layer
+      map.current.addLayer({
+        id: routeLayerId,
+        type: 'line',
+        source: routeSourceId,
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round'
+        },
+        paint: {
+          'line-color': '#e17055',
+          'line-width': 3,
+          'line-dasharray': [1, 0]
+        }
+      });
 
-// Add dashed lines for unpaved segments
-map.current.addLayer({
-  id: routeLayerId + '-unpaved',
-  type: 'line',
-  source: routeSourceId,
-  layout: {
-    'line-join': 'round',
-    'line-cap': 'round'
-  },
-  paint: {
-    'line-color': '#e17055',
-    'line-width': 3,
-    'line-opacity': [
-      'case',
-      ['==', ['get', 'surface'], 'unpaved'],
-      1,
-      0
-    ],
-    'line-dasharray': [0.5, 1.5]
-  }
-});
+      // Start animation
+      let progress = 0;
+      const animateRoute = () => {
+        progress += 0.005;
+        
+        map.current?.setPaintProperty(
+          routeLayerId + '-white-stroke',
+          'line-dasharray',
+          [1, progress, 0, 0]
+        );
+        
+        map.current?.setPaintProperty(
+          routeLayerId,
+          'line-dasharray',
+          [1, progress, 0, 0]
+        );
 
-// Calculate combined line for distance markers
-const combinedLine = turf.lineString(
-  featureColl.features.reduce((coords: number[][], feature) => {
-    if (feature.geometry.type === 'LineString') {
-      return [...coords, ...feature.geometry.coordinates];
-    }
-    return coords;
-  }, [])
-);
+        if (progress < 2) {
+          animationFrameRef.current = requestAnimationFrame(animateRoute);
+        } else {
+          // Animation complete
+          setProcessing(prev => ({
+            ...prev,
+            isProcessing: false
+          }));
 
-// Calculate total length in kilometers
-const totalLength = turf.length(combinedLine, { units: 'kilometers' });
+          // Add distance markers
+          const lineString = turf.lineString(allCoordinates);
+          const totalLength = turf.length(lineString, { units: 'kilometers' });
+          const distancePoints = getDistancePoints(map.current!, lineString, totalLength);
 
-// Get distance points based on zoom level
-const distancePoints = getDistancePoints(map.current, combinedLine, totalLength);
+          distancePoints.forEach(({ point, distance }) => {
+            const el = document.createElement('div');
+            const root = createRoot(el);
+            root.render(
+              <DistanceMarker 
+                distance={distance} 
+                totalDistance={totalLength} 
+              />
+            );
 
-// Add markers for each distance point
-distancePoints.forEach(({ point, distance }) => {
-  const el = document.createElement('div');
-  const root = createRoot(el);
-  root.render(<DistanceMarker distance={distance} totalDistance={totalLength} />);
+            new mapboxgl.Marker({
+              element: el,
+              anchor: 'center',
+              scale: 0.25
+            })
+              .setLngLat(point.geometry.coordinates)
+              .addTo(map.current!);
+          });
+        }
+      };
 
-  new mapboxgl.Marker({
-    element: el,
-    anchor: 'center',
-    scale: 0.25  // Make markers 4x smaller
-  })
-    .setLngLat(point.geometry.coordinates)
-    .addTo(map.current);
-});
-
-console.log('[addRouteToMap] -> route layers and distance markers added.');
+      animationFrameRef.current = requestAnimationFrame(animateRoute);
     },
     [isReady]
   );
 
-  // ------------------------------------------------------------------
-  // assignSurfacesViaNearest => Core surface detection function
-  // Process:
-  // 1. Takes GPX points in chunks of 5
-  // 2. For each chunk:
-  //    - Moves map to first point's location
-  //    - Loads road data for that area
-  //    - Finds nearest road for each point
-  //    - Assigns surface type based on road properties
-  // 3. Updates progress as it goes
-  // ------------------------------------------------------------------
-  const assignSurfacesViaNearest = useCallback(
-    async (coords: Point[]) => {
-      if (!map.current) {
-        console.log('[assignSurfacesViaNearest] No map.current, returning coords unmodified');
-        return coords;
-      }
-
-      // Initialize progress tracking
-      setSurfaceProgress({
-        isProcessing: true,
-        progress: 0,
-        total: coords.length
-      });
-
-      const results: Point[] = [];
-
-      // Process points in chunks of 5 to avoid stale data
-// Process one point at a time
-for (let i = 0; i < coords.length; i++) {
-  const pt = coords[i];
-
-  await new Promise<void>((resolve) => {
-    let attempts = 0;
-    const maxAttempts = 10;
-
-    const checkTiles = () => {
-      // bounding box ~0.001 deg => ~100m in each direction
-      const bbox = [
-        pt.lon - 0.001, 
-        pt.lat - 0.001,
-        pt.lon + 0.001,
-        pt.lat + 0.001
-      ];
-
-      map.current?.fitBounds(
-        [[bbox[0], bbox[1]], [bbox[2], bbox[3]]],
-        {
-          padding: 50,
-          duration: 0,
-          maxZoom: 14,  // Allow zooming in one more level at tricky spots
-          minZoom: 12   // Allow zooming out if needed
-        }
-      );
-
-// Convert point to pixel coordinates
-const pointPixel = map.current?.project([pt.lon, pt.lat]);
-if (!pointPixel) {
-  console.warn('Could not convert point to pixel coordinates');
-  return;
-}
-
-// First, do a wide scan to detect junction areas, but only for major roads
-const wideAreaCheck = map.current?.queryRenderedFeatures([
-  [pointPixel.x - 50, pointPixel.y - 50],
-  [pointPixel.x + 50, pointPixel.y + 50]
-], {
-  layers: ['custom-roads'],
-  filter: ['in', 'highway', 'trunk', 'primary', 'secondary', 'residential']  // Only get major roads
-});
-
-// Analyze the road features to detect junction characteristics
-const isComplexJunction = wideAreaCheck && wideAreaCheck.length > 1;
-let queryBox = 10; // default for regular road segments
-
-if (isComplexJunction) {
-  // Count unique road names/refs to better identify true junctions
-  const uniqueRoads = new Set(
-    wideAreaCheck
-      .map(f => f.properties?.name || f.properties?.ref)
-      .filter(Boolean)
-  );
-  
-  // Adjust query box based on junction complexity
-  if (uniqueRoads.size > 1) {
-    queryBox = 30; // Major junction (different named roads)
-  } else if (wideAreaCheck.length > 2) {
-    queryBox = 20; // Minor junction or approach area
-  }
-}
-
-// Use features array to store all found features
-let features = map.current?.queryRenderedFeatures([
-  [pointPixel.x - queryBox, pointPixel.y - queryBox],
-  [pointPixel.x + queryBox, pointPixel.y + queryBox]
-], {
-  layers: ['custom-roads']
-}) || [];
-
-// If still no features found at a junction, try a circular pattern
-if (isComplexJunction && features.length === 0) {
-  // Try querying in a circular pattern around the point
-  for (let angle = 0; angle < 360; angle += 45) {
-    const radian = (angle * Math.PI) / 180;
-    const offsetX = Math.cos(radian) * 40;
-    const offsetY = Math.sin(radian) * 40;
-    
-    const radialFeatures = map.current?.queryRenderedFeatures([
-      [pointPixel.x + offsetX - 10, pointPixel.y + offsetY - 10],
-      [pointPixel.x + offsetX + 10, pointPixel.y + offsetY + 10]
-    ], {
-      layers: ['custom-roads']
-    });
-    
-    if (radialFeatures && radialFeatures.length > 0) {
-      features = features.concat(radialFeatures);
-      break;
-    }
-  }
-}
-
-// After all queries (including circular pattern) are complete
-if (features && features.length > 0) {
-  // Ensure all features are unique by creating a map keyed by feature geometry
-  const uniqueFeaturesMap = new Map();
-  features.forEach(f => {
-    const key = JSON.stringify(f.geometry.coordinates);
-    uniqueFeaturesMap.set(key, f);
-  });
-  
-  const uniqueFeatures = Array.from(uniqueFeaturesMap.values());
-  
-  cachedRoadsRef.current = turf.featureCollection(
-    uniqueFeatures.map((f) => turf.feature(f.geometry, f.properties))
-  );
-  
-
-  resolve();
-  return;
-}
-
-      attempts++;
-      if (attempts >= maxAttempts) {
-        console.warn('[assignSurfacesViaNearest] Max attempts reached => no roads found for point:', i);
-        cachedRoadsRef.current = null;
-        resolve();
-        return;
-      }
-
-      setTimeout(checkTiles, 400);
-    };
-
-    checkTiles();
-  });
-
-  // Process the single point
-  const vantageRoads = cachedRoadsRef.current;
-  let bestSurface: 'paved' | 'unpaved' = 'unpaved';
-  let minDist = Infinity;
-      // Create properly typed point feature using turf helper
-      const pointFeature = turf.point([pt.lon, pt.lat]);
-
-  if (i % 100 === 0) {
-    console.log(
-      `[assignSurfacesViaNearest] Processing point #${i}, coords=(${pt.lat}, ${pt.lon})`
-    );
-  }
-
-  // If vantageRoads is empty, default to unpaved
-  if (!vantageRoads || vantageRoads.features.length === 0) {
-    results.push({ ...pt, surface: 'unpaved' });
-  } else {
-// Evaluate each road
-for (const road of vantageRoads.features) {
-  
-  if (
-    road.geometry.type !== 'LineString' &&
-    road.geometry.type !== 'MultiLineString'
-  ) {
-    continue;
-  }
-      
-      // Create properly typed road feature
-      const roadFeature: Feature<LineString | MultiLineString> = {
-        type: 'Feature',
-        geometry: road.geometry,
-        properties: road.properties
-      };
-      // Ensure coordinates are properly typed as number[][]
-      const lineCoords = road.geometry.type === 'LineString' 
-        ? road.geometry.coordinates as number[][]
-        : road.geometry.coordinates[0] as number[][];
-      
-      // Create properly typed features using turf helpers
-      const lineFeature = turf.lineString(lineCoords, road.properties);
-      const pointFeature = turf.point([pt.lon, pt.lat]);
-      
-      const snap = nearestPointOnLine(lineFeature, pointFeature);
-      const dist = snap.properties.dist; // in km
-// Add a small threshold to prefer staying on main roads
-const DISTANCE_THRESHOLD = 0.001; // 1 meter buffer
-
-if (dist < minDist - DISTANCE_THRESHOLD || 
-   (road.properties?.highway === 'trunk' && dist < minDist + DISTANCE_THRESHOLD)) {
-  minDist = dist;
-  const sRaw = (road.properties?.surface || '').toLowerCase();
-  if (PAVED_SURFACES.includes(sRaw)) {
-    bestSurface = 'paved';
-  } else if (UNPAVED_SURFACES.includes(sRaw)) {
-    bestSurface = 'unpaved';
-  } else {
-    bestSurface = 'unpaved'; // fallback
-  }
-}
-    }
-    results.push({ ...pt, surface: bestSurface });
-  }
-
-  setSurfaceProgress((prev) => ({
-    ...prev,
-    progress: i + 1
-  }));
-
-  // Clear roads cache after each point
-  cachedRoadsRef.current = null;
-}
-
-      // Finalize processing
-      setSurfaceProgress((prev) => ({
-        ...prev,
-        isProcessing: false
-      }));
-      console.log('[assignSurfacesViaNearest] => Finished loop. Returning coords...');
-      return results;
-    },
-    []
-  );
-
-  // ------------------------------------------------------------------
-  // handleGpxUpload => Main entry point for GPX processing
-  // Process:
-  // 1. Validates input and map readiness
-  // 2. Parses GPX file into coordinate points
-  // 3. Processes points to detect surface types
-  // 4. Renders final route on map
-  // ------------------------------------------------------------------
+  // Handle GPX upload
   const handleGpxUpload = useCallback(
     async (gpxContent: string) => {
-      console.log('[handleGpxUpload] Checking if map is ready...');
       if (!map.current || !isReady()) {
-        console.warn('[handleGpxUpload] Map not ready, aborting GPX upload');
-        throw new Error('Map not ready. Try again later.');
-      }
-      if (!gpxContent || typeof gpxContent !== 'string') {
-        throw new Error('Invalid GPX content');
+        throw new Error('Map not ready');
       }
 
-      // Parse GPX file
-      console.log('[handleGpxUpload] Parsing GPX...');
+      setProcessing({
+        isProcessing: true,
+        progress: 0,
+        total: 0,
+        stage: 'parsing',
+        message: 'Reading GPX file...'
+      });
+
+      // Parse GPX
       const rawCoords = await new Promise<Point[]>((resolve, reject) => {
-        parseString(gpxContent, { explicitArray: false }, (err: Error | null, result: any) => {
+        parseString(gpxContent, { explicitArray: false }, (err, result) => {
           if (err) {
-            // If XML parsing fails, reject with error
-            console.error('[handleGpxUpload] parseString error:', err);
             reject(new Error('Failed to parse GPX file'));
             return;
           }
           try {
-            // Check for required GPX root element
             if (!result?.gpx) {
-              throw new Error('Invalid GPX structure: missing root gpx element');
+              throw new Error('Invalid GPX structure');
             }
-            // Try to get points from either route (rte/rtept) or track (trk/trkseg/trkpt)
+            
             const points = result.gpx?.rte?.rtept || result.gpx?.trk?.trkseg?.trkpt;
             if (!points) {
-              throw new Error('Invalid GPX format: missing track points');
+              throw new Error('No track points found');
             }
 
-            // Handle both single point and array of points
             const arr = Array.isArray(points) ? points : [points];
-            console.log('[handleGpxUpload] Points found:', arr.length);
-
-            // Transform each point to our internal format
             const coords = arr
               .map((pt: any) => {
                 try {
@@ -641,248 +487,196 @@ if (dist < minDist - DISTANCE_THRESHOLD ||
               })
               // Remove any invalid points that returned null
               .filter((x: Point | null): x is Point => x !== null);
-
+            
             if (coords.length === 0) {
               throw new Error('No valid coordinates found in GPX');
             }
             resolve(coords);
-          } catch (err2) {
-            reject(err2);
-          }
-        });
-      });
-
-      console.log('[handleGpxUpload] => Starting nearest-line logic for', rawCoords.length, 'pts');
-      // Clear any leftover roads from previous operations
-      cachedRoadsRef.current = null;
-
-// Process all points to detect surface types
-const finalCoords = await assignSurfacesViaNearest(rawCoords);
-
-// Ensure all points are processed before continuing
-if (!finalCoords || finalCoords.length !== rawCoords.length) {
-  console.error('[handleGpxUpload] Not all points were processed');
-  return;
-}
-
-// Calculate surface statistics
-const pavedCount = finalCoords.filter((c) => c.surface === 'paved').length;
-      const unpavedCount = finalCoords.length - pavedCount;
-      console.log(
-        `[handleGpxUpload] Surfaces assigned => paved=${pavedCount}, unpaved=${unpavedCount}, total=${finalCoords.length}`
-      );
-
-      // Add the processed route to the map
-      addRouteToMap(finalCoords);
-      console.log('[handleGpxUpload] => Route displayed with surfaces');
-    },
-    [isReady, assignSurfacesViaNearest, addRouteToMap]
-  );
-  // ------------------------------------------------------------------
-  // Expose methods to parent component
-  // Makes key functionality available to parent components
-  // ------------------------------------------------------------------
-  React.useImperativeHandle(
-    ref,
-    () => ({
-      handleGpxUpload,
-      isReady,
-      on: (evt: string, cb: (event: any) => void) => {
-        if (map.current) {
-          map.current.on(evt, cb);
-        }
-      },
-      off: (evt: string, cb: (event: any) => void) => {
-        if (map.current) {
-          map.current.off(evt, cb);
-        }
-      }
-    }),
-    [handleGpxUpload, isReady]
-  );
-
-  // ------------------------------------------------------------------
-  // Map initialization
-  // Sets up the map and loads necessary layers
-  // Called once when component mounts
-  // ------------------------------------------------------------------
-  useEffect(() => {
-    if (!mapContainer.current || map.current) return;
-
-    const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
-    if (!mapboxToken) {
-      console.error('[MapContainer] Mapbox token not found');
-      return;
-    }
-    try {
-      mapboxgl.accessToken = mapboxToken;
-
-      // Create new map instance
-      const newMap = new mapboxgl.Map({
-        container: mapContainer.current,
-        style: 'mapbox://styles/mapbox/satellite-streets-v12',
-        bounds: [[144.5, -43.7], [148.5, -40.5]], // Tasmania bounds: [west, south], [east, north]
-        fitBoundsOptions: {
-          padding: 50,
-          pitch: 0,  // Bird's eye view (looking straight down)
-          bearing: 0
-        }
-      } as any);
-
-      map.current = newMap;
-
-      newMap.on('load', () => {
-        // Add terrain source and layer
-        newMap.addSource('mapbox-dem', {
-          'type': 'raster-dem',
-          'url': 'mapbox://mapbox.mapbox-terrain-dem-v1',
-          'tileSize': 512,
-          'maxzoom': 14
-        });
-        
-        // Add terrain layer
-        newMap.setTerrain({ 'source': 'mapbox-dem', 'exaggeration': 1.5 });
-        console.log('[MapContainer] Base map loaded');
-        try {
-          // Add MapTiler vector tile source containing road data
-          const tileUrl =
-            'https://api.maptiler.com/tiles/5dd3666f-1ce4-4df6-9146-eda62a200bcb/{z}/{x}/{y}.pbf?key=DFSAZFJXzvprKbxHrHXv';
-          newMap.addSource('australia-roads', {
-            type: 'vector',
-            tiles: [tileUrl],
-            minzoom: 12,
-            maxzoom: 14
-          });
-
-          // Add custom roads layer with surface-based styling
-          newMap.addLayer({
-            id: 'custom-roads',
-            type: 'line',
-            source: 'australia-roads',
-            'source-layer': 'lutruwita',
-            minzoom: 12,
-            maxzoom: 14,
-            layout: {
-              visibility: 'visible'
-            },
-            paint: {
-              'line-opacity': 1,
-              'line-color': [
-                'match',
-                ['get', 'surface'],
-
-                // Color roads based on surface type
-                // Paved roads in blue
-                ['paved', 'asphalt', 'concrete', 'compacted', 'sealed', 'bitumen', 'tar'],
-                '#4A90E2',
-
-                // Unpaved roads in orange
-                ['unpaved', 'gravel', 'fine', 'fine_gravel', 'dirt', 'earth'],
-                '#D35400',
-
-                // Unknown surfaces in grey
-                '#888888'
-              ],
-              'line-width': 2
-            }
-          });
-
-          // Mark map as ready
-          setStreetsLayersLoaded(true);
-          setIsMapReady(true);
-          console.log('[MapContainer] Roads layer added, map is ready.');
-        } catch (err) {
-          console.error('[MapContainer] Error adding roads source/layer:', err);
-        }
-      });
-
-// Add standard map controls
-newMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
-newMap.addControl(new mapboxgl.FullscreenControl());
-
-// Track current interval
-let currentInterval = 25;
-
-// Add zoom change handler to update distance markers
-newMap.on('zoom', () => {
-  const zoom = newMap.getZoom();
-  // Calculate new interval based on zoom
-  let newInterval = 25; // Default
-  if (zoom >= 14) newInterval = 5;        // Very close zoom
-  else if (zoom >= 12) newInterval = 10;  // Medium zoom
-  else if (zoom >= 10) newInterval = 15;  // Medium-far zoom
-
-  // Only update if interval changed
-  if (newInterval !== currentInterval && newMap.getSource(routeSourceId)) {
-    currentInterval = newInterval;
-    // Remove existing markers
-    const markers = document.querySelectorAll('.mapboxgl-marker');
-    markers.forEach(marker => marker.remove());
-    
-    // Get current route data
-    const source = newMap.getSource(routeSourceId) as mapboxgl.GeoJSONSource;
-    const data = (source as any)._data as FeatureCollection;
-    
-    // Rebuild combined line
-    const combinedLine = turf.lineString(
-      data.features.reduce((coords: number[][], feature) => {
-        if (feature.geometry.type === 'LineString') {
-          return [...coords, ...feature.geometry.coordinates];
-        }
-        return coords;
-      }, [])
-    );
-
-    // Calculate length and add new markers
-    const totalLength = turf.length(combinedLine, { units: 'kilometers' });
-    const distancePoints = getDistancePoints(newMap, combinedLine, totalLength);
-    
-    distancePoints.forEach(({ point, distance }) => {
-      const el = document.createElement('div');
-      const root = createRoot(el);
-      root.render(<DistanceMarker distance={distance} />);
-
-      new mapboxgl.Marker({
-        element: el,
-        anchor: 'center',
-        scale: 0.25
-      })
-        .setLngLat(point.geometry.coordinates)
-        .addTo(newMap);
-    });
-  }
-});
-
-} catch (err) {
-console.error('[MapContainer] Error creating map:', err);
-}
-
-    // Cleanup on unmount
-    return () => {
-      if (map.current) {
-        map.current.remove();
-        map.current = null;
-      }
-    };
-  }, []);
-
-  // ------------------------------------------------------------------
-  // Render the map component with loading overlay when processing
-  // ------------------------------------------------------------------
-  return (
-    <div className="w-full h-full relative">
-      <div ref={mapContainer} className="w-full h-full" />
-      {surfaceProgress.isProcessing && (
-        <LoadingOverlay
-          progress={surfaceProgress.progress}
-          total={surfaceProgress.total}
-        />
-      )}
-    </div>
-  );
-});
-
-MapContainer.displayName = 'MapContainer';
-
-export default MapContainer;
-export type { MapRef };
+                      } catch (err2) {
+                        reject(err2);
+                      }
+                    });
+                  });
+            
+                  console.log('[handleGpxUpload] => Starting route matching with', rawCoords.length, 'pts');
+                  
+                  // Match route segments
+                  const matchedSegments = await processRouteSegments(rawCoords);
+            
+                  // Draw route with animation
+                  setProcessing(prev => ({
+                    ...prev,
+                    stage: 'drawing',
+                    message: 'Drawing route...',
+                    progress: 0,
+                    total: matchedSegments.length
+                  }));
+            
+                  addRouteToMap(matchedSegments);
+                },
+                [isReady, addRouteToMap]
+              );
+            
+              // Expose methods to parent
+              React.useImperativeHandle(
+                ref,
+                () => ({
+                  handleGpxUpload,
+                  isReady,
+                  on: (evt: string, cb: (event: any) => void) => {
+                    if (map.current) {
+                      map.current.on(evt, cb);
+                    }
+                  },
+                  off: (evt: string, cb: (event: any) => void) => {
+                    if (map.current) {
+                      map.current.off(evt, cb);
+                    }
+                  }
+                }),
+                [handleGpxUpload, isReady]
+              );
+            
+              // Initialize map
+              useEffect(() => {
+                if (!mapContainer.current || map.current) return;
+            
+                const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
+                if (!mapboxToken) {
+                  console.error('[MapContainer] Mapbox token not found');
+                  return;
+                }
+            
+                try {
+                  mapboxgl.accessToken = mapboxToken;
+            
+                  // Create new map instance
+                  const newMap = new mapboxgl.Map({
+                    container: mapContainer.current,
+                    style: 'mapbox://styles/mapbox/satellite-streets-v12',
+                    bounds: [[144.5, -43.7], [148.5, -40.5]], // Tasmania bounds
+                    fitBoundsOptions: {
+                      padding: 50,
+                      pitch: 0,
+                      bearing: 0
+                    }
+                  });
+            
+                  map.current = newMap;
+            
+                  newMap.on('load', () => {
+                    // Add terrain source and layer
+                    newMap.addSource('mapbox-dem', {
+                      'type': 'raster-dem',
+                      'url': 'mapbox://mapbox.mapbox-terrain-dem-v1',
+                      'tileSize': 512,
+                      'maxzoom': 14
+                    });
+                    
+                    // Add terrain layer
+                    newMap.setTerrain({ 'source': 'mapbox-dem', 'exaggeration': 1.5 });
+                    
+                    // Add roads layer
+                    newMap.addLayer({
+                      id: 'road-data',
+                      type: 'line',
+                      source: {
+                        type: 'vector',
+                        url: 'mapbox://mapbox.mapbox-streets-v8'
+                      },
+                      'source-layer': 'road',
+                      paint: {
+                        'line-color': [
+                          'match',
+                          ['get', 'surface'],
+                          ['paved', 'asphalt', 'concrete', 'compacted', 'sealed', 'bitumen', 'tar'],
+                          '#4A90E2',
+                          ['unpaved', 'gravel', 'fine', 'fine_gravel', 'dirt', 'earth'],
+                          '#D35400',
+                          '#888888'
+                        ],
+                        'line-width': 2
+                      }
+                    });
+            
+                    setIsMapReady(true);
+                  });
+            
+                  // Add navigation controls
+                  newMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
+                  newMap.addControl(new mapboxgl.FullscreenControl());
+            
+                  // Handle zoom changes for distance markers
+                  let currentInterval = 25;
+                  newMap.on('zoom', () => {
+                    const zoom = newMap.getZoom();
+                    let newInterval = 25;
+                    if (zoom >= 14) newInterval = 5;
+                    else if (zoom >= 12) newInterval = 10;
+                    else if (zoom >= 10) newInterval = 15;
+            
+                    if (newInterval !== currentInterval && newMap.getSource(routeSourceId)) {
+                      currentInterval = newInterval;
+                      // Remove existing markers
+                      const markers = document.querySelectorAll('.mapboxgl-marker');
+                      markers.forEach(marker => marker.remove());
+                      
+                      // Get current route
+                      const source = newMap.getSource(routeSourceId) as mapboxgl.GeoJSONSource;
+                      const data = (source as any)._data as Feature<LineString>;
+                      
+                      // Add new markers
+                      const totalLength = turf.length(data, { units: 'kilometers' });
+                      const distancePoints = getDistancePoints(newMap, data, totalLength);
+                      
+                      distancePoints.forEach(({ point, distance }) => {
+                        const el = document.createElement('div');
+                        const root = createRoot(el);
+                        root.render(<DistanceMarker distance={distance} totalDistance={totalLength} />);
+            
+                        new mapboxgl.Marker({
+                          element: el,
+                          anchor: 'center',
+                          scale: 0.25
+                        })
+                          .setLngLat(point.geometry.coordinates)
+                          .addTo(newMap);
+                      });
+                    }
+                  });
+            
+                } catch (err) {
+                  console.error('[MapContainer] Error creating map:', err);
+                }
+            
+                return () => {
+                  if (animationFrameRef.current) {
+                    cancelAnimationFrame(animationFrameRef.current);
+                  }
+                  if (map.current) {
+                    map.current.remove();
+                    map.current = null;
+                  }
+                };
+              }, []);
+            
+              // Render
+              return (
+                <div className="w-full h-full relative">
+                  <div ref={mapContainer} className="w-full h-full" />
+                  {processing.isProcessing && (
+                    <LoadingOverlay
+                      progress={processing.progress}
+                      total={processing.total}
+                      stage={processing.stage}
+                      message={processing.message}
+                    />
+                  )}
+                </div>
+              );
+            });
+            
+            MapContainer.displayName = 'MapContainer';
+            
+            export default MapContainer;
+            export type { MapRef };
