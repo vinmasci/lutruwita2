@@ -23,18 +23,22 @@ const config = {
   secret: process.env.AUTH0_SECRET,
   baseURL: 'http://localhost:3001',
   clientID: 'hLnq0z7KNvwcORjFF9KdC4kGPtu51kVB',
-  clientSecret: process.env.AUTH0_CLIENT_SECRET, // Add this line
+  clientSecret: process.env.AUTH0_CLIENT_SECRET,
   issuerBaseURL: 'https://dev-8jmwfh4hugvdjwh8.au.auth0.com',
   routes: {
-    callback: '/callback'
+    callback: '/callback',
+    postLoginRedirect: 'http://localhost:5173'
   },
   authorizationParams: {
     response_type: 'code',
-    audience: 'https://dev-8jmwfh4hugvdjwh8.au.auth0.com/api/v2/',
     scope: 'openid profile email'
   },
   session: {
-    absoluteDuration: 24 * 60 * 60 // 24 hours in seconds
+    absoluteDuration: 24 * 60 * 60
+  },
+  afterCallback: async (req, res, session) => {
+    res.redirect('http://localhost:5173');
+    return session;
   }
 };
 
