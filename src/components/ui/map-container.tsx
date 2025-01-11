@@ -351,12 +351,6 @@ if (isComplexJunction) {
   } else if (wideAreaCheck.length > 2) {
     queryBox = 30; // Minor junction or approach area
   }
-  
-  console.log(`[assignSurfacesViaNearest] Complex junction detected at point ${i}:`, {
-    totalFeatures: wideAreaCheck.length,
-    uniqueRoads: uniqueRoads.size,
-    queryBoxSize: queryBox
-  });
 }
 
 // Use features array to store all found features
@@ -389,13 +383,6 @@ if (isComplexJunction && features.length === 0) {
   }
 }
 
-      console.log('[assignSurfacesViaNearest] Attempt vantage for point:', {
-        index: i,
-        boundingBox: bbox,
-        found: features?.length || 0,
-        location: [pt.lat, pt.lon]
-      });
-
 // After all queries (including circular pattern) are complete
 if (features && features.length > 0) {
   // Ensure all features are unique by creating a map keyed by feature geometry
@@ -411,10 +398,7 @@ if (features && features.length > 0) {
     uniqueFeatures.map((f) => turf.feature(f.geometry, f.properties))
   );
   
-  console.log('[assignSurfacesViaNearest] => Found roads:', {
-    originalCount: features.length,
-    uniqueCount: uniqueFeatures.length
-  });
+
   resolve();
   return;
 }
@@ -452,7 +436,6 @@ if (features && features.length > 0) {
   } else {
 // Evaluate each road
 for (const road of vantageRoads.features) {
-  console.log('Road properties:', road.properties);
   
   if (
     road.geometry.type !== 'LineString' &&
