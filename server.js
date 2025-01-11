@@ -8,7 +8,7 @@ const dotenv = require('dotenv');
 // Load environment variables from .env.local
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
-const MONGODB_URI = process.env.MONGODB_URI;
+const MONGODB_URI = process.env.VITE_MONGODB_URI; // Changed to match your .env.local
 if (!MONGODB_URI) {
   console.error('MONGODB_URI is not defined in environment variables');
   process.exit(1);
@@ -17,7 +17,14 @@ if (!MONGODB_URI) {
 console.log('MongoDB URI found:', MONGODB_URI.substring(0, 20) + '...');
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:5173', 'http://localhost:5174'],
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// Add OPTIONS handling for preflight requests
+app.options('*', cors());
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
 
@@ -35,7 +42,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ 
   storage,
-  fileFilter: (req: Express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+  fileFilter: (req, file, cb) => {
     const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg'];
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
@@ -48,27 +55,10 @@ const upload = multer({
   }
 });
 
-const MONGODB_URI = process.env.MONGODB_URI;
 const client = new MongoClient(MONGODB_URI);
 
 // Upload photo endpoint
-interface PhotoUploadRequest extends Request {
-  file?: Express.Multer.File;
-  body: {
-    longitude: string;
-    latitude: string;
-    description?: string;
-  };
-}
-
-interface PhotoQueryRequest extends Request {
-  query: {
-    longitude?: string;
-    latitude?: string;
-  };
-}
-
-app.post('/api/photos/upload', upload.single('photo'), async (req: PhotoUploadRequest, res: Response) => {
+app.post('/api/photos/upload', upload.single('photo'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -80,14 +70,13 @@ app.post('/api/photos/upload', upload.single('photo'), async (req: PhotoUploadRe
       return res.status(400).json({ error: 'Location coordinates are required' });
     }
 
+    await client.connect();
     const db = client.db('photoApp');
     const result = await db.collection('photos').insertOne({
       filename: req.file.filename,
       path: `/uploads/${req.file.filename}`,
-      location: {
-        type: "Point",
-        coordinates: [Number(longitude), Number(latitude)]
-      },
+      longitude: Number(longitude),
+      latitude: Number(latitude),
       description: description || '',
       uploadedAt: new Date()
     });
@@ -98,11 +87,12 @@ app.post('/api/photos/upload', upload.single('photo'), async (req: PhotoUploadRe
       path: `/uploads/${req.file.filename}`
     });
   } catch (error) {
+    console.error('Error uploading photo:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-app.get('/api/photos/near', async (req: PhotoQueryRequest, res: Response) => {
+app.get('/api/photos/near', async (req, res) => {
   try {
     const { longitude, latitude } = req.query;
     
@@ -110,16 +100,16 @@ app.get('/api/photos/near', async (req: PhotoQueryRequest, res: Response) => {
       return res.status(400).json({ error: 'Longitude and latitude are required' });
     }
 
+    await client.connect();
     const db = client.db('photoApp');
     
     console.log(`Searching for photos near: ${longitude}, ${latitude}`);
     
-    // Simple distance-based query since we're storing lat/lon directly
     const photos = await db.collection('photos').find({
       $and: [
         {
           longitude: {
-            $gte: Number(longitude) - 0.005,  // Roughly 500m at equator
+            $gte: Number(longitude) - 0.005,
             $lte: Number(longitude) + 0.005
           }
         },
@@ -133,8 +123,6 @@ app.get('/api/photos/near', async (req: PhotoQueryRequest, res: Response) => {
     }).toArray();
 
     console.log(`Found ${photos.length} photos`);
-    
-    // Photos already have url field, so we don't need to transform
     res.json(photos);
   } catch (error) {
     console.error('Error fetching photos:', error);
@@ -142,7 +130,16 @@ app.get('/api/photos/near', async (req: PhotoQueryRequest, res: Response) => {
   }
 });
 
+// Add a health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date() });
+});
+
 const PORT = 3001;
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
+  console.log('Available routes:');
+  console.log('- GET  /api/photos/near');
+  console.log('- POST /api/photos/upload');
+  console.log('- GET  /health');
 });
