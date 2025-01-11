@@ -369,8 +369,13 @@ console.log('[addRouteToMap] -> route layers and distance markers added.');
       `);
 
       // Add marker
-      new mapboxgl.Marker({
-        color: '#FF0000'
+      const marker = new mapboxgl.Marker({
+        color: '#FF0000',
+        element: (() => {
+          const el = document.createElement('div');
+          el.className = 'photo-marker'; // Add this class
+          return el;
+        })()
       })
         .setLngLat([photo.longitude, photo.latitude])
         .setPopup(popup)
@@ -860,9 +865,9 @@ newMap.on('zoom', () => {
   // Only update if interval changed
   if (newInterval !== currentInterval && newMap.getSource(routeSourceId)) {
     currentInterval = newInterval;
-    // Remove existing markers
-    const markers = document.querySelectorAll('.mapboxgl-marker');
-    markers.forEach(marker => marker.remove());
+// Remove only distance markers
+const distanceMarkers = document.querySelectorAll('.mapboxgl-marker:not(.photo-marker)');
+distanceMarkers.forEach(marker => marker.remove());
     
     // Get current route data
     const source = newMap.getSource(routeSourceId) as mapboxgl.GeoJSONSource;

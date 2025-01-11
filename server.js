@@ -1,9 +1,14 @@
-const express = require('express');
-const cors = require('cors');
-const { MongoClient } = require('mongodb');
-const multer = require('multer');
-const path = require('path');
-const dotenv = require('dotenv');
+import express from 'express';
+import cors from 'cors';
+import { MongoClient } from 'mongodb';
+import multer from 'multer';
+import path from 'path';
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Load environment variables from .env.local
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
