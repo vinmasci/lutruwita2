@@ -206,10 +206,15 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
     message: ''
   });
 
+  // Debug: Log map readiness
+  useEffect(() => {
+    console.log('[Debug] Map readiness changed:', { isMapReady });
+  }, [isMapReady]);
+
   // Check if map is ready
   const isReady = useCallback((): boolean => {
     const ready = Boolean(map.current) && isMapReady;
-    console.log('[isReady] Map check =>', { ready, isMapReady });
+    console.log('[Debug] [isReady] Map check =>', { ready, isMapReady });
     return ready;
   }, [isMapReady]);
 
@@ -230,8 +235,8 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
         tidy: 'true'
       });
   
-// The correct format is 'mapbox/driving-traffic', 'mapbox/walking', or 'mapbox/cycling'
-const url = `https://api.mapbox.com/matching/v5/mapbox/cycling/${coordinates}?${params}`;
+      const url = `https://api.mapbox.com/matching/v5/mapbox/driving/${coordinates}?${params}`;
+      console.log('[Debug] [matchRouteSegment] Request URL:', url);
   
       const response = await fetch(url, { 
         signal: controller.signal,
@@ -240,11 +245,15 @@ const url = `https://api.mapbox.com/matching/v5/mapbox/cycling/${coordinates}?${
   
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        console.error('[Debug] [matchRouteSegment] API Error:', { status: response.status, errorData });
         throw new Error(`Map matching failed: ${response.statusText} ${JSON.stringify(errorData)}`);
       }
   
-      return await response.json();
+      const result = await response.json();
+      console.log('[Debug] [matchRouteSegment] API Response:', result);
+      return result;
     } catch (error) {
+      console.error('[Debug] [matchRouteSegment] Error:', error);
       if (error.name === 'AbortError') {
         throw new Error('Map matching request timed out');
       }
@@ -285,6 +294,8 @@ const url = `https://api.mapbox.com/matching/v5/mapbox/cycling/${coordinates}?${
       segments.push(segment);
     }
 
+    console.log('[Debug] [processRouteSegments] Segments created:', segments);
+
     setProcessing(prev => ({
       ...prev,
       stage: 'matching',
@@ -302,13 +313,14 @@ const url = `https://api.mapbox.com/matching/v5/mapbox/cycling/${coordinates}?${
           await new Promise(resolve => setTimeout(resolve, 300));
         }
 
+        console.log('[Debug] [processRouteSegments] Matching segment:', i);
         const result = await requestQueue.current.add(() => 
           matchRouteSegment(segments[i])
         );
 
         // Handle NoMatch and NoSegment responses
         if (result.code === 'NoMatch' || result.code === 'NoSegment' || !result.matchings || result.matchings.length === 0) {
-          // Create a fallback response that uses the original segment points
+          console.warn(`[Debug] [processRouteSegments] Fallback for segment ${i}:`, result);
           const fallbackResponse: MatchingResponse = {
             code: 'Fallback',
             matched_points: segments[i].map(p => ({
@@ -334,7 +346,6 @@ const url = `https://api.mapbox.com/matching/v5/mapbox/cycling/${coordinates}?${
             }]
           };
           matchedSegments.push(fallbackResponse);
-          console.log(`Using fallback for segment ${i} due to no match`);
         } else {
           matchedSegments.push(result);
         }
@@ -345,7 +356,7 @@ const url = `https://api.mapbox.com/matching/v5/mapbox/cycling/${coordinates}?${
           message: `Matched ${i + 1} of ${segments.length} segments`
         }));
       } catch (error) {
-        console.error('Error matching segment:', error);
+        console.error('[Debug] [processRouteSegments] Error matching segment:', error);
         // Use original points for the segment if matching fails
         const fallbackResponse: MatchingResponse = {
           code: 'Error',
@@ -375,6 +386,7 @@ const url = `https://api.mapbox.com/matching/v5/mapbox/cycling/${coordinates}?${
       }
     }
 
+    console.log('[Debug] [processRouteSegments] All segments processed:', matchedSegments);
     return matchedSegments;
   };
 
@@ -382,7 +394,7 @@ const url = `https://api.mapbox.com/matching/v5/mapbox/cycling/${coordinates}?${
   const addRouteToMap = useCallback(
     (matchedSegments: MatchingResponse[]) => {
       if (!map.current || !isReady()) {
-        console.error('[addRouteToMap] Map not ready');
+        console.error('[Debug] [addRouteToMap] Map not ready');
         return;
       }
 
@@ -392,13 +404,15 @@ const url = `https://api.mapbox.com/matching/v5/mapbox/cycling/${coordinates}?${
           if (segment?.matchings?.[0]?.geometry?.coordinates) {
             return [...coords, ...segment.matchings[0].geometry.coordinates];
           }
-          console.warn('Skipping invalid segment:', segment);
+          console.warn('[Debug] [addRouteToMap] Skipping invalid segment:', segment);
           return coords;
         }, []);
 
         if (allCoordinates.length === 0) {
           throw new Error('No valid coordinates after processing segments');
         }
+
+        console.log('[Debug] [addRouteToMap] All coordinates:', allCoordinates);
 
         // Clean up existing layers and markers
         const cleanup = () => {
@@ -418,7 +432,7 @@ const url = `https://api.mapbox.com/matching/v5/mapbox/cycling/${coordinates}?${
             // Remove existing markers
             document.querySelectorAll('.mapboxgl-marker').forEach(marker => marker.remove());
           } catch (error) {
-            console.warn('Error during cleanup:', error);
+            console.warn('[Debug] [addRouteToMap] Error during cleanup:', error);
           }
         };
 
@@ -542,12 +556,12 @@ const url = `https://api.mapbox.com/matching/v5/mapbox/cycling/${coordinates}?${
                     .setLngLat(point.geometry.coordinates)
                     .addTo(map.current);
                 } catch (error) {
-                  console.warn('Error creating distance marker:', error);
+                  console.warn('[Debug] [addRouteToMap] Error creating distance marker:', error);
                 }
               });
             }
           } catch (error) {
-            console.error('Animation error:', error);
+            console.error('[Debug] [addRouteToMap] Animation error:', error);
             isAnimating = false;
           }
         };
@@ -564,7 +578,7 @@ const url = `https://api.mapbox.com/matching/v5/mapbox/cycling/${coordinates}?${
         };
 
       } catch (error) {
-        console.error('Error in addRouteToMap:', error);
+        console.error('[Debug] [addRouteToMap] Error:', error);
         setProcessing(prev => ({
           ...prev,
           isProcessing: false
@@ -622,202 +636,202 @@ const url = `https://api.mapbox.com/matching/v5/mapbox/cycling/${coordinates}?${
                   return { lat, lon };
                 } catch (err2) {
                   // Log and skip invalid points
-                  console.warn('[handleGpxUpload] Skipping invalid point:', pt, err2);
+                  console.warn('[Debug] [handleGpxUpload] Skipping invalid point:', pt, err2);
                   return null;
                 }
               })
               // Remove any invalid points that returned null
               .filter((x: Point | null): x is Point => x !== null);
-            
+
             if (coords.length === 0) {
               throw new Error('No valid coordinates found in GPX');
             }
             resolve(coords);
-                      } catch (err2) {
-                        reject(err2);
-                      }
-                    });
-                  });
-            
-                  console.log('[handleGpxUpload] => Starting route matching with', rawCoords.length, 'pts');
-                  
-                  // Match route segments
-                  const matchedSegments = await processRouteSegments(rawCoords);
-            
-                  // Draw route with animation
-                  setProcessing(prev => ({
-                    ...prev,
-                    stage: 'drawing',
-                    message: 'Drawing route...',
-                    progress: 0,
-                    total: matchedSegments.length
-                  }));
-            
-                  addRouteToMap(matchedSegments);
-                },
-                [isReady, addRouteToMap]
-              );
-            
-              // Expose methods to parent
-              React.useImperativeHandle(
-                ref,
-                () => ({
-                  handleGpxUpload,
-                  isReady,
-                  on: (evt: string, cb: (event: any) => void) => {
-                    if (map.current) {
-                      map.current.on(evt, cb);
-                    }
-                  },
-                  off: (evt: string, cb: (event: any) => void) => {
-                    if (map.current) {
-                      map.current.off(evt, cb);
-                    }
-                  }
-                }),
-                [handleGpxUpload, isReady]
-              );
-            
-              // Initialize map
-              useEffect(() => {
-                if (!mapContainer.current || map.current) return;
-            
-                const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
-                if (!mapboxToken) {
-                  console.error('[MapContainer] Mapbox token not found');
-                  return;
-                }
-            
-                try {
-                  mapboxgl.accessToken = mapboxToken;
-            
-                  // Create new map instance
-                  const newMap = new mapboxgl.Map({
-                    container: mapContainer.current,
-                    style: 'mapbox://styles/mapbox/satellite-streets-v12',
-                    bounds: [[144.5, -43.7], [148.5, -40.5]], // Tasmania bounds
-                    fitBoundsOptions: {
-                      padding: 50,
-                      pitch: 0,
-                      bearing: 0
-                    }
-                  });
-            
-                  map.current = newMap;
-            
-                  newMap.on('load', () => {
-                    // Add terrain source and layer
-                    newMap.addSource('mapbox-dem', {
-                      'type': 'raster-dem',
-                      'url': 'mapbox://mapbox.mapbox-terrain-dem-v1',
-                      'tileSize': 512,
-                      'maxzoom': 14
-                    });
-                    
-                    // Add terrain layer
-                    newMap.setTerrain({ 'source': 'mapbox-dem', 'exaggeration': 1.5 });
-                    
-                    // Add roads layer
-                    newMap.addLayer({
-                      id: 'road-data',
-                      type: 'line',
-                      source: {
-                        type: 'vector',
-                        url: 'mapbox://mapbox.mapbox-streets-v8'
-                      },
-                      'source-layer': 'road',
-                      paint: {
-                        'line-color': [
-                          'match',
-                          ['get', 'surface'],
-                          ['paved', 'asphalt', 'concrete', 'compacted', 'sealed', 'bitumen', 'tar'],
-                          '#4A90E2',
-                          ['unpaved', 'gravel', 'fine', 'fine_gravel', 'dirt', 'earth'],
-                          '#D35400',
-                          '#888888'
-                        ],
-                        'line-width': 2
-                      }
-                    });
-            
-                    setIsMapReady(true);
-                  });
-            
-                  // Add navigation controls
-                  newMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
-                  newMap.addControl(new mapboxgl.FullscreenControl());
-            
-                  // Handle zoom changes for distance markers
-                  let currentInterval = 25;
-                  newMap.on('zoom', () => {
-                    const zoom = newMap.getZoom();
-                    let newInterval = 25;
-                    if (zoom >= 14) newInterval = 5;
-                    else if (zoom >= 12) newInterval = 10;
-                    else if (zoom >= 10) newInterval = 15;
-            
-                    if (newInterval !== currentInterval && newMap.getSource(routeSourceId)) {
-                      currentInterval = newInterval;
-                      // Remove existing markers
-                      const markers = document.querySelectorAll('.mapboxgl-marker');
-                      markers.forEach(marker => marker.remove());
-                      
-                      // Get current route
-                      const source = newMap.getSource(routeSourceId) as mapboxgl.GeoJSONSource;
-                      const data = (source as any)._data as Feature<LineString>;
-                      
-                      // Add new markers
-                      const totalLength = turf.length(data, { units: 'kilometers' });
-                      const distancePoints = getDistancePoints(newMap, data, totalLength);
-                      
-                      distancePoints.forEach(({ point, distance }) => {
-                        const el = document.createElement('div');
-                        const root = createRoot(el);
-                        root.render(<DistanceMarker distance={distance} totalDistance={totalLength} />);
-            
-                        new mapboxgl.Marker({
-                          element: el,
-                          anchor: 'center',
-                          scale: 0.25
-                        })
-                          .setLngLat(point.geometry.coordinates)
-                          .addTo(newMap);
-                      });
-                    }
-                  });
-            
-                } catch (err) {
-                  console.error('[MapContainer] Error creating map:', err);
-                }
-            
-                return () => {
-                  if (animationFrameRef.current) {
-                    cancelAnimationFrame(animationFrameRef.current);
-                  }
-                  if (map.current) {
-                    map.current.remove();
-                    map.current = null;
-                  }
-                };
-              }, []);
-            
-              // Render
-              return (
-                <div className="w-full h-full relative">
-                  <div ref={mapContainer} className="w-full h-full" />
-                  {processing.isProcessing && (
-                    <LoadingOverlay
-                      progress={processing.progress}
-                      total={processing.total}
-                      stage={processing.stage}
-                      message={processing.message}
-                    />
-                  )}
-                </div>
-              );
-            });
-            
-            MapContainer.displayName = 'MapContainer';
-            
-            export default MapContainer;
-            export type { MapRef };
+          } catch (err2) {
+            reject(err2);
+          }
+        });
+      });
+
+      console.log('[Debug] [handleGpxUpload] Starting route matching with', rawCoords.length, 'points');
+
+      // Match route segments
+      const matchedSegments = await processRouteSegments(rawCoords);
+
+      // Draw route with animation
+      setProcessing(prev => ({
+        ...prev,
+        stage: 'drawing',
+        message: 'Drawing route...',
+        progress: 0,
+        total: matchedSegments.length
+      }));
+
+      addRouteToMap(matchedSegments);
+    },
+    [isReady, addRouteToMap]
+  );
+
+  // Expose methods to parent
+  React.useImperativeHandle(
+    ref,
+    () => ({
+      handleGpxUpload,
+      isReady,
+      on: (evt: string, cb: (event: any) => void) => {
+        if (map.current) {
+          map.current.on(evt, cb);
+        }
+      },
+      off: (evt: string, cb: (event: any) => void) => {
+        if (map.current) {
+          map.current.off(evt, cb);
+        }
+      }
+    }),
+    [handleGpxUpload, isReady]
+  );
+
+  // Initialize map
+  useEffect(() => {
+    if (!mapContainer.current || map.current) return;
+
+    const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
+    if (!mapboxToken) {
+      console.error('[Debug] [MapContainer] Mapbox token not found');
+      return;
+    }
+
+    try {
+      mapboxgl.accessToken = mapboxToken;
+
+      // Create new map instance
+      const newMap = new mapboxgl.Map({
+        container: mapContainer.current,
+        style: 'mapbox://styles/mapbox/satellite-streets-v12',
+        bounds: [[144.5, -43.7], [148.5, -40.5]], // Tasmania bounds
+        fitBoundsOptions: {
+          padding: 50,
+          pitch: 0,
+          bearing: 0
+        }
+      });
+
+      map.current = newMap;
+
+      newMap.on('load', () => {
+        // Add terrain source and layer
+        newMap.addSource('mapbox-dem', {
+          'type': 'raster-dem',
+          'url': 'mapbox://mapbox.mapbox-terrain-dem-v1',
+          'tileSize': 512,
+          'maxzoom': 14
+        });
+        
+        // Add terrain layer
+        newMap.setTerrain({ 'source': 'mapbox-dem', 'exaggeration': 1.5 });
+        
+        // Add roads layer
+        newMap.addLayer({
+          id: 'road-data',
+          type: 'line',
+          source: {
+            type: 'vector',
+            url: 'mapbox://mapbox.mapbox-streets-v8'
+          },
+          'source-layer': 'road',
+          paint: {
+            'line-color': [
+              'match',
+              ['get', 'surface'],
+              ['paved', 'asphalt', 'concrete', 'compacted', 'sealed', 'bitumen', 'tar'],
+              '#4A90E2',
+              ['unpaved', 'gravel', 'fine', 'fine_gravel', 'dirt', 'earth'],
+              '#D35400',
+              '#888888'
+            ],
+            'line-width': 2
+          }
+        });
+
+        setIsMapReady(true);
+      });
+
+      // Add navigation controls
+      newMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
+      newMap.addControl(new mapboxgl.FullscreenControl());
+
+      // Handle zoom changes for distance markers
+      let currentInterval = 25;
+      newMap.on('zoom', () => {
+        const zoom = newMap.getZoom();
+        let newInterval = 25;
+        if (zoom >= 14) newInterval = 5;
+        else if (zoom >= 12) newInterval = 10;
+        else if (zoom >= 10) newInterval = 15;
+
+        if (newInterval !== currentInterval && newMap.getSource(routeSourceId)) {
+          currentInterval = newInterval;
+          // Remove existing markers
+          const markers = document.querySelectorAll('.mapboxgl-marker');
+          markers.forEach(marker => marker.remove());
+          
+          // Get current route
+          const source = newMap.getSource(routeSourceId) as mapboxgl.GeoJSONSource;
+          const data = (source as any)._data as Feature<LineString>;
+          
+          // Add new markers
+          const totalLength = turf.length(data, { units: 'kilometers' });
+          const distancePoints = getDistancePoints(newMap, data, totalLength);
+          
+          distancePoints.forEach(({ point, distance }) => {
+            const el = document.createElement('div');
+            const root = createRoot(el);
+            root.render(<DistanceMarker distance={distance} totalDistance={totalLength} />);
+
+            new mapboxgl.Marker({
+              element: el,
+              anchor: 'center',
+              scale: 0.25
+            })
+              .setLngLat(point.geometry.coordinates)
+              .addTo(newMap);
+          });
+        }
+      });
+
+    } catch (err) {
+      console.error('[Debug] [MapContainer] Error creating map:', err);
+    }
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      if (map.current) {
+        map.current.remove();
+        map.current = null;
+      }
+    };
+  }, []);
+
+  // Render
+  return (
+    <div className="w-full h-full relative">
+      <div ref={mapContainer} className="w-full h-full" />
+      {processing.isProcessing && (
+        <LoadingOverlay
+          progress={processing.progress}
+          total={processing.total}
+          stage={processing.stage}
+          message={processing.message}
+        />
+      )}
+    </div>
+  );
+});
+
+MapContainer.displayName = 'MapContainer';
+
+export default MapContainer;
+export type { MapRef };
