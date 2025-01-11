@@ -296,7 +296,7 @@ for (let i = 0; i < coords.length; i++) {
 
   await new Promise<void>((resolve) => {
     let attempts = 0;
-    const maxAttempts = 15;
+    const maxAttempts = 30;
 
     const checkTiles = () => {
       // bounding box ~0.001 deg => ~100m in each direction
@@ -411,7 +411,7 @@ if (features && features.length > 0) {
         return;
       }
 
-      setTimeout(checkTiles, 400);
+      setTimeout(checkTiles, 800);
     };
 
     checkTiles();
