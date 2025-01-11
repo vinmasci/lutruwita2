@@ -245,6 +245,8 @@ const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
 
   const handleSaveProfile = async () => {
     try {
+      console.log('Saving profile with data:', userData);
+      
       const response = await fetch('http://localhost:3001/api/profile', {
         method: 'PUT',
         credentials: 'include',
@@ -253,7 +255,11 @@ const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
         },
         body: JSON.stringify(userData)
       });
-
+  
+      console.log('Save response status:', response.status);
+      const responseData = await response.json();
+      console.log('Save response data:', responseData);
+  
       if (response.ok) {
         setSnackbar({
           open: true,
@@ -262,12 +268,13 @@ const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
         });
         setProfileDrawerOpen(false);
       } else {
-        throw new Error('Failed to update profile');
+        throw new Error(responseData.error || 'Failed to update profile');
       }
     } catch (error) {
+      console.error('Error in handleSaveProfile:', error);
       setSnackbar({
         open: true,
-        message: 'Failed to update profile',
+        message: error.message || 'Failed to update profile',
         severity: 'error'
       });
     }

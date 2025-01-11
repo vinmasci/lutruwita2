@@ -246,6 +246,9 @@ app.get('/api/profile', requiresAuth(), async (req, res) => {
 // Update profile data
 app.put('/api/profile', requiresAuth(), async (req, res) => {
   try {
+    console.log('Updating profile for user:', req.oidc.user.sub);
+    console.log('Update data received:', req.body);
+    
     await client.connect();
     const db = client.db('photoApp');
     
@@ -254,19 +257,25 @@ app.put('/api/profile', requiresAuth(), async (req, res) => {
       updatedAt: new Date()
     };
 
+    console.log('Final update data:', updateData);
+
     const result = await db.collection('users').updateOne(
       { auth0Id: req.oidc.user.sub },
       { $set: updateData }
     );
 
+    console.log('Update result:', result);
+
     if (result.matchedCount === 0) {
+      console.log('No user found to update');
       res.status(404).json({ error: 'User not found' });
     } else {
+      console.log('Profile updated successfully');
       res.json({ message: 'Profile updated successfully' });
     }
   } catch (error) {
-    console.error('Error updating user profile:', error);
-    res.status(500).json({ error: 'Failed to update profile' });
+    console.error('Detailed error in profile update:', error);
+    res.status(500).json({ error: error.message || 'Failed to update profile' });
   }
 });
 
