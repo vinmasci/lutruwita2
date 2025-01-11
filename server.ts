@@ -4,6 +4,17 @@ import { MongoClient } from 'mongodb';
 import multer from 'multer';
 import path from 'path';
 
+// Load environment variables from .env.local
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
+
+const MONGODB_URI = process.env.MONGODB_URI;
+if (!MONGODB_URI) {
+  console.error('MONGODB_URI is not defined in environment variables');
+  process.exit(1);
+}
+
+console.log('MongoDB URI found:', MONGODB_URI.substring(0, 20) + '...');
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -93,30 +104,39 @@ app.post('/api/photos/upload', upload.single('photo'), async (req: PhotoUploadRe
 app.get('/api/photos/near', async (req: PhotoQueryRequest, res: Response) => {
   try {
     const { longitude, latitude } = req.query;
+    
+    if (!longitude || !latitude) {
+      return res.status(400).json({ error: 'Longitude and latitude are required' });
+    }
+
     const db = client.db('photoApp');
     
-    const photos = await db.collection('photos').aggregate([
-      {
-        $geoNear: {
-          near: {
-            type: "Point",
-            coordinates: [Number(longitude), Number(latitude)]
-          },
-          distanceField: "distance",
-          maxDistance: 500,
-          spherical: true
+    console.log(`Searching for photos near: ${longitude}, ${latitude}`);
+    
+    // Simple distance-based query since we're storing lat/lon directly
+    const photos = await db.collection('photos').find({
+      $and: [
+        {
+          longitude: {
+            $gte: Number(longitude) - 0.005,  // Roughly 500m at equator
+            $lte: Number(longitude) + 0.005
+          }
+        },
+        {
+          latitude: {
+            $gte: Number(latitude) - 0.005,
+            $lte: Number(latitude) + 0.005
+          }
         }
-      }
-    ]).toArray();
+      ]
+    }).toArray();
+
+    console.log(`Found ${photos.length} photos`);
     
-    // Transform the photos to include full URLs
-    const transformedPhotos = photos.map(photo => ({
-      ...photo,
-      url: `http://localhost:${PORT}${photo.path}`
-    }));
-    
-    res.json(transformedPhotos);
+    // Photos already have url field, so we don't need to transform
+    res.json(photos);
   } catch (error) {
+    console.error('Error fetching photos:', error);
     res.status(500).json({ error: error.message });
   }
 });

@@ -19,11 +19,26 @@ interface PhotoDocument {
   
   // Find photos near a point
   export async function findNearbyPhotos(longitude: number, latitude: number) {
-    const response = await fetch(`http://localhost:3001/api/photos/near?longitude=${longitude}&latitude=${latitude}`);
-    if (!response.ok) {
-      throw new Error('Failed to fetch photos');
+    console.log(`[findNearbyPhotos] Fetching photos near: ${longitude}, ${latitude}`);
+    try {
+      const url = `http://localhost:3001/api/photos/near?longitude=${longitude}&latitude=${latitude}`;
+      console.log(`[findNearbyPhotos] Request URL: ${url}`);
+      const response = await fetch(url);
+      console.log(`[findNearbyPhotos] Response status: ${response.status}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[findNearbyPhotos] Error response: ${errorText}`);
+        throw new Error(`Failed to fetch photos: ${response.status} ${response.statusText}`);
+      }
+      
+      const photos = await response.json();
+      console.log(`[findNearbyPhotos] Found ${photos.length} photos`);
+      return photos as PhotoDocument[];
+    } catch (error) {
+      console.error('[findNearbyPhotos] Error:', error);
+      throw error;
     }
-    return response.json() as Promise<PhotoDocument[]>;
   }
   
   // Find photos near multiple points
