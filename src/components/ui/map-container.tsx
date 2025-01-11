@@ -312,8 +312,8 @@ for (let i = 0; i < coords.length; i++) {
         {
           padding: 50,
           duration: 0,
-          maxZoom: 13,
-          minZoom: 13
+          maxZoom: 14,  // Allow zooming in one more level at tricky spots
+          minZoom: 12   // Allow zooming out if needed
         }
       );
 
@@ -324,12 +324,13 @@ if (!pointPixel) {
   return;
 }
 
-// First, do a wide scan to detect junction areas
+// First, do a wide scan to detect junction areas, but only for major roads
 const wideAreaCheck = map.current?.queryRenderedFeatures([
   [pointPixel.x - 50, pointPixel.y - 50],
   [pointPixel.x + 50, pointPixel.y + 50]
 ], {
-  layers: ['custom-roads']
+  layers: ['custom-roads'],
+  filter: ['in', 'highway', 'trunk', 'primary', 'secondary', 'residential']  // Only get major roads
 });
 
 // Analyze the road features to detect junction characteristics
@@ -395,16 +396,28 @@ if (isComplexJunction && features.length === 0) {
         location: [pt.lat, pt.lon]
       });
 
-      if (features && features.length > 0) {
-        cachedRoadsRef.current = turf.featureCollection(
-          features.map((f) => turf.feature(f.geometry, f.properties))
-        );
-        console.log('[assignSurfacesViaNearest] => Found roads:', {
-          roadsCount: features.length
-        });
-        resolve();
-        return;
-      }
+// After all queries (including circular pattern) are complete
+if (features && features.length > 0) {
+  // Ensure all features are unique by creating a map keyed by feature geometry
+  const uniqueFeaturesMap = new Map();
+  features.forEach(f => {
+    const key = JSON.stringify(f.geometry.coordinates);
+    uniqueFeaturesMap.set(key, f);
+  });
+  
+  const uniqueFeatures = Array.from(uniqueFeaturesMap.values());
+  
+  cachedRoadsRef.current = turf.featureCollection(
+    uniqueFeatures.map((f) => turf.feature(f.geometry, f.properties))
+  );
+  
+  console.log('[assignSurfacesViaNearest] => Found roads:', {
+    originalCount: features.length,
+    uniqueCount: uniqueFeatures.length
+  });
+  resolve();
+  return;
+}
 
       attempts++;
       if (attempts >= maxAttempts) {
@@ -437,14 +450,16 @@ if (isComplexJunction && features.length === 0) {
   if (!vantageRoads || vantageRoads.features.length === 0) {
     results.push({ ...pt, surface: 'unpaved' });
   } else {
-    // Evaluate each road
-    for (const road of vantageRoads.features) {
-      if (
-        road.geometry.type !== 'LineString' &&
-        road.geometry.type !== 'MultiLineString'
-      ) {
-        continue;
-      }
+// Evaluate each road
+for (const road of vantageRoads.features) {
+  console.log('Road properties:', road.properties);
+  
+  if (
+    road.geometry.type !== 'LineString' &&
+    road.geometry.type !== 'MultiLineString'
+  ) {
+    continue;
+  }
       
       // Create properly typed road feature
       const roadFeature: Feature<LineString | MultiLineString> = {
@@ -463,17 +478,21 @@ if (isComplexJunction && features.length === 0) {
       
       const snap = nearestPointOnLine(lineFeature, pointFeature);
       const dist = snap.properties.dist; // in km
-      if (dist < minDist) {
-        minDist = dist;
-        const sRaw = (road.properties?.surface || '').toLowerCase();
-        if (PAVED_SURFACES.includes(sRaw)) {
-          bestSurface = 'paved';
-        } else if (UNPAVED_SURFACES.includes(sRaw)) {
-          bestSurface = 'unpaved';
-        } else {
-          bestSurface = 'unpaved'; // fallback
-        }
-      }
+// Add a small threshold to prefer staying on main roads
+const DISTANCE_THRESHOLD = 0.001; // 1 meter buffer
+
+if (dist < minDist - DISTANCE_THRESHOLD || 
+   (road.properties?.highway === 'trunk' && dist < minDist + DISTANCE_THRESHOLD)) {
+  minDist = dist;
+  const sRaw = (road.properties?.surface || '').toLowerCase();
+  if (PAVED_SURFACES.includes(sRaw)) {
+    bestSurface = 'paved';
+  } else if (UNPAVED_SURFACES.includes(sRaw)) {
+    bestSurface = 'unpaved';
+  } else {
+    bestSurface = 'unpaved'; // fallback
+  }
+}
     }
     results.push({ ...pt, surface: bestSurface });
   }
