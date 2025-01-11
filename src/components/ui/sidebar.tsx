@@ -16,6 +16,8 @@ import {
   DialogTitle,
   DialogContent,
   Typography,
+  TextField,
+  Button,
   Paper
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
@@ -71,8 +73,15 @@ const Sidebar = ({ mapRef }: SidebarProps) => {
     picture?: string;
     bioName?: string;
     isAdmin?: boolean;
+    socialLinks?: {
+      instagram?: string;
+      strava?: string;
+      facebook?: string;
+    };
+    website?: string;
   } | null>(null);
-  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -227,6 +236,36 @@ const Sidebar = ({ mapRef }: SidebarProps) => {
     } finally {
       setLoading(false);
       setUploadDialogOpen(false);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    try {
+      const response = await fetch('http://localhost:3001/api/profile', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(userData)
+      });
+
+      if (response.ok) {
+        setSnackbar({
+          open: true,
+          message: 'Profile updated successfully',
+          severity: 'success'
+        });
+        setProfileDrawerOpen(false);
+      } else {
+        throw new Error('Failed to update profile');
+      }
+    } catch (error) {
+      setSnackbar({
+        open: true,
+        message: 'Failed to update profile',
+        severity: 'error'
+      });
     }
   };
 
@@ -463,10 +502,10 @@ const Sidebar = ({ mapRef }: SidebarProps) => {
       {/* Spacer to push profile to bottom */}
       <Box sx={{ flexGrow: 1 }} />
       
-      {/* Profile section */}
+{/* Profile section */}
       <Box sx={{ p: 1, borderTop: 1, borderColor: 'divider' }}>
   <ListItemButton 
-    onClick={() => window.location.href = userData ? "http://localhost:3001/logout" : "http://localhost:3001/login"}
+    onClick={() => userData ? setProfileDrawerOpen(true) : window.location.href = "http://localhost:3001/login"}
     sx={{
       justifyContent: open ? 'start' : 'center', 
       minHeight: 48,
@@ -490,8 +529,8 @@ const Sidebar = ({ mapRef }: SidebarProps) => {
       )}
     </ListItemIcon>
     <ListItemText 
-      primary={userData ? "Sign Out" : "Sign In"}
-      secondary={userData?.bioName}
+      primary={userData ? userData.bioName || "Profile" : "Sign In"}
+      secondary={userData ? "Edit Profile" : undefined}
       sx={{ 
         opacity: open ? 1 : 0,
         display: open ? 'block' : 'none'
@@ -499,6 +538,174 @@ const Sidebar = ({ mapRef }: SidebarProps) => {
     />
   </ListItemButton>
 </Box>
+
+      {/* Profile Drawer */}
+      <Drawer
+        anchor="right"
+        open={profileDrawerOpen && !!userData}
+        onClose={() => setProfileDrawerOpen(false)}
+        SlideProps={{
+          style: { marginLeft: open ? drawerWidth : closedWidth }
+        }}
+        PaperProps={{
+          sx: {
+            width: 320,
+            p: 2,
+            bgcolor: 'background.paper'
+          }
+        }}
+      >
+        <Box sx={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          height: '100%'
+        }}>
+          {/* Header */}
+          <Box sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between',
+            mb: 2
+          }}>
+            <Typography variant="h6">Edit Profile</Typography>
+            <IconButton onClick={() => setProfileDrawerOpen(false)}>
+              <ChevronRightIcon />
+            </IconButton>
+          </Box>
+
+          {/* Form Content */}
+          <Box component="form" sx={{ flexGrow: 1, overflow: 'auto' }}>
+            {/* Profile Picture */}
+            <Box sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: 2, 
+              mb: 3 
+            }}>
+              {userData?.picture ? (
+                <Box
+                  component="img"
+                  src={userData.picture}
+                  alt={userData.bioName}
+                  sx={{
+                    width: 64,
+                    height: 64,
+                    borderRadius: '50%'
+                  }}
+                />
+              ) : (
+                <AccountCircleIcon sx={{ fontSize: 64 }} />
+              )}
+              <Box>
+                <Typography variant="subtitle1" fontWeight="bold">
+                  {userData?.bioName}
+                </Typography>
+                {userData?.isAdmin && (
+                  <Typography variant="caption" color="primary">
+                    Admin
+                  </Typography>
+                )}
+              </Box>
+            </Box>
+
+            {/* Bio Name */}
+            <TextField
+              fullWidth
+              label="Bio Name"
+              variant="outlined"
+              margin="normal"
+              value={userData?.bioName || ''}
+              onChange={(e) => setUserData(prev => prev ? {...prev, bioName: e.target.value} : null)}
+            />
+
+            {/* Social Links */}
+            <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
+              Social Links
+            </Typography>
+            <TextField
+              fullWidth
+              label="Instagram"
+              variant="outlined"
+              margin="normal"
+              placeholder="@username"
+              value={userData?.socialLinks?.instagram || ''}
+              onChange={(e) => setUserData(prev => prev ? {
+                ...prev, 
+                socialLinks: {...(prev.socialLinks || {}), instagram: e.target.value}
+              } : null)}
+            />
+            <TextField
+              fullWidth
+              label="Strava"
+              variant="outlined"
+              margin="normal"
+              placeholder="Profile URL"
+              value={userData?.socialLinks?.strava || ''}
+              onChange={(e) => setUserData(prev => prev ? {
+                ...prev, 
+                socialLinks: {...(prev.socialLinks || {}), strava: e.target.value}
+              } : null)}
+            />
+            <TextField
+              fullWidth
+              label="Facebook"
+              variant="outlined"
+              margin="normal"
+              placeholder="Profile URL"
+              value={userData?.socialLinks?.facebook || ''}
+              onChange={(e) => setUserData(prev => prev ? {
+                ...prev, 
+                socialLinks: {...(prev.socialLinks || {}), facebook: e.target.value}
+              } : null)}
+            />
+
+            {/* Website */}
+            <TextField
+              fullWidth
+              label="Website"
+              variant="outlined"
+              margin="normal"
+              placeholder="https://"
+              value={userData?.website || ''}
+              onChange={(e) => setUserData(prev => prev ? {...prev, website: e.target.value} : null)}
+            />
+          </Box>
+
+          {/* Actions */}
+          <Box sx={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            gap: 1,
+            mt: 2,
+            pt: 2,
+            borderTop: 1,
+            borderColor: 'divider'
+          }}>
+            <Button 
+              onClick={() => window.location.href = "http://localhost:3001/logout"}
+              color="error"
+              variant="outlined"
+            >
+              Sign Out
+            </Button>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button 
+                onClick={() => setProfileDrawerOpen(false)}
+                color="inherit"
+              >
+                Cancel
+              </Button>
+              <Button 
+                variant="contained"
+                color="primary"
+                onClick={handleSaveProfile}
+              >
+                Save Changes
+              </Button>
+            </Box>
+          </Box>
+        </Box>
+      </Drawer>
     </StyledDrawer>
   );
 };
