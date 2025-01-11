@@ -23,14 +23,18 @@ const config = {
   secret: process.env.AUTH0_SECRET,
   baseURL: 'http://localhost:3001',
   clientID: 'hLnq0z7KNvwcORjFF9KdC4kGPtu51kVB',
+  clientSecret: process.env.AUTH0_CLIENT_SECRET, // Add this line
   issuerBaseURL: 'https://dev-8jmwfh4hugvdjwh8.au.auth0.com',
   routes: {
-    postLogoutRedirect: 'http://localhost:5173',
     callback: '/callback'
   },
-  afterCallback: (req, res, session) => {
-    res.redirect('http://localhost:5173');
-    return session;
+  authorizationParams: {
+    response_type: 'code',
+    audience: 'https://dev-8jmwfh4hugvdjwh8.au.auth0.com/api/v2/',
+    scope: 'openid profile email'
+  },
+  session: {
+    absoluteDuration: 24 * 60 * 60 // 24 hours in seconds
   }
 };
 
@@ -40,7 +44,8 @@ const app = express();
 app.use(Auth0(config));
 
 // Handle successful authentication
-app.get('/callback', (req, res) => {
+app.post('/callback', (req, res) => {
+  // After successful authentication, redirect to frontend with session info
   res.redirect('http://localhost:5173');
 });
 
@@ -54,9 +59,10 @@ console.log('MongoDB URI found:', MONGODB_URI.substring(0, 20) + '...');
 
 app.use(cors({
   origin: ['http://localhost:5173', 'http://localhost:5174'],
-  methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-csrf-token'],
+  credentials: true,
+  maxAge: 86400 // Cache preflight requests for 24 hours
 }));
 
 // Add CSP headers
