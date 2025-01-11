@@ -16,6 +16,8 @@ import nearestPointOnLine from '@turf/nearest-point-on-line';
 import type { Feature, Point as TurfPoint, GeoJsonProperties } from 'geojson';
 import type { FeatureCollection } from 'geojson';
 import type { LineString, MultiLineString } from 'geojson';
+import DistanceMarker from './distance-marker';
+import { createRoot } from 'react-dom/client';
 
 // --------------------------------------------
 // Type definitions for the component
@@ -91,6 +93,36 @@ const UNPAVED_SURFACES = [
   'unpaved', 'gravel', 'fine', 'fine_gravel', 
   'dirt', 'earth'
 ];
+
+const getDistancePoints = (
+  map: mapboxgl.Map,
+  lineString: Feature<LineString>,
+  totalLength: number
+) => {
+  const zoom = map.getZoom();
+  // Set interval based on zoom level
+  let interval = 25; // Default to 25km for zoomed out
+  if (zoom >= 13) interval = 5;      // Closest zoom: 5km intervals
+  else if (zoom >= 11) interval = 10; // Medium zoom: 10km intervals
+  else interval = 25;                 // Far zoom: 25km intervals
+
+  // Don't show markers if zoomed out too far
+  if (zoom < 9) return [];
+
+  const points = [];
+  let distance = 0;
+
+  while (distance < totalLength) {
+    const point = turf.along(lineString, distance, { units: 'kilometers' });
+    points.push({
+      point: point,
+      distance: distance
+    });
+    distance += interval;
+  }
+
+  return points;
+};
 
 // --------------------------------------------
 // Main MapContainer Component
@@ -211,7 +243,7 @@ map.current.addLayer({
   },
   paint: {
     'line-color': '#FFFFFF',
-    'line-width': 6
+    'line-width': 5
   }
 });
 
@@ -226,7 +258,7 @@ map.current.addLayer({
   },
   paint: {
     'line-color': '#e17055',
-    'line-width': 4,
+    'line-width': 3,
     'line-opacity': [
       'case',
       ['==', ['get', 'surface'], 'paved'],
@@ -247,17 +279,48 @@ map.current.addLayer({
   },
   paint: {
     'line-color': '#e17055',
-    'line-width': 4,
+    'line-width': 3,
     'line-opacity': [
       'case',
       ['==', ['get', 'surface'], 'unpaved'],
       1,
       0
     ],
-    'line-dasharray': [0.5, 2]
+    'line-dasharray': [0.5, 1]
   }
 });
-      console.log('[addRouteToMap] -> route layers added.');
+
+// Calculate combined line for distance markers
+const combinedLine = turf.lineString(
+  featureColl.features.reduce((coords: number[][], feature) => {
+    if (feature.geometry.type === 'LineString') {
+      return [...coords, ...feature.geometry.coordinates];
+    }
+    return coords;
+  }, [])
+);
+
+// Calculate total length in kilometers
+const totalLength = turf.length(combinedLine, { units: 'kilometers' });
+
+// Get distance points based on zoom level
+const distancePoints = getDistancePoints(map.current, combinedLine, totalLength);
+
+// Add markers for each distance point
+distancePoints.forEach(({ point, distance }) => {
+  const el = document.createElement('div');
+  const root = createRoot(el);
+  root.render(<DistanceMarker distance={distance} />);
+
+  new mapboxgl.Marker({
+    element: el,
+    anchor: 'bottom'
+  })
+    .setLngLat(point.geometry.coordinates)
+    .addTo(map.current);
+});
+
+console.log('[addRouteToMap] -> route layers and distance markers added.');
     },
     [isReady]
   );
@@ -296,7 +359,7 @@ for (let i = 0; i < coords.length; i++) {
 
   await new Promise<void>((resolve) => {
     let attempts = 0;
-    const maxAttempts = 30;
+    const maxAttempts = 10;
 
     const checkTiles = () => {
       // bounding box ~0.001 deg => ~100m in each direction
@@ -347,9 +410,9 @@ if (isComplexJunction) {
   
   // Adjust query box based on junction complexity
   if (uniqueRoads.size > 1) {
-    queryBox = 50; // Major junction (different named roads)
+    queryBox = 30; // Major junction (different named roads)
   } else if (wideAreaCheck.length > 2) {
-    queryBox = 30; // Minor junction or approach area
+    queryBox = 20; // Minor junction or approach area
   }
 }
 
@@ -411,7 +474,7 @@ if (features && features.length > 0) {
         return;
       }
 
-      setTimeout(checkTiles, 800);
+      setTimeout(checkTiles, 400);
     };
 
     checkTiles();
