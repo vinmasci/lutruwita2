@@ -11,7 +11,11 @@ import { parseString } from 'xml2js';  // For parsing GPX files
 import mapboxgl from 'mapbox-gl';      // Main mapping library
 import { CircularProgress, Box, Typography } from '@mui/material';  // UI components
 import 'mapbox-gl/dist/mapbox-gl.css';
-import * as turf from '@turf/turf';    // For geospatial calculations
+import * as turf from '@turf/turf';
+import nearestPointOnLine from '@turf/nearest-point-on-line';
+import type { Feature, Point as TurfPoint, GeoJsonProperties } from 'geojson';
+import type { FeatureCollection } from 'geojson';
+import type { LineString, MultiLineString } from 'geojson';
 
 // --------------------------------------------
 // Type definitions for the component
@@ -20,8 +24,8 @@ interface MapRef {
   // Methods exposed to parent components
   handleGpxUpload: (content: string) => Promise<void>;  // Main GPX processing function
   isReady: () => boolean;                               // Map readiness check
-  on: (event: string, callback: () => void) => void;    // Event listener binding
-  off: (event: string, callback: () => void) => void;   // Event listener removal
+  on: (event: string, callback: (event: any) => void) => void;    // Event listener binding
+  off: (event: string, callback: (event: any) => void) => void;   // Event listener removal
 }
 
 interface Point {
@@ -100,11 +104,12 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
   // Core references
   const mapContainer = useRef<HTMLDivElement>(null);         // DOM element for map
   const map = useRef<mapboxgl.Map | null>(null);            // Mapbox instance
-  const cachedRoadsRef = useRef<turf.FeatureCollection | null>(null);  // Temporary road data cache
+  const cachedRoadsRef = useRef<FeatureCollection | null>(null);  // Temporary road data cache
 
   // State management
   const [isMapReady, setIsMapReady] = React.useState(false);
   const [streetsLayersLoaded, setStreetsLayersLoaded] = React.useState(false);
+  const [isUploading, setIsUploading] = React.useState(false);
   const [surfaceProgress, setSurfaceProgress] = React.useState<SurfaceProgressState>({
     isProcessing: false,
     progress: 0,
@@ -174,7 +179,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       }
 
       // Create GeoJSON feature collection from segments
-      const featureColl = {
+      const featureColl: FeatureCollection = {
         type: 'FeatureCollection',
         features: segments.map((seg, idx) => ({
           type: 'Feature',
@@ -187,7 +192,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
             coordinates: seg.points.map((p) => [p.lon, p.lat])
           }
         }))
-      };
+      } as FeatureCollection;
 
       // Add source data to map
       map.current.addSource(routeSourceId, {
@@ -195,42 +200,63 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
         data: featureColl
       });
 
-      // Add base layer - solid lines for all segments
-      map.current.addLayer({
-        id: routeLayerId,
-        type: 'line',
-        source: routeSourceId,
-        layout: {
-          'line-join': 'round',
-          'line-cap': 'round'
-        },
-        paint: {
-          'line-color': '#FF4444',  // Base red color
-          'line-width': 4
-        }
-      });
+// Add white stroke base layer
+map.current.addLayer({
+  id: routeLayerId + '-white-stroke',
+  type: 'line',
+  source: routeSourceId,
+  layout: {
+    'line-join': 'round',
+    'line-cap': 'round'
+  },
+  paint: {
+    'line-color': '#FFFFFF',
+    'line-width': 6
+  }
+});
 
-      // Add overlay layer - dashed lines for unpaved segments
-      map.current.addLayer({
-        id: routeLayerId + '-unpaved-overlay',
-        type: 'line',
-        source: routeSourceId,
-        layout: {
-          'line-join': 'round',
-          'line-cap': 'round'
-        },
-        paint: {
-          'line-color': '#FFB3B3',  // Lighter red for dashed overlay
-          'line-width': 4,
-          'line-opacity': [
-            'case',
-            ['==', ['get', 'surface'], 'unpaved'],
-            1,
-            0
-          ],
-          'line-dasharray': [1, 0.5]  // Dashed pattern for unpaved
-        }
-      });
+// Add base layer - solid lines for paved segments
+map.current.addLayer({
+  id: routeLayerId,
+  type: 'line',
+  source: routeSourceId,
+  layout: {
+    'line-join': 'round',
+    'line-cap': 'round'
+  },
+  paint: {
+    'line-color': '#e17055',
+    'line-width': 4,
+    'line-opacity': [
+      'case',
+      ['==', ['get', 'surface'], 'paved'],
+      1,
+      0
+    ]
+  }
+});
+
+// Add dashed lines for unpaved segments
+map.current.addLayer({
+  id: routeLayerId + '-unpaved',
+  type: 'line',
+  source: routeSourceId,
+  layout: {
+    'line-join': 'round',
+    'line-cap': 'round'
+  },
+  paint: {
+    'line-color': '#e17055',
+    'line-width': 4,
+    'line-opacity': [
+      'case',
+      ['==', ['get', 'surface'], 'unpaved'],
+      1,
+      0
+    ],
+    'line-dasharray': [0.5, 2]
+  }
+});
       console.log('[addRouteToMap] -> route layers added.');
     },
     [isReady]
@@ -342,7 +368,8 @@ const features = map.current?.queryRenderedFeatures([
   const vantageRoads = cachedRoadsRef.current;
   let bestSurface: 'paved' | 'unpaved' = 'unpaved';
   let minDist = Infinity;
-  const pointGeo = turf.point([pt.lon, pt.lat]);
+      // Create properly typed point feature using turf helper
+      const pointFeature = turf.point([pt.lon, pt.lat]);
 
   if (i % 100 === 0) {
     console.log(
@@ -362,7 +389,23 @@ const features = map.current?.queryRenderedFeatures([
       ) {
         continue;
       }
-      const snap = turf.nearestPointOnLine(road, pointGeo);
+      
+      // Create properly typed road feature
+      const roadFeature: Feature<LineString | MultiLineString> = {
+        type: 'Feature',
+        geometry: road.geometry,
+        properties: road.properties
+      };
+      // Ensure coordinates are properly typed as number[][]
+      const lineCoords = road.geometry.type === 'LineString' 
+        ? road.geometry.coordinates as number[][]
+        : road.geometry.coordinates[0] as number[][];
+      
+      // Create properly typed features using turf helpers
+      const lineFeature = turf.lineString(lineCoords, road.properties);
+      const pointFeature = turf.point([pt.lon, pt.lat]);
+      
+      const snap = nearestPointOnLine(lineFeature, pointFeature);
       const dist = snap.properties.dist; // in km
       if (dist < minDist) {
         minDist = dist;
@@ -480,11 +523,17 @@ const features = map.current?.queryRenderedFeatures([
       // Clear any leftover roads from previous operations
       cachedRoadsRef.current = null;
 
-      // Process all points to detect surface types
-      const finalCoords = await assignSurfacesViaNearest(rawCoords);
+// Process all points to detect surface types
+const finalCoords = await assignSurfacesViaNearest(rawCoords);
 
-      // Calculate surface statistics
-      const pavedCount = finalCoords.filter((c) => c.surface === 'paved').length;
+// Ensure all points are processed before continuing
+if (!finalCoords || finalCoords.length !== rawCoords.length) {
+  console.error('[handleGpxUpload] Not all points were processed');
+  return;
+}
+
+// Calculate surface statistics
+const pavedCount = finalCoords.filter((c) => c.surface === 'paved').length;
       const unpavedCount = finalCoords.length - pavedCount;
       console.log(
         `[handleGpxUpload] Surfaces assigned => paved=${pavedCount}, unpaved=${unpavedCount}, total=${finalCoords.length}`
@@ -505,12 +554,12 @@ const features = map.current?.queryRenderedFeatures([
     () => ({
       handleGpxUpload,
       isReady,
-      on: (evt: string, cb: () => void) => {
+      on: (evt: string, cb: (event: any) => void) => {
         if (map.current) {
           map.current.on(evt, cb);
         }
       },
-      off: (evt: string, cb: () => void) => {
+      off: (evt: string, cb: (event: any) => void) => {
         if (map.current) {
           map.current.off(evt, cb);
         }
@@ -539,13 +588,27 @@ const features = map.current?.queryRenderedFeatures([
       const newMap = new mapboxgl.Map({
         container: mapContainer.current,
         style: 'mapbox://styles/mapbox/satellite-streets-v12',
-        center: [146.5, -41.5],  // Tasmania center
-        zoom: 13
+        bounds: [[144.5, -43.7], [148.5, -40.5]], // Tasmania bounds: [west, south], [east, north]
+        fitBoundsOptions: {
+          padding: 50,
+          pitch: 0,  // Bird's eye view (looking straight down)
+          bearing: 0
+        }
       } as any);
 
       map.current = newMap;
 
       newMap.on('load', () => {
+        // Add terrain source and layer
+        newMap.addSource('mapbox-dem', {
+          'type': 'raster-dem',
+          'url': 'mapbox://mapbox.mapbox-terrain-dem-v1',
+          'tileSize': 512,
+          'maxzoom': 14
+        });
+        
+        // Add terrain layer
+        newMap.setTerrain({ 'source': 'mapbox-dem', 'exaggeration': 1.5 });
         console.log('[MapContainer] Base map loaded');
         try {
           // Add MapTiler vector tile source containing road data
