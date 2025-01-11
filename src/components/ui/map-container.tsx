@@ -11,6 +11,7 @@ import { parseString } from 'xml2js';  // For parsing GPX files
 import mapboxgl from 'mapbox-gl';      // Main mapping library
 import { CircularProgress, Box, Typography } from '@mui/material';  // UI components
 import 'mapbox-gl/dist/mapbox-gl.css';
+import { findPhotosNearPoints, type PhotoDocument } from '../lib/db';
 import * as turf from '@turf/turf';
 import nearestPointOnLine from '@turf/nearest-point-on-line';
 import type { Feature, Point as TurfPoint, GeoJsonProperties } from 'geojson';
@@ -336,6 +337,47 @@ console.log('[addRouteToMap] -> route layers and distance markers added.');
     },
     [isReady]
   );
+
+  // ------------------------------------------------------------------
+  // Add photo markers to map
+  // Creates markers with popups for photos near the route
+  // ------------------------------------------------------------------
+  const addPhotoMarkersToMap = useCallback(async (coordinates: Point[]) => {
+    if (!map.current) return;
+
+    // Convert coordinates to format needed for photo query
+    const points = coordinates.map(coord => ({
+      longitude: coord.lon,
+      latitude: coord.lat
+    }));
+
+    // Find photos near route
+    const photos = await findPhotosNearPoints(points);
+
+    // Add markers for each photo
+    photos.forEach(photo => {
+      // Create popup
+      const popup = new mapboxgl.Popup({ offset: 25 }).setHTML(`
+        <div style="max-width: 200px;">
+          <img src="${photo.url}" alt="${photo.originalName}" style="width: 100%; height: auto;"/>
+          <p style="margin-top: 8px;">${photo.caption || ''}</p>
+          <p style="font-size: 0.8em; color: #666;">By ${photo.username}</p>
+        </div>
+      `);
+
+      // Add marker
+      new mapboxgl.Marker({
+        color: '#FF0000'
+      })
+        .setLngLat([photo.longitude, photo.latitude])
+        .setPopup(popup)
+        .addTo(map.current);
+    });
+  }, []);
+
+  // ------------------------------------------------------------------
+  // assignSurfacesViaNearest => Core surface detection function
+  // Process:
 
   // ------------------------------------------------------------------
   // assignSurfacesViaNearest => Core surface detection function
@@ -675,8 +717,12 @@ const pavedCount = finalCoords.filter((c) => c.surface === 'paved').length;
       // Add the processed route to the map
       addRouteToMap(finalCoords);
       console.log('[handleGpxUpload] => Route displayed with surfaces');
+
+      // Add photo markers
+      await addPhotoMarkersToMap(finalCoords);
+      console.log('[handleGpxUpload] => Photo markers added');
     },
-    [isReady, assignSurfacesViaNearest, addRouteToMap]
+    [isReady, assignSurfacesViaNearest, addRouteToMap, addPhotoMarkersToMap]
   );
   // ------------------------------------------------------------------
   // Expose methods to parent component
