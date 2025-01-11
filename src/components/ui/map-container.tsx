@@ -357,30 +357,37 @@ console.log('[addRouteToMap] -> route layers and distance markers added.');
     // Find photos near route
     const photos = await findPhotosNearPoints(points);
 
-    // Add markers for each photo
-    photos.forEach(photo => {
-      // Create popup
-      const popup = new mapboxgl.Popup({ offset: 25 }).setHTML(`
-        <div style="max-width: 200px;">
-          <img src="${photo.url}" alt="${photo.originalName}" style="width: 100%; height: auto;"/>
-          <p style="margin-top: 8px;">${photo.caption || ''}</p>
-          <p style="font-size: 0.8em; color: #666;">By ${photo.username}</p>
-        </div>
-      `);
+// Add markers for each photo
+photos.forEach(photo => {
+  console.log('Creating marker for:', {
+    url: photo.url,
+    coords: [photo.longitude, photo.latitude]
+  });
 
-      // Add marker
-      const marker = new mapboxgl.Marker({
-        color: '#FF0000',
-        element: (() => {
-          const el = document.createElement('div');
-          el.className = 'photo-marker'; // Add this class
-          return el;
-        })()
-      })
-        .setLngLat([photo.longitude, photo.latitude])
-        .setPopup(popup)
-        .addTo(map.current);
-    });
+  // Create popup
+  const popup = new mapboxgl.Popup({ offset: 25 }).setHTML(`
+    <div style="max-width: 200px;">
+      <img src="${photo.url}" alt="${photo.originalName}" style="width: 100%; height: auto;"/>
+      <p style="margin-top: 8px;">${photo.caption || ''}</p>
+      <p style="font-size: 0.8em; color: #666;">By ${photo.username}</p>
+    </div>
+  `);
+
+  // Add marker
+  try {
+    const marker = new mapboxgl.Marker({
+      color: '#FF0000',
+      scale: 1.5  // Make them bigger for testing
+    })
+      .setLngLat([photo.longitude, photo.latitude])
+      .setPopup(popup)
+      .addTo(map.current);
+
+    console.log('Marker created and added to map');
+  } catch (err) {
+    console.error('Error creating marker:', err);
+  }
+});
   }, []);
 
   // ------------------------------------------------------------------
