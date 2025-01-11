@@ -18,6 +18,7 @@ import type { Feature, Point as TurfPoint, GeoJsonProperties, Position } from 'g
 import type { FeatureCollection } from 'geojson';
 import type { LineString, MultiLineString } from 'geojson';
 import type { Units } from '@turf/helpers';
+import { PhotoModal } from '@/components/ui/photo-modal';
 import DistanceMarker from './distance-marker';
 import { createRoot } from 'react-dom/client';
 
@@ -345,7 +346,6 @@ console.log('[addRouteToMap] -> route layers and distance markers added.');
 // Add photo markers to map
 // Creates markers with popups for photos near the route
 // ------------------------------------------------------------------
-// AFTER (cleaned up function)
 const addPhotoMarkersToMap = useCallback(async (coordinates: Point[]) => {
   if (!map.current) return;
 
@@ -358,8 +358,9 @@ const addPhotoMarkersToMap = useCallback(async (coordinates: Point[]) => {
   // Find photos near route
   const photos = await findPhotosNearPoints(points);
 
-  // Remove any existing photo markers
+  // Remove any existing photo markers and modal containers
   document.querySelectorAll('.photo-marker').forEach(el => el.remove());
+  document.querySelectorAll('.photo-modal-container').forEach(el => el.remove());
 
   // Create markers with thumbnails for each photo
   photos.forEach(photo => {
@@ -367,7 +368,6 @@ const addPhotoMarkersToMap = useCallback(async (coordinates: Point[]) => {
     const el = document.createElement('div');
     el.className = 'photo-marker';
     el.style.position = 'relative';
-    el.style.transform = 'translate(-50%, -50%)'; // Center the element
 
     // Create and style the thumbnail container
     const imgContainer = document.createElement('div');
@@ -378,6 +378,7 @@ const addPhotoMarkersToMap = useCallback(async (coordinates: Point[]) => {
     imgContainer.style.boxShadow = '0 2px 4px rgba(0,0,0,0.5)';
     imgContainer.style.width = 'fit-content';
     imgContainer.style.display = 'inline-block';
+    imgContainer.style.cursor = 'pointer';
 
     // Create and style the thumbnail
     const img = document.createElement('img');
@@ -406,28 +407,51 @@ const addPhotoMarkersToMap = useCallback(async (coordinates: Point[]) => {
     imgContainer.appendChild(arrow);
     el.appendChild(imgContainer);
 
-    // Create the marker with fixed offset
-    const marker = new mapboxgl.Marker({
-      element: el,
-      anchor: 'bottom', // Makes the arrow point to the exact location
-      offset: [0, 0]
-    })
-      .setLngLat([photo.longitude, photo.latitude])
-      .addTo(map.current);
+    // Add specific classes to both the container and the marker element
+    const markerEl = document.createElement('div');
+    markerEl.className = 'mapboxgl-marker photo-marker-container';
+    markerEl.appendChild(el);
 
-    // Add click handler for popup
-    marker.getElement().addEventListener('click', () => {
-      new mapboxgl.Popup()
-        .setLngLat([photo.longitude, photo.latitude])
-        .setHTML(`
-          <div style="max-width: 200px; background-color: #1f2937; color: #e5e7eb; padding: 8px; border-radius: 6px;">
-            <img src="${photo.url}" alt="${photo.originalName}" style="width: 100%; height: auto; border-radius: 4px;"/>
-            <p style="margin-top: 8px;">${photo.caption}</p>
-            <p style="font-size: 0.8em; color: #9ca3af;">By ${photo.username}</p>
-          </div>
-        `)
-        .addTo(map.current);
+    // Create React root for the modal
+    const modalContainer = document.createElement('div');
+    modalContainer.className = 'photo-modal-container';
+    document.body.appendChild(modalContainer);
+    const modalRoot = createRoot(modalContainer);
+
+    // Add click handler for the image
+    imgContainer.addEventListener('click', (e) => {
+      e.stopPropagation();
+      modalRoot.render(
+        <PhotoModal
+          open={true}
+          onClose={() => {
+            modalRoot.render(
+              <PhotoModal
+                open={false}
+                onClose={() => {}}
+                photo={photo}
+              />
+            );
+          }}
+          photo={photo}
+        />
+      );
     });
+
+    // Create and setup the marker
+    const marker = new mapboxgl.Marker({
+      element: markerEl,
+      anchor: 'bottom',
+      offset: [0, 8],
+      clickTolerance: 3
+    });
+
+    // Set position and add to map
+    marker.setLngLat([photo.longitude, photo.latitude]);
+    marker.addTo(map.current);
+
+    // Add class for identification
+    marker.getElement().classList.add('photo-marker');
   });
 
   console.log('Photo markers added to map');
@@ -915,9 +939,9 @@ newMap.on('zoom', () => {
   // Only update if interval changed
   if (newInterval !== currentInterval && newMap.getSource(routeSourceId)) {
     currentInterval = newInterval;
-    // Remove only distance markers
-    const distanceMarkers = document.querySelectorAll('.mapboxgl-marker:not(.photo-marker)');
-    distanceMarkers.forEach(marker => marker.remove());
+// Remove only distance markers, explicitly excluding photo markers
+const distanceMarkers = document.querySelectorAll('.mapboxgl-marker:not(.photo-marker):not(.photo-marker-container)');
+distanceMarkers.forEach(marker => marker.remove());
     
     // Get current route data
     const source = newMap.getSource(routeSourceId) as mapboxgl.GeoJSONSource;
