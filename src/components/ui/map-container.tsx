@@ -14,9 +14,10 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { findPhotosNearPoints, type PhotoDocument } from '@/lib/db';
 import * as turf from '@turf/turf';
 import nearestPointOnLine from '@turf/nearest-point-on-line';
-import type { Feature, Point as TurfPoint, GeoJsonProperties } from 'geojson';
+import type { Feature, Point as TurfPoint, GeoJsonProperties, Position } from 'geojson';
 import type { FeatureCollection } from 'geojson';
 import type { LineString, MultiLineString } from 'geojson';
+import type { Units } from '@turf/helpers';
 import DistanceMarker from './distance-marker';
 import { createRoot } from 'react-dom/client';
 
@@ -96,10 +97,12 @@ const UNPAVED_SURFACES = [
 ];
 
 const getDistancePoints = (
-  map: mapboxgl.Map,
+  map: mapboxgl.Map | null,
   lineString: Feature<LineString>,
   totalLength: number
 ) => {
+  if (!map) return [];
+
   const zoom = map.getZoom();
   // Set interval based on zoom level
   let interval = 25; // Default to 25km for zoomed out
@@ -313,7 +316,7 @@ const combinedLine = turf.lineString(
 );
 
 // Calculate total length in kilometers
-const totalLength = turf.length(combinedLine, { units: 'kilometers' });
+const totalLength = Number(turf.length(combinedLine, { units: 'kilometers' }));
 
 // Get distance points based on zoom level
 const distancePoints = getDistancePoints(map.current, combinedLine, totalLength);
@@ -329,7 +332,7 @@ distancePoints.forEach(({ point, distance }) => {
     anchor: 'center',
     scale: 0.25  // Make markers 4x smaller
   })
-    .setLngLat(point.geometry.coordinates)
+    .setLngLat(point.geometry.coordinates as [number, number])
     .addTo(map.current);
 });
 
