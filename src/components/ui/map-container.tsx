@@ -227,11 +227,11 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
         geometries: 'geojson',
         radiuses,
         steps: 'true',
-        tidy: 'true',
-        profile: 'cycling'  // Using cycling profile for better path matching
+        tidy: 'true'
       });
   
-      const url = `https://api.mapbox.com/matching/v5/mapbox/cycling/${coordinates}?${params}`;
+      // Use the correct profile format: mapbox/{profile}-v1
+      const url = `https://api.mapbox.com/matching/v5/mapbox/cycling-v1/${coordinates}?${params}`;
   
       const response = await fetch(url, { 
         signal: controller.signal,
@@ -256,12 +256,27 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
 
   // Process route segments in parallel
   const processRouteSegments = async (coords: Point[]) => {
-    // Reduce chunk size for better reliability
-    const chunkSize = 50;
+    // Use smaller chunks to improve reliability and stay within API limits
+    const chunkSize = 25; // Reduced from 50 to 25
     const segments: Point[][] = [];
     
-    for (let i = 0; i < coords.length; i += chunkSize) {
-      segments.push(coords.slice(i, Math.min(i + chunkSize, coords.length)));
+    // Add a minimum distance filter to reduce unnecessary points
+    let filteredCoords = coords;
+    if (coords.length > 100) {
+      filteredCoords = coords.filter((point, index) => {
+        if (index === 0) return true;
+        const prev = coords[index - 1];
+        // Calculate distance between points using turf
+        const from = turf.point([prev.lon, prev.lat]);
+        const to = turf.point([point.lon, point.lat]);
+        const distance = turf.distance(from, to, {units: 'kilometers'});
+        // Only keep points that are at least 10 meters apart
+        return distance > 0.01;
+      });
+    }
+    
+    for (let i = 0; i < filteredCoords.length; i += chunkSize) {
+      segments.push(filteredCoords.slice(i, Math.min(i + chunkSize, filteredCoords.length)));
     }
 
     setProcessing(prev => ({
