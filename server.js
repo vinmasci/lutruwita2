@@ -6,12 +6,28 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { auth } from 'express-openid-connect';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Load environment variables from .env.local
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
+
+// Auth0 configuration
+const config = {
+  authRequired: false,
+  auth0Logout: true,
+  secret: process.env.AUTH0_SECRET,
+  baseURL: 'http://localhost:3001',  // Change this from 5173 to 3001
+  clientID: 'hLnq0z7KNvwcORjFF9KdC4kGPtu51kVB',
+  issuerBaseURL: 'https://dev-8jmwfh4hugvdjwh8.au.auth0.com'
+};
+
+const app = express();
+
+// Auth router must be set up before other routes
+app.use(auth(config));
 
 const MONGODB_URI = process.env.VITE_MONGODB_URI; // Changed to match your .env.local
 if (!MONGODB_URI) {

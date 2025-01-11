@@ -1,6 +1,6 @@
 // src/App.tsx
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import MainLayout from './components/layout/main-layout';
@@ -35,13 +35,22 @@ function App() {
     <ThemeProvider theme={darkTheme}>
       <CssBaseline />
       <BrowserRouter>
-        <Routes>
-          <Route element={<MainLayout />}>
-            <Route path="/" element={<Home />} />
-            <Route path="/create" element={<Create />} />
-            <Route path="/explore" element={<Explore />} />
-          </Route>
-        </Routes>
+      <Routes>
+  <Route element={<MainLayout />}>
+    <Route path="/" element={<Home />} />
+    <Route path="/create" element={<Create />} />
+    <Route path="/explore" element={<Explore />} />
+    <Route path="/callback" element={<Explore />} />
+    <Route 
+      path="/login" 
+      element={<Navigate to="http://localhost:3001/login" replace />} 
+    />
+    <Route 
+      path="/logout" 
+      element={<Navigate to="http://localhost:3001/logout" replace />} 
+    />
+  </Route>
+</Routes>
       </BrowserRouter>
     </ThemeProvider>
   );
