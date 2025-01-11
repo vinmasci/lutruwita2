@@ -357,81 +357,73 @@ const addPhotoMarkersToMap = useCallback(async (coordinates: Point[]) => {
   // Find photos near route
   const photos = await findPhotosNearPoints(points);
 
-  // Remove existing photo layers if they exist
-  if (map.current.getLayer('photo-points')) {
-    map.current.removeLayer('photo-points');
-  }
-  if (map.current.getSource('photo-locations')) {
-    map.current.removeSource('photo-locations');
-  }
+// Remove any existing photo markers
+document.querySelectorAll('.photo-marker').forEach(el => el.remove());
 
-  // Create a camera icon if it doesn't exist yet
-  if (!map.current.hasImage('camera')) {
-    // Create a canvas element to draw the icon
-    const size = 32;
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d');
+// Create markers with thumbnails for each photo
+photos.forEach(photo => {
+  // Create marker element
+  const el = document.createElement('div');
+  el.className = 'photo-marker';
+el.style.position = 'relative';
 
-    if (ctx) {
-      // Draw a simple camera icon
-      ctx.beginPath();
-      // Main camera body
-      ctx.fillStyle = '#FF0000';
-      ctx.rect(4, 8, 24, 16);
-      ctx.fill();
-      // Lens
-      ctx.beginPath();
-      ctx.arc(16, 16, 6, 0, Math.PI * 2);
-      ctx.fill();
-      // Flash/viewfinder
-      ctx.fillRect(8, 6, 6, 2);
+// Create and style the thumbnail container
+const imgContainer = document.createElement('div');
+imgContainer.style.position = 'relative';
+imgContainer.style.backgroundColor = '#1f2937'; // Dark mode background
+imgContainer.style.padding = '2px';
+imgContainer.style.borderRadius = '4px';
+imgContainer.style.boxShadow = '0 2px 4px rgba(0,0,0,0.5)';
 
-      // Add the image to the map
-      map.current.addImage('camera', {
-        width: size,
-        height: size,
-        data: new Uint8Array(ctx.getImageData(0, 0, size, size).data.buffer)
-      });
-    }
-  }
+// Create and style the thumbnail
+const img = document.createElement('img');
+img.src = photo.url;
+img.alt = photo.originalName;
+img.style.width = '32px';  // Smaller size
+img.style.height = '32px'; // Smaller size
+img.style.objectFit = 'cover';
+img.style.borderRadius = '2px';
+img.style.border = '1px solid #374151'; // Dark mode border
 
-  // Create GeoJSON data for photos
-  const photoPoints = {
-    type: 'FeatureCollection',
-    features: photos.map(photo => ({
-      type: 'Feature',
-      geometry: {
-        type: 'Point',
-        coordinates: [photo.longitude, photo.latitude]
-      },
-      properties: {
-        url: photo.url,
-        caption: photo.caption || '',
-        username: photo.username,
-        originalName: photo.originalName
-      }
-    }))
-  };
+// Create the tooltip arrow
+const arrow = document.createElement('div');
+arrow.style.position = 'absolute';
+arrow.style.bottom = '-6px';
+arrow.style.left = '50%';
+arrow.style.transform = 'translateX(-50%)';
+arrow.style.width = '0';
+arrow.style.height = '0';
+arrow.style.borderLeft = '6px solid transparent';
+arrow.style.borderRight = '6px solid transparent';
+arrow.style.borderTop = '6px solid #1f2937'; // Dark mode arrow color
 
-  // Add photo source
-  map.current.addSource('photo-locations', {
-    type: 'geojson',
-    data: photoPoints
+// Assemble the elements
+imgContainer.appendChild(img);
+imgContainer.appendChild(arrow);
+el.appendChild(imgContainer);
+
+  // Create the marker
+  const marker = new mapboxgl.Marker({
+    element: el,
+    anchor: 'center'
+  })
+    .setLngLat([photo.longitude, photo.latitude])
+    .addTo(map.current);
+
+  // Add click handler for popup
+  marker.getElement().addEventListener('click', () => {
+    new mapboxgl.Popup()
+    .setLngLat([photo.longitude, photo.latitude])
+    .setHTML(`
+      <div style="max-width: 200px; background-color: #1f2937; color: #e5e7eb; padding: 8px; border-radius: 6px;">
+        <img src="${photo.url}" alt="${photo.originalName}" style="width: 100%; height: auto; border-radius: 4px;"/>
+        <p style="margin-top: 8px;">${photo.caption}</p>
+        <p style="font-size: 0.8em; color: #9ca3af;">By ${photo.username}</p>
+      </div>
+    `)
+    .addTo(map.current);
   });
-
-  // Add photo layer
-  map.current.addLayer({
-    'id': 'photo-points',
-    'type': 'symbol',
-    'source': 'photo-locations',
-    'layout': {
-      'icon-image': 'camera',
-      'icon-size': 1.5,
-      'icon-allow-overlap': true
-    }
-  });
+});
 
   // Add click handler for popups
   map.current.on('click', 'photo-points', (e) => {
@@ -452,19 +444,6 @@ const addPhotoMarkersToMap = useCallback(async (coordinates: Point[]) => {
         </div>
       `)
       .addTo(map.current);
-  });
-
-  // Change cursor to pointer when over photos
-  map.current.on('mouseenter', 'photo-points', () => {
-    if (map.current) {
-      map.current.getCanvas().style.cursor = 'pointer';
-    }
-  });
-
-  map.current.on('mouseleave', 'photo-points', () => {
-    if (map.current) {
-      map.current.getCanvas().style.cursor = '';
-    }
   });
 
   console.log('Photo layer added to map');
