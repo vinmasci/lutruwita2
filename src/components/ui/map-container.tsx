@@ -102,28 +102,35 @@ const getDistancePoints = (
   const zoom = map.getZoom();
   // Set interval based on zoom level
   let interval = 25; // Default to 25km for zoomed out
-  if (zoom >= 15) interval = 5;       // Very close zoom: 5km intervals
-  else if (zoom >= 13) interval = 10;  // Medium zoom: 10km intervals
-  else if (zoom >= 11) interval = 15;  // Medium-far zoom: 15km intervals
-  else interval = 25;                  // Far zoom: 25km intervals
-
-  // Don't show markers if zoomed out too far
-  if (zoom < 9) return [];
-
-  // Don't show markers if zoomed out too far
-  if (zoom < 9) return [];
+  if (zoom >= 14) interval = 5;        // Very close zoom
+  else if (zoom >= 12) interval = 10;  // Medium zoom
+  else if (zoom >= 10) interval = 15;  // Medium-far zoom
 
   const points = [];
-  let distance = 0;
+  
+  // Always add start point
+  points.push({
+    point: turf.along(lineString, 0, { units: 'kilometers' }),
+    distance: 0
+  });
 
-  while (distance < totalLength) {
-    const point = turf.along(lineString, distance, { units: 'kilometers' });
-    points.push({
-      point: point,
-      distance: distance
-    });
-    distance += interval;
+  // Add interval points if we're zoomed in enough
+  if (zoom >= 9) {
+    let distance = interval;
+    while (distance < totalLength - interval/2) {
+      points.push({
+        point: turf.along(lineString, distance, { units: 'kilometers' }),
+        distance: Math.round(distance)
+      });
+      distance += interval;
+    }
   }
+
+  // Always add end point
+  points.push({
+    point: turf.along(lineString, totalLength, { units: 'kilometers' }),
+    distance: totalLength
+  });
 
   return points;
 };
@@ -314,7 +321,7 @@ const distancePoints = getDistancePoints(map.current, combinedLine, totalLength)
 distancePoints.forEach(({ point, distance }) => {
   const el = document.createElement('div');
   const root = createRoot(el);
-  root.render(<DistanceMarker distance={distance} />);
+  root.render(<DistanceMarker distance={distance} totalDistance={totalLength} />);
 
   new mapboxgl.Marker({
     element: el,
@@ -789,12 +796,66 @@ const pavedCount = finalCoords.filter((c) => c.surface === 'paved').length;
         }
       });
 
-      // Add standard map controls
-      newMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
-      newMap.addControl(new mapboxgl.FullscreenControl());
-    } catch (err) {
-      console.error('[MapContainer] Error creating map:', err);
-    }
+// Add standard map controls
+newMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
+newMap.addControl(new mapboxgl.FullscreenControl());
+
+// Track current interval
+let currentInterval = 25;
+
+// Add zoom change handler to update distance markers
+newMap.on('zoom', () => {
+  const zoom = newMap.getZoom();
+  // Calculate new interval based on zoom
+  let newInterval = 25; // Default
+  if (zoom >= 14) newInterval = 5;        // Very close zoom
+  else if (zoom >= 12) newInterval = 10;  // Medium zoom
+  else if (zoom >= 10) newInterval = 15;  // Medium-far zoom
+
+  // Only update if interval changed
+  if (newInterval !== currentInterval && newMap.getSource(routeSourceId)) {
+    currentInterval = newInterval;
+    // Remove existing markers
+    const markers = document.querySelectorAll('.mapboxgl-marker');
+    markers.forEach(marker => marker.remove());
+    
+    // Get current route data
+    const source = newMap.getSource(routeSourceId) as mapboxgl.GeoJSONSource;
+    const data = (source as any)._data as FeatureCollection;
+    
+    // Rebuild combined line
+    const combinedLine = turf.lineString(
+      data.features.reduce((coords: number[][], feature) => {
+        if (feature.geometry.type === 'LineString') {
+          return [...coords, ...feature.geometry.coordinates];
+        }
+        return coords;
+      }, [])
+    );
+
+    // Calculate length and add new markers
+    const totalLength = turf.length(combinedLine, { units: 'kilometers' });
+    const distancePoints = getDistancePoints(newMap, combinedLine, totalLength);
+    
+    distancePoints.forEach(({ point, distance }) => {
+      const el = document.createElement('div');
+      const root = createRoot(el);
+      root.render(<DistanceMarker distance={distance} />);
+
+      new mapboxgl.Marker({
+        element: el,
+        anchor: 'center',
+        scale: 0.25
+      })
+        .setLngLat(point.geometry.coordinates)
+        .addTo(newMap);
+    });
+  }
+});
+
+} catch (err) {
+console.error('[MapContainer] Error creating map:', err);
+}
 
     // Cleanup on unmount
     return () => {
