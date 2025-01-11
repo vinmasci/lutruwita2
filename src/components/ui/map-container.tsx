@@ -324,13 +324,69 @@ if (!pointPixel) {
   return;
 }
 
-// Query in a small box around the point (10 pixels in each direction)
-const features = map.current?.queryRenderedFeatures([
-  [pointPixel.x - 10, pointPixel.y - 10],
-  [pointPixel.x + 10, pointPixel.y + 10]
+// First, do a wide scan to detect junction areas
+const wideAreaCheck = map.current?.queryRenderedFeatures([
+  [pointPixel.x - 50, pointPixel.y - 50],
+  [pointPixel.x + 50, pointPixel.y + 50]
 ], {
   layers: ['custom-roads']
 });
+
+// Analyze the road features to detect junction characteristics
+const isComplexJunction = wideAreaCheck && wideAreaCheck.length > 1;
+let queryBox = 10; // default for regular road segments
+
+if (isComplexJunction) {
+  // Count unique road names/refs to better identify true junctions
+  const uniqueRoads = new Set(
+    wideAreaCheck
+      .map(f => f.properties?.name || f.properties?.ref)
+      .filter(Boolean)
+  );
+  
+  // Adjust query box based on junction complexity
+  if (uniqueRoads.size > 1) {
+    queryBox = 50; // Major junction (different named roads)
+  } else if (wideAreaCheck.length > 2) {
+    queryBox = 30; // Minor junction or approach area
+  }
+  
+  console.log(`[assignSurfacesViaNearest] Complex junction detected at point ${i}:`, {
+    totalFeatures: wideAreaCheck.length,
+    uniqueRoads: uniqueRoads.size,
+    queryBoxSize: queryBox
+  });
+}
+
+// Use features array to store all found features
+let features = map.current?.queryRenderedFeatures([
+  [pointPixel.x - queryBox, pointPixel.y - queryBox],
+  [pointPixel.x + queryBox, pointPixel.y + queryBox]
+], {
+  layers: ['custom-roads']
+}) || [];
+
+// If still no features found at a junction, try a circular pattern
+if (isComplexJunction && features.length === 0) {
+  // Try querying in a circular pattern around the point
+  for (let angle = 0; angle < 360; angle += 45) {
+    const radian = (angle * Math.PI) / 180;
+    const offsetX = Math.cos(radian) * 40;
+    const offsetY = Math.sin(radian) * 40;
+    
+    const radialFeatures = map.current?.queryRenderedFeatures([
+      [pointPixel.x + offsetX - 10, pointPixel.y + offsetY - 10],
+      [pointPixel.x + offsetX + 10, pointPixel.y + offsetY + 10]
+    ], {
+      layers: ['custom-roads']
+    });
+    
+    if (radialFeatures && radialFeatures.length > 0) {
+      features = features.concat(radialFeatures);
+      break;
+    }
+  }
+}
 
       console.log('[assignSurfacesViaNearest] Attempt vantage for point:', {
         index: i,
