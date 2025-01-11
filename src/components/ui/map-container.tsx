@@ -345,6 +345,7 @@ console.log('[addRouteToMap] -> route layers and distance markers added.');
 // Add photo markers to map
 // Creates markers with popups for photos near the route
 // ------------------------------------------------------------------
+// AFTER (cleaned up function)
 const addPhotoMarkersToMap = useCallback(async (coordinates: Point[]) => {
   if (!map.current) return;
 
@@ -357,96 +358,79 @@ const addPhotoMarkersToMap = useCallback(async (coordinates: Point[]) => {
   // Find photos near route
   const photos = await findPhotosNearPoints(points);
 
-// Remove any existing photo markers
-document.querySelectorAll('.photo-marker').forEach(el => el.remove());
+  // Remove any existing photo markers
+  document.querySelectorAll('.photo-marker').forEach(el => el.remove());
 
-// Create markers with thumbnails for each photo
-photos.forEach(photo => {
-  // Create marker element
-  const el = document.createElement('div');
-  el.className = 'photo-marker';
-el.style.position = 'relative';
+  // Create markers with thumbnails for each photo
+  photos.forEach(photo => {
+    // Create marker element
+    const el = document.createElement('div');
+    el.className = 'photo-marker';
+    el.style.position = 'relative';
+    el.style.transform = 'translate(-50%, -50%)'; // Center the element
 
-// Create and style the thumbnail container
-const imgContainer = document.createElement('div');
-imgContainer.style.position = 'relative';
-imgContainer.style.backgroundColor = '#1f2937'; // Dark mode background
-imgContainer.style.padding = '2px';
-imgContainer.style.borderRadius = '4px';
-imgContainer.style.boxShadow = '0 2px 4px rgba(0,0,0,0.5)';
+    // Create and style the thumbnail container
+    const imgContainer = document.createElement('div');
+    imgContainer.style.position = 'relative';
+    imgContainer.style.backgroundColor = '#1f2937';
+    imgContainer.style.padding = '2px';
+    imgContainer.style.borderRadius = '4px';
+    imgContainer.style.boxShadow = '0 2px 4px rgba(0,0,0,0.5)';
+    imgContainer.style.width = 'fit-content';
+    imgContainer.style.display = 'inline-block';
 
-// Create and style the thumbnail
-const img = document.createElement('img');
-img.src = photo.url;
-img.alt = photo.originalName;
-img.style.width = '32px';  // Smaller size
-img.style.height = '32px'; // Smaller size
-img.style.objectFit = 'cover';
-img.style.borderRadius = '2px';
-img.style.border = '1px solid #374151'; // Dark mode border
+    // Create and style the thumbnail
+    const img = document.createElement('img');
+    img.src = photo.url;
+    img.alt = photo.originalName;
+    img.style.width = '32px';
+    img.style.height = '32px';
+    img.style.objectFit = 'cover';
+    img.style.borderRadius = '2px';
+    img.style.border = '1px solid #374151';
 
-// Create the tooltip arrow
-const arrow = document.createElement('div');
-arrow.style.position = 'absolute';
-arrow.style.bottom = '-6px';
-arrow.style.left = '50%';
-arrow.style.transform = 'translateX(-50%)';
-arrow.style.width = '0';
-arrow.style.height = '0';
-arrow.style.borderLeft = '6px solid transparent';
-arrow.style.borderRight = '6px solid transparent';
-arrow.style.borderTop = '6px solid #1f2937'; // Dark mode arrow color
+    // Create the tooltip arrow
+    const arrow = document.createElement('div');
+    arrow.style.position = 'absolute';
+    arrow.style.bottom = '-6px';
+    arrow.style.left = '50%';
+    arrow.style.transform = 'translateX(-50%)';
+    arrow.style.width = '0';
+    arrow.style.height = '0';
+    arrow.style.borderLeft = '6px solid transparent';
+    arrow.style.borderRight = '6px solid transparent';
+    arrow.style.borderTop = '6px solid #1f2937';
 
-// Assemble the elements
-imgContainer.appendChild(img);
-imgContainer.appendChild(arrow);
-el.appendChild(imgContainer);
+    // Assemble the elements
+    imgContainer.appendChild(img);
+    imgContainer.appendChild(arrow);
+    el.appendChild(imgContainer);
 
-  // Create the marker
-  const marker = new mapboxgl.Marker({
-    element: el,
-    anchor: 'center'
-  })
-    .setLngLat([photo.longitude, photo.latitude])
-    .addTo(map.current);
-
-  // Add click handler for popup
-  marker.getElement().addEventListener('click', () => {
-    new mapboxgl.Popup()
-    .setLngLat([photo.longitude, photo.latitude])
-    .setHTML(`
-      <div style="max-width: 200px; background-color: #1f2937; color: #e5e7eb; padding: 8px; border-radius: 6px;">
-        <img src="${photo.url}" alt="${photo.originalName}" style="width: 100%; height: auto; border-radius: 4px;"/>
-        <p style="margin-top: 8px;">${photo.caption}</p>
-        <p style="font-size: 0.8em; color: #9ca3af;">By ${photo.username}</p>
-      </div>
-    `)
-    .addTo(map.current);
-  });
-});
-
-  // Add click handler for popups
-  map.current.on('click', 'photo-points', (e) => {
-    if (!e.features?.length) return;
-
-    const feature = e.features[0];
-    const coordinates = feature.geometry.coordinates.slice();
-    const properties = feature.properties;
-
-    // Create popup
-    new mapboxgl.Popup()
-      .setLngLat(coordinates)
-      .setHTML(`
-        <div style="max-width: 200px;">
-          <img src="${properties.url}" alt="${properties.originalName}" style="width: 100%; height: auto;"/>
-          <p style="margin-top: 8px;">${properties.caption}</p>
-          <p style="font-size: 0.8em; color: #666;">By ${properties.username}</p>
-        </div>
-      `)
+    // Create the marker with fixed offset
+    const marker = new mapboxgl.Marker({
+      element: el,
+      anchor: 'bottom', // Makes the arrow point to the exact location
+      offset: [0, 0]
+    })
+      .setLngLat([photo.longitude, photo.latitude])
       .addTo(map.current);
+
+    // Add click handler for popup
+    marker.getElement().addEventListener('click', () => {
+      new mapboxgl.Popup()
+        .setLngLat([photo.longitude, photo.latitude])
+        .setHTML(`
+          <div style="max-width: 200px; background-color: #1f2937; color: #e5e7eb; padding: 8px; border-radius: 6px;">
+            <img src="${photo.url}" alt="${photo.originalName}" style="width: 100%; height: auto; border-radius: 4px;"/>
+            <p style="margin-top: 8px;">${photo.caption}</p>
+            <p style="font-size: 0.8em; color: #9ca3af;">By ${photo.username}</p>
+          </div>
+        `)
+        .addTo(map.current);
+    });
   });
 
-  console.log('Photo layer added to map');
+  console.log('Photo markers added to map');
 }, []);
 
   // ------------------------------------------------------------------
