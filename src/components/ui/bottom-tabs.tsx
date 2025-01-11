@@ -24,7 +24,7 @@ const BottomTabs = () => {
   };
 
   return (
-    <div className="bg-white border-t">
+<div className="bg-white border-t relative z-10">
       <Tabs value={currentPath} onValueChange={handleTabChange} className="w-full">
         <TabsList className="w-full justify-start overflow-x-auto">
           <TabsTrigger value="home" className="flex-1">

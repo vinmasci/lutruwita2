@@ -20,6 +20,7 @@ import type { LineString, MultiLineString } from 'geojson';
 import type { Units } from '@turf/helpers';
 import { PhotoModal } from '@/components/ui/photo-modal';
 import DistanceMarker from './distance-marker';
+import Supercluster from 'supercluster';
 import { createRoot } from 'react-dom/client';
 
 // --------------------------------------------
@@ -362,14 +363,34 @@ const addPhotoMarkersToMap = useCallback(async (coordinates: Point[]) => {
   document.querySelectorAll('.photo-marker').forEach(el => el.remove());
   document.querySelectorAll('.photo-modal-container').forEach(el => el.remove());
 
-  // Create markers with thumbnails for each photo
-  photos.forEach(photo => {
-    // Create marker element
+  // Create GeoJSON features for clustering
+  const features = photos.map((photo, index) => ({
+    type: 'Feature',
+    properties: {
+      id: `photo-${index}`,
+      photo
+    },
+    geometry: {
+      type: 'Point',
+      coordinates: [photo.longitude, photo.latitude]
+    }
+  }));
+
+  // Initialize supercluster
+  const clusterIndex = new Supercluster({
+    radius: 40,
+    maxZoom: 16,
+    minPoints: 2,
+    initial: () => ({ photoCount: 0 })
+  });
+
+  clusterIndex.load(features);
+
+  const createMarkerElement = (photo: any, count?: number) => {
     const el = document.createElement('div');
     el.className = 'photo-marker';
     el.style.position = 'relative';
 
-    // Create and style the thumbnail container
     const imgContainer = document.createElement('div');
     imgContainer.style.position = 'relative';
     imgContainer.style.backgroundColor = '#1f2937';
@@ -380,7 +401,6 @@ const addPhotoMarkersToMap = useCallback(async (coordinates: Point[]) => {
     imgContainer.style.display = 'inline-block';
     imgContainer.style.cursor = 'pointer';
 
-    // Create and style the thumbnail
     const img = document.createElement('img');
     img.src = photo.url;
     img.alt = photo.originalName;
@@ -390,7 +410,22 @@ const addPhotoMarkersToMap = useCallback(async (coordinates: Point[]) => {
     img.style.borderRadius = '2px';
     img.style.border = '1px solid #374151';
 
-    // Create the tooltip arrow
+    if (count) {
+      const badge = document.createElement('div');
+      badge.style.position = 'absolute';
+      badge.style.top = '-8px';
+      badge.style.right = '-8px';
+      badge.style.backgroundColor = '#e17055';
+      badge.style.color = 'white';
+      badge.style.borderRadius = '9999px';
+      badge.style.padding = '0px 4px'; // Reduced vertical padding, kept horizontal padding
+      badge.style.fontSize = '10px';
+      badge.style.fontWeight = 'bold';
+      badge.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
+      badge.textContent = `+${count}`;
+      imgContainer.appendChild(badge);
+    }
+
     const arrow = document.createElement('div');
     arrow.style.position = 'absolute';
     arrow.style.bottom = '-6px';
@@ -402,57 +437,106 @@ const addPhotoMarkersToMap = useCallback(async (coordinates: Point[]) => {
     arrow.style.borderRight = '6px solid transparent';
     arrow.style.borderTop = '6px solid #1f2937';
 
-    // Assemble the elements
     imgContainer.appendChild(img);
     imgContainer.appendChild(arrow);
     el.appendChild(imgContainer);
 
-    // Add specific classes to both the container and the marker element
-    const markerEl = document.createElement('div');
-    markerEl.className = 'mapboxgl-marker photo-marker-container';
-    markerEl.appendChild(el);
+    return el;
+  };
 
-    // Create React root for the modal
-    const modalContainer = document.createElement('div');
-    modalContainer.className = 'photo-modal-container';
-    document.body.appendChild(modalContainer);
-    const modalRoot = createRoot(modalContainer);
+  const updateMarkers = () => {
+    if (!map.current) return;
 
-    // Add click handler for the image
-    imgContainer.addEventListener('click', (e) => {
-      e.stopPropagation();
-      modalRoot.render(
-        <PhotoModal
-          open={true}
-          onClose={() => {
-            modalRoot.render(
-              <PhotoModal
-                open={false}
-                onClose={() => {}}
-                photo={photo}
-              />
-            );
-          }}
-          photo={photo}
-        />
-      );
+    const bounds = map.current.getBounds();
+    const zoom = Math.floor(map.current.getZoom());
+
+    const clusters = clusterIndex.getClusters(
+      [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
+      zoom
+    );
+
+    // Remove existing markers first
+    document.querySelectorAll('.photo-marker-container').forEach(el => el.remove());
+
+    clusters.forEach(cluster => {
+      const coordinates = cluster.geometry.coordinates as [number, number];
+
+      // Create marker container
+      const markerEl = document.createElement('div');
+      markerEl.className = 'mapboxgl-marker photo-marker-container';
+
+      if (cluster.properties.cluster) {
+        // Get cluster info
+        const leaves = clusterIndex.getLeaves(cluster.properties.cluster_id, Infinity);
+        const firstPhoto = leaves[0].properties.photo;
+        const count = leaves.length - 1; // -1 because we're showing one photo
+
+        const el = createMarkerElement(firstPhoto, count);
+        markerEl.appendChild(el);
+
+        // Create React root for the modal
+        const modalContainer = document.createElement('div');
+        modalContainer.className = 'photo-modal-container';
+        document.body.appendChild(modalContainer);
+        const modalRoot = createRoot(modalContainer);
+
+        // Add click handler for cluster
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          // Zoom in when clicking cluster
+          map.current?.flyTo({
+            center: coordinates,
+            zoom: zoom + 2
+          });
+        });
+      } else {
+        // Single photo marker
+        const photo = cluster.properties.photo;
+        const el = createMarkerElement(photo);
+        markerEl.appendChild(el);
+
+        // Create React root for the modal
+        const modalContainer = document.createElement('div');
+        modalContainer.className = 'photo-modal-container';
+        document.body.appendChild(modalContainer);
+        const modalRoot = createRoot(modalContainer);
+
+        // Add click handler for single photo
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          modalRoot.render(
+            <PhotoModal
+              open={true}
+              onClose={() => {
+                modalRoot.render(
+                  <PhotoModal
+                    open={false}
+                    onClose={() => {}}
+                    photo={photo}
+                  />
+                );
+              }}
+              photo={photo}
+            />
+          );
+        });
+      }
+
+      new mapboxgl.Marker({
+        element: markerEl,
+        anchor: 'bottom',
+        offset: [0, 8],
+        clickTolerance: 3
+      })
+        .setLngLat(coordinates)
+        .addTo(map.current);
     });
+  };
 
-    // Create and setup the marker
-    const marker = new mapboxgl.Marker({
-      element: markerEl,
-      anchor: 'bottom',
-      offset: [0, 8],
-      clickTolerance: 3
-    });
-
-    // Set position and add to map
-    marker.setLngLat([photo.longitude, photo.latitude]);
-    marker.addTo(map.current);
-
-    // Add class for identification
-    marker.getElement().classList.add('photo-marker');
-  });
+  // Initial update and add listeners
+  updateMarkers();
+  map.current.on('moveend', updateMarkers);
+  map.current.on('zoomend', updateMarkers);
 
   console.log('Photo markers added to map');
 }, []);

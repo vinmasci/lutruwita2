@@ -16,7 +16,7 @@ const DistanceMarker: React.FC<DistanceMarkerProps> = ({ distance, totalDistance
       {/* Main tooltip body */}
       <div className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
         <div className="px-1.5 py-[1px] bg-gray-900/75 backdrop-blur-sm rounded text-[10px] font-medium text-white shadow-sm flex items-center gap-1">
-        {isStart ? "▶" : Math.round(distance)}
+        {isStart ? "▶" : `${Math.round(distance)}km`}
         </div>
         {/* Arrow pointing to line */}
         <div className="w-0 h-0 border-l-[4px] border-r-[4px] border-t-[6px] border-l-transparent border-r-transparent border-t-gray-900/75 -mb-1">
