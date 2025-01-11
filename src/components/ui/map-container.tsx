@@ -341,175 +341,134 @@ console.log('[addRouteToMap] -> route layers and distance markers added.');
     [isReady]
   );
 
-  // ------------------------------------------------------------------
-  // Add photo markers to map
-  // Creates markers with popups for photos near the route
-  // ------------------------------------------------------------------
-  const addPhotoMarkersToMap = useCallback(async (coordinates: Point[]) => {
-    if (!map.current) return;
+// ------------------------------------------------------------------
+// Add photo markers to map
+// Creates markers with popups for photos near the route
+// ------------------------------------------------------------------
+const addPhotoMarkersToMap = useCallback(async (coordinates: Point[]) => {
+  if (!map.current) return;
 
-    // Convert coordinates to format needed for photo query
-    const points = coordinates.map(coord => ({
-      longitude: coord.lon,
-      latitude: coord.lat
-    }));
+  // Convert coordinates to format needed for photo query
+  const points = coordinates.map(coord => ({
+    longitude: coord.lon,
+    latitude: coord.lat
+  }));
 
-    // Find photos near route
-    const photos = await findPhotosNearPoints(points);
+  // Find photos near route
+  const photos = await findPhotosNearPoints(points);
 
-    // Remove existing photo layers if they exist
-    if (map.current.getLayer('photo-points')) {
-      map.current.removeLayer('photo-points');
+  // Remove existing photo layers if they exist
+  if (map.current.getLayer('photo-points')) {
+    map.current.removeLayer('photo-points');
+  }
+  if (map.current.getSource('photo-locations')) {
+    map.current.removeSource('photo-locations');
+  }
+
+  // Create a camera icon if it doesn't exist yet
+  if (!map.current.hasImage('camera')) {
+    // Create a canvas element to draw the icon
+    const size = 32;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+
+    if (ctx) {
+      // Draw a simple camera icon
+      ctx.beginPath();
+      // Main camera body
+      ctx.fillStyle = '#FF0000';
+      ctx.rect(4, 8, 24, 16);
+      ctx.fill();
+      // Lens
+      ctx.beginPath();
+      ctx.arc(16, 16, 6, 0, Math.PI * 2);
+      ctx.fill();
+      // Flash/viewfinder
+      ctx.fillRect(8, 6, 6, 2);
+
+      // Add the image to the map
+      map.current.addImage('camera', {
+        width: size,
+        height: size,
+        data: new Uint8Array(ctx.getImageData(0, 0, size, size).data.buffer)
+      });
     }
-    if (map.current.getSource('photo-locations')) {
-      map.current.removeSource('photo-locations');
+  }
+
+  // Create GeoJSON data for photos
+  const photoPoints = {
+    type: 'FeatureCollection',
+    features: photos.map(photo => ({
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: [photo.longitude, photo.latitude]
+      },
+      properties: {
+        url: photo.url,
+        caption: photo.caption || '',
+        username: photo.username,
+        originalName: photo.originalName
+      }
+    }))
+  };
+
+  // Add photo source
+  map.current.addSource('photo-locations', {
+    type: 'geojson',
+    data: photoPoints
+  });
+
+  // Add photo layer
+  map.current.addLayer({
+    'id': 'photo-points',
+    'type': 'symbol',
+    'source': 'photo-locations',
+    'layout': {
+      'icon-image': 'camera',
+      'icon-size': 1.5,
+      'icon-allow-overlap': true
     }
+  });
 
-    // Create GeoJSON data for photos
-    const photoPoints = {
-      type: 'FeatureCollection',
-      features: photos.map(photo => ({
-        type: 'Feature',
-        geometry: {
-          type: 'Point',
-          coordinates: [photo.longitude, photo.latitude]
-        },
-        properties: {
-          url: photo.url,
-          caption: photo.caption || '',
-          username: photo.username,
-          originalName: photo.originalName
-        }
-      }))
-    };
+  // Add click handler for popups
+  map.current.on('click', 'photo-points', (e) => {
+    if (!e.features?.length) return;
 
-    // Add photo source
-    map.current.addSource('photo-locations', {
-      type: 'geojson',
-      data: photoPoints
-    });
+    const feature = e.features[0];
+    const coordinates = feature.geometry.coordinates.slice();
+    const properties = feature.properties;
 
-// Create a camera icon if it doesn't exist yet
-if (!map.current.hasImage('camera')) {
-  // Create a canvas element to draw the icon
-  const size = 32;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
+    // Create popup
+    new mapboxgl.Popup()
+      .setLngLat(coordinates)
+      .setHTML(`
+        <div style="max-width: 200px;">
+          <img src="${properties.url}" alt="${properties.originalName}" style="width: 100%; height: auto;"/>
+          <p style="margin-top: 8px;">${properties.caption}</p>
+          <p style="font-size: 0.8em; color: #666;">By ${properties.username}</p>
+        </div>
+      `)
+      .addTo(map.current);
+  });
 
-  if (ctx) {
-    // Draw a simple camera icon
-    ctx.beginPath();
-    // Main camera body
-    ctx.fillStyle = '#FF0000';
-    ctx.rect(4, 8, 24, 16);
-    ctx.fill();
-    // Lens
-    ctx.beginPath();
-    ctx.arc(16, 16, 6, 0, Math.PI * 2);
-    ctx.fill();
-    // Flash/viewfinder
-    ctx.fillRect(8, 6, 6, 2);
-  }
-
-// Create a DIV element for each photo and use it as a marker icon
-const canvas = document.createElement('canvas');
-const size = 32;
-canvas.width = size;
-canvas.height = size;
-const ctx = canvas.getContext('2d');
-
-if (ctx) {
-  // Draw a simple camera icon
-  ctx.beginPath();
-  ctx.fillStyle = '#FF0000';
-  ctx.rect(4, 8, 24, 16);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(16, 16, 6, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillRect(8, 6, 6, 2);
-}
-
-// Add the image to the map
-map.current.addImage('camera', {
-  width: size,
-  height: size,
-  data: new Uint8Array(ctx!.getImageData(0, 0, size, size).data.buffer)
-});
-
-// Create GeoJSON data for photos
-const photoPoints = {
-  type: 'FeatureCollection',
-  features: photos.map(photo => ({
-    type: 'Feature',
-    geometry: {
-      type: 'Point',
-      coordinates: [photo.longitude, photo.latitude]
-    },
-    properties: {
-      url: photo.url,
-      caption: photo.caption || '',
-      username: photo.username,
-      originalName: photo.originalName
+  // Change cursor to pointer when over photos
+  map.current.on('mouseenter', 'photo-points', () => {
+    if (map.current) {
+      map.current.getCanvas().style.cursor = 'pointer';
     }
-  }))
-};
+  });
 
-// Add photo source
-map.current.addSource('photo-locations', {
-  type: 'geojson',
-  data: photoPoints
-});
+  map.current.on('mouseleave', 'photo-points', () => {
+    if (map.current) {
+      map.current.getCanvas().style.cursor = '';
+    }
+  });
 
-// Add photo layer
-map.current.addLayer({
-  'id': 'photo-points',
-  'type': 'symbol',
-  'source': 'photo-locations',
-  'layout': {
-    'icon-image': 'camera',
-    'icon-size': 1.5,
-    'icon-allow-overlap': true
-  }
-});
-
-// Add click handler for popups
-map.current.on('click', 'photo-points', (e) => {
-  if (!e.features?.length) return;
-
-  const feature = e.features[0];
-  const coordinates = feature.geometry.coordinates.slice();
-  const properties = feature.properties;
-
-  // Create popup
-  new mapboxgl.Popup()
-    .setLngLat(coordinates)
-    .setHTML(`
-      <div style="max-width: 200px;">
-        <img src="${properties.url}" alt="${properties.originalName}" style="width: 100%; height: auto;"/>
-        <p style="margin-top: 8px;">${properties.caption}</p>
-        <p style="font-size: 0.8em; color: #666;">By ${properties.username}</p>
-      </div>
-    `)
-    .addTo(map.current);
-});
-
-// Change cursor to pointer when over photos
-map.current.on('mouseenter', 'photo-points', () => {
-  if (map.current) {
-    map.current.getCanvas().style.cursor = 'pointer';
-  }
-});
-
-map.current.on('mouseleave', 'photo-points', () => {
-  if (map.current) {
-    map.current.getCanvas().style.cursor = '';
-  }
-});
-
-console.log('Photo layer added to map');
+  console.log('Photo layer added to map');
+}, []);
 
   // ------------------------------------------------------------------
   // assignSurfacesViaNearest => Core surface detection function
