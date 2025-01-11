@@ -26,8 +26,11 @@ const config = {
   issuerBaseURL: 'https://dev-8jmwfh4hugvdjwh8.au.auth0.com',
   routes: {
     postLogoutRedirect: 'http://localhost:5173',
-    callback: '/callback',
-    returnTo: 'http://localhost:5173'
+    callback: '/callback'
+  },
+  afterCallback: (req, res, session) => {
+    res.redirect('http://localhost:5173');
+    return session;
   }
 };
 
