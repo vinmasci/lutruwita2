@@ -37,7 +37,6 @@ if (!MONGODB_URI) {
 
 console.log('MongoDB URI found:', MONGODB_URI.substring(0, 20) + '...');
 
-const app = express();
 app.use(cors({
   origin: ['http://localhost:5173', 'http://localhost:5174'],
   methods: ['GET', 'POST'],

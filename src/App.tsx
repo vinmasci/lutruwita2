@@ -42,13 +42,13 @@ function App() {
     <Route path="/explore" element={<Explore />} />
     <Route path="/callback" element={<Explore />} />
     <Route 
-      path="/login" 
-      element={<Navigate to="http://localhost:3001/login" replace />} 
-    />
-    <Route 
-      path="/logout" 
-      element={<Navigate to="http://localhost:3001/logout" replace />} 
-    />
+  path="/login" 
+  element={<Navigate to="http://localhost:3001/api/auth/login" replace />} 
+/>
+<Route 
+  path="/logout" 
+  element={<Navigate to="http://localhost:3001/api/auth/logout" replace />} 
+/>
   </Route>
 </Routes>
       </BrowserRouter>
