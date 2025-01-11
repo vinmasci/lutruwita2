@@ -230,8 +230,8 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
         tidy: 'true'
       });
   
-      // Use the correct profile format: mapbox/{profile}-v1
-      const url = `https://api.mapbox.com/matching/v5/mapbox/cycling-v1/${coordinates}?${params}`;
+// The correct format is 'mapbox/driving-traffic', 'mapbox/walking', or 'mapbox/cycling'
+const url = `https://api.mapbox.com/matching/v5/mapbox/cycling/${coordinates}?${params}`;
   
       const response = await fetch(url, { 
         signal: controller.signal,
@@ -256,27 +256,33 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
 
   // Process route segments in parallel
   const processRouteSegments = async (coords: Point[]) => {
-    // Use smaller chunks to improve reliability and stay within API limits
-    const chunkSize = 25; // Reduced from 50 to 25
+    const chunkSize = 25;
     const segments: Point[][] = [];
     
-    // Add a minimum distance filter to reduce unnecessary points
-    let filteredCoords = coords;
-    if (coords.length > 100) {
-      filteredCoords = coords.filter((point, index) => {
-        if (index === 0) return true;
-        const prev = coords[index - 1];
-        // Calculate distance between points using turf
-        const from = turf.point([prev.lon, prev.lat]);
-        const to = turf.point([point.lon, point.lat]);
-        const distance = turf.distance(from, to, {units: 'kilometers'});
-        // Only keep points that are at least 10 meters apart
-        return distance > 0.01;
-      });
-    }
+    // Filter points but keep start/end points of each potential segment
+    let filteredCoords = coords.filter((point, index, array) => {
+      if (index === 0 || index === array.length - 1) return true; // Keep first and last points
+      
+      const prev = array[index - 1];
+      const from = turf.point([prev.lon, prev.lat]);
+      const to = turf.point([point.lon, point.lat]);
+      const distance = turf.distance(from, to, {units: 'kilometers'});
+      
+      // Keep points that are at least 20 meters apart
+      return distance > 0.02;
+    });
     
-    for (let i = 0; i < filteredCoords.length; i += chunkSize) {
-      segments.push(filteredCoords.slice(i, Math.min(i + chunkSize, filteredCoords.length)));
+    // Create segments ensuring overlap
+    for (let i = 0; i < filteredCoords.length; i += (chunkSize - 1)) {
+      const endIdx = Math.min(i + chunkSize, filteredCoords.length);
+      const segment = filteredCoords.slice(i, endIdx);
+      
+      // Add the first point of next segment to current segment for continuity
+      if (endIdx < filteredCoords.length) {
+        segment.push(filteredCoords[endIdx]);
+      }
+      
+      segments.push(segment);
     }
 
     setProcessing(prev => ({
@@ -288,55 +294,66 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
     }));
 
     const matchedSegments: MatchingResponse[] = [];
-    let retryCount = 0;
-    const maxRetries = 3;
     
     for (let i = 0; i < segments.length; i++) {
       try {
-        // Add delay between requests to respect rate limits
+        // Add delay between requests
         if (i > 0) {
-          await new Promise(resolve => setTimeout(resolve, 200));
+          await new Promise(resolve => setTimeout(resolve, 300));
         }
 
-        const result = await requestQueue.current.add(async () => {
-          try {
-            const response = await matchRouteSegment(segments[i], {
-              profile: 'cycling',
-              steps: true,
-              tidy: true
-            });
-            retryCount = 0; // Reset retry count on success
-            return response;
-          } catch (error) {
-            if (retryCount < maxRetries) {
-              retryCount++;
-              // Exponential backoff
-              await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 500));
-              throw error; // Re-throw to trigger retry
-            }
-            throw error;
-          }
-        });
+        const result = await requestQueue.current.add(() => 
+          matchRouteSegment(segments[i])
+        );
 
-        matchedSegments.push(result);
+        // Handle NoMatch and NoSegment responses
+        if (result.code === 'NoMatch' || result.code === 'NoSegment' || !result.matchings || result.matchings.length === 0) {
+          // Create a fallback response that uses the original segment points
+          const fallbackResponse: MatchingResponse = {
+            code: 'Fallback',
+            matched_points: segments[i].map(p => ({
+              coordinates: [p.lon, p.lat],
+              distance: 0
+            })),
+            tracepoints: segments[i].map((p, idx) => ({
+              waypoint_index: idx,
+              location: [p.lon, p.lat]
+            })),
+            matchings: [{
+              confidence: 1,
+              geometry: {
+                type: 'LineString',
+                coordinates: segments[i].map(p => [p.lon, p.lat])
+              },
+              legs: [{
+                summary: 'fallback',
+                steps: [],
+                distance: 0,
+                duration: 0
+              }]
+            }]
+          };
+          matchedSegments.push(fallbackResponse);
+          console.log(`Using fallback for segment ${i} due to no match`);
+        } else {
+          matchedSegments.push(result);
+        }
         
         setProcessing(prev => ({
           ...prev,
           progress: i + 1,
           message: `Matched ${i + 1} of ${segments.length} segments`
         }));
-
       } catch (error) {
         console.error('Error matching segment:', error);
-        // Use more sophisticated fallback that maintains route shape
-        const points = segments[i];
+        // Use original points for the segment if matching fails
         const fallbackResponse: MatchingResponse = {
-          code: 'NoMatch',
-          matched_points: points.map(p => ({
+          code: 'Error',
+          matched_points: segments[i].map(p => ({
             coordinates: [p.lon, p.lat],
             distance: 0
           })),
-          tracepoints: points.map((p, idx) => ({
+          tracepoints: segments[i].map((p, idx) => ({
             waypoint_index: idx,
             location: [p.lon, p.lat]
           })),
@@ -344,10 +361,10 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
             confidence: 0,
             geometry: {
               type: 'LineString',
-              coordinates: points.map(p => [p.lon, p.lat])
+              coordinates: segments[i].map(p => [p.lon, p.lat])
             },
             legs: [{
-              summary: 'fallback',
+              summary: 'error-fallback',
               steps: [],
               distance: 0,
               duration: 0

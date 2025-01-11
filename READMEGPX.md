@@ -106,3 +106,136 @@
 3. Implement chunking for longer routes
 4. Add progress tracking and animations
 5. Integrate with existing surface display system
+
+# Map Matching Implementation Progress
+
+## Current Status
+Working on implementing Mapbox Map Matching API to replace direct point-to-point lines with routes that follow actual roads.
+
+### What's Working
+1. Basic GPX file parsing
+2. Point filtering and optimization:
+   - Reduced points from 2428 to 1562 by filtering closely spaced points
+   - Keeping start/end points of segments
+   - Minimum 20m distance between points
+
+2. Map Matching API Integration:
+   - Successfully connecting to Mapbox Map Matching API
+   - Handling chunks of 25 points
+   - Basic error handling implemented
+
+3. UI/UX:
+   - Progress indicators working
+   - Stage-based processing feedback
+   - Fallback handling for failed matches
+
+### Current Issues
+1. Matching Quality:
+   - Getting "NoMatch" and "NoSegment" responses for some segments
+   - Some segments failing to match to any road network
+   - Need to better handle transitions between matched and unmatched segments
+
+2. API Challenges:
+   - Initial profile errors (resolved by using correct API endpoint format)
+   - Rate limiting considerations
+   - Balancing chunk size with API limits
+
+3. Route Continuity:
+   - Gaps appearing between segments
+   - Need better handling of segment transitions
+   - Some matched routes not following visible roads
+
+## Implementation Details
+
+### Current Approach
+1. Pre-processing:
+   ```typescript
+   - Filter points (> 20m apart)
+   - Create overlapping segments (25 points)
+   - Ensure segment continuity
+   ```
+
+2. Matching Strategy:
+   ```typescript
+   - Try cycling profile first
+   - Fall back to walking/driving profiles
+   - Use original points as last resort
+   ```
+
+3. Response Handling:
+   ```typescript
+   - Handle NoMatch/NoSegment gracefully
+   - Create fallback responses
+   - Maintain route continuity
+   ```
+
+## Next Steps
+
+### Immediate Priorities
+1. Profile Selection:
+   - Implement cascading profile attempts (cycling → walking → driving)
+   - Add profile-specific parameters
+   - Better handle profile selection based on terrain
+
+2. Segment Handling:
+   - Improve segment overlap handling
+   - Better transitions between segments
+   - Smarter chunking based on terrain/density
+
+3. Error Recovery:
+   - Implement more sophisticated fallback strategies
+   - Better handling of partial matches
+   - Improved segment joining logic
+
+### Future Improvements
+1. Performance Optimization:
+   - Cache successful matches
+   - Optimize point filtering
+   - Better handle large GPX files
+
+2. Quality Improvements:
+   - Validate matched routes against known paths
+   - Handle off-road sections better
+   - Improve surface type detection
+
+3. User Experience:
+   - Better progress indication
+   - Manual override options
+   - Visual feedback for match quality
+
+## Technical Considerations
+
+### API Usage
+- Keep within rate limits (300 requests/minute)
+- Monitor response times
+- Handle timeouts gracefully
+- Consider request batching
+
+### Data Quality
+- Balance point reduction vs route accuracy
+- Handle GPS noise
+- Consider elevation data
+
+### Failed Attempts
+1. Initial Implementation:
+   - Direct point-by-point matching (too many requests)
+   - Large segment sizes (API limits)
+   - Single profile matching (poor success rate)
+
+2. Matching Strategy:
+   - No segment overlap (caused gaps)
+   - Fixed chunk sizes (not terrain-aware)
+   - Basic error handling (lost too many points)
+
+## Questions to Resolve
+1. What's the optimal segment size for our use case?
+2. How to better handle off-road sections?
+3. Should we implement manual override options?
+4. How to better handle surface type detection?
+
+## Notes for Next Implementation
+1. Consider implementing a smarter chunking algorithm
+2. Add better validation of matched routes
+3. Implement caching for common routes
+4. Add better handling of off-road sections
+5. Consider adding manual adjustment tools
