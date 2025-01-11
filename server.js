@@ -199,8 +199,75 @@ app.get('/health', (req, res) => {
 });
 
 // Add profile endpoint
-app.get('/api/profile', requiresAuth(), (req, res) => {
-  res.json(req.oidc.user);
+// Get profile data
+app.get('/api/profile', requiresAuth(), async (req, res) => {
+  try {
+    console.log('Fetching profile for user:', req.oidc.user.sub);
+    await client.connect();
+    const db = client.db('photoApp');
+    const user = await db.collection('users').findOne({ 
+      auth0Id: req.oidc.user.sub 
+    });
+    
+    console.log('Found user in MongoDB:', user);
+    
+    if (!user) {
+      console.log('No user found, creating new user');
+      // Create new user if doesn't exist
+      const newUser = {
+        auth0Id: req.oidc.user.sub,
+        bioName: req.oidc.user.name,
+        email: req.oidc.user.email,
+        picture: req.oidc.user.picture,
+        socialLinks: {
+          instagram: '',
+          strava: '',
+          facebook: ''
+        },
+        website: '',
+        isAdmin: false,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      
+      await db.collection('users').insertOne(newUser);
+      console.log('Created new user:', newUser);
+      res.json(newUser);
+    } else {
+      console.log('Returning existing user:', user);
+      res.json(user);
+    }
+  } catch (error) {
+    console.error('Error fetching user profile:', error);
+    res.status(500).json({ error: 'Failed to fetch profile' });
+  }
+});
+
+// Update profile data
+app.put('/api/profile', requiresAuth(), async (req, res) => {
+  try {
+    await client.connect();
+    const db = client.db('photoApp');
+    
+    const updateData = {
+      ...req.body,
+      updatedAt: new Date()
+    };
+
+    const result = await db.collection('users').updateOne(
+      { auth0Id: req.oidc.user.sub },
+      { $set: updateData }
+    );
+
+    if (result.matchedCount === 0) {
+      res.status(404).json({ error: 'User not found' });
+    } else {
+      res.json({ message: 'Profile updated successfully' });
+    }
+  } catch (error) {
+    console.error('Error updating user profile:', error);
+    res.status(500).json({ error: 'Failed to update profile' });
+  }
 });
 
 const PORT = 3001;

@@ -137,18 +137,22 @@ const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
     useEffect(() => {
       const fetchUserData = async () => {
         try {
+          console.log('Fetching user data...');
           const response = await fetch('http://localhost:3001/api/profile', {
             credentials: 'include'
           });
           if (response.ok) {
             const data = await response.json();
+            console.log('Received user data:', data);
             setUserData(data);
+          } else {
+            console.log('Failed to fetch user data, status:', response.status);
           }
         } catch (error) {
           console.log('Error fetching user data:', error);
         }
       };
-  
+    
       fetchUserData();
     }, []);
 
@@ -671,11 +675,11 @@ const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
             />
           </Box>
 
-          {/* Actions */}
-          <Box sx={{ 
+{/* Actions */}
+<Box sx={{ 
             display: 'flex', 
             justifyContent: 'space-between', 
-            gap: 1,
+            gap: 2,
             mt: 2,
             pt: 2,
             borderTop: 1,
@@ -684,25 +688,21 @@ const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
             <Button 
               onClick={() => window.location.href = "http://localhost:3001/logout"}
               color="error"
-              variant="outlined"
+              variant="contained"
+              fullWidth
+              sx={{ height: 42 }}
             >
               Sign Out
             </Button>
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button 
-                onClick={() => setProfileDrawerOpen(false)}
-                color="inherit"
-              >
-                Cancel
-              </Button>
-              <Button 
-                variant="contained"
-                color="primary"
-                onClick={handleSaveProfile}
-              >
-                Save Changes
-              </Button>
-            </Box>
+            <Button 
+              variant="contained"
+              color="success"
+              onClick={handleSaveProfile}
+              fullWidth
+              sx={{ height: 42 }}
+            >
+              Save
+            </Button>
           </Box>
         </Box>
       </Drawer>
