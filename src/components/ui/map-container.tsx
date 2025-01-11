@@ -152,6 +152,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
   const mapContainer = useRef<HTMLDivElement>(null);         // DOM element for map
   const map = useRef<mapboxgl.Map | null>(null);            // Mapbox instance
   const cachedRoadsRef = useRef<FeatureCollection | null>(null);  // Temporary road data cache
+  const photoMarkersRef = useRef<mapboxgl.Marker[]>([]);    // Add this line for photo markers
 
   // State management
   const [isMapReady, setIsMapReady] = React.useState(false);
@@ -373,20 +374,27 @@ photos.forEach(photo => {
     </div>
   `);
 
-  // Add marker
-  try {
-    const marker = new mapboxgl.Marker({
-      color: '#FF0000',
-      scale: 1.5  // Make them bigger for testing
-    })
-      .setLngLat([photo.longitude, photo.latitude])
-      .setPopup(popup)
-      .addTo(map.current);
+// Clear existing markers first
+photoMarkersRef.current.forEach(marker => marker.remove());
+photoMarkersRef.current = [];
 
-    console.log('Marker created and added to map');
-  } catch (err) {
-    console.error('Error creating marker:', err);
-  }
+// Add marker
+try {
+  const marker = new mapboxgl.Marker({
+    color: '#FF0000',
+    scale: 1.5  // Make them bigger for testing
+  })
+    .setLngLat([photo.longitude, photo.latitude])
+    .setPopup(popup)
+    .addTo(map.current);
+
+  // Store marker reference
+  photoMarkersRef.current.push(marker);
+
+  console.log('Marker created and added to map');
+} catch (err) {
+  console.error('Error creating marker:', err);
+}
 });
   }, []);
 
@@ -872,9 +880,9 @@ newMap.on('zoom', () => {
   // Only update if interval changed
   if (newInterval !== currentInterval && newMap.getSource(routeSourceId)) {
     currentInterval = newInterval;
-// Remove only distance markers
-const distanceMarkers = document.querySelectorAll('.mapboxgl-marker:not(.photo-marker)');
-distanceMarkers.forEach(marker => marker.remove());
+    // Remove only distance markers
+    const distanceMarkers = document.querySelectorAll('.mapboxgl-marker:not(.photo-marker)');
+    distanceMarkers.forEach(marker => marker.remove());
     
     // Get current route data
     const source = newMap.getSource(routeSourceId) as mapboxgl.GeoJSONSource;
@@ -908,6 +916,16 @@ distanceMarkers.forEach(marker => marker.remove());
         .addTo(newMap);
     });
   }
+
+  // Update photo marker visibility based on zoom level
+  photoMarkersRef.current.forEach(marker => {
+    const el = marker.getElement();
+    if (zoom >= 10) {
+      el.style.display = 'block';
+    } else {
+      el.style.display = 'none';
+    }
+  });
 });
 
 } catch (err) {
