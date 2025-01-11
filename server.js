@@ -26,8 +26,7 @@ const config = {
   clientSecret: process.env.AUTH0_CLIENT_SECRET,
   issuerBaseURL: 'https://dev-8jmwfh4hugvdjwh8.au.auth0.com',
   routes: {
-    callback: '/callback',
-    postLoginRedirect: 'http://localhost:5173'
+    callback: '/callback'
   },
   authorizationParams: {
     response_type: 'code',
@@ -35,10 +34,6 @@ const config = {
   },
   session: {
     absoluteDuration: 24 * 60 * 60
-  },
-  afterCallback: async (req, res, session) => {
-    res.redirect('http://localhost:5173');
-    return session;
   }
 };
 
@@ -48,7 +43,7 @@ const app = express();
 app.use(Auth0(config));
 
 // Handle successful authentication
-app.post('/callback', (req, res) => {
+app.get('/callback', (req, res) => {
   // After successful authentication, redirect to frontend with session info
   res.redirect('http://localhost:5173');
 });
