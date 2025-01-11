@@ -739,7 +739,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
 
       map.current = newMap;
 
-      newMap.on('load', () => {
+      map.current.on('load', () => {
         // Add terrain source and layer
         newMap.addSource('mapbox-dem', {
           'type': 'raster-dem',
@@ -760,37 +760,40 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
             url: 'mapbox://mapbox.mapbox-streets-v8'
           },
           'source-layer': 'road',
-          layout: {
-            'line-cap': 'round',
-            'line-join': 'round',
-            'visibility': 'visible'
-          },
           paint: {
             'line-color': [
-              'case',
-              ['==', ['get', 'type'], 'service_track'], '#D35400',  // Unpaved service tracks
-              ['==', ['get', 'type'], 'track'], '#D35400',          // Unpaved tracks
-              ['==', ['get', 'type'], 'path'], '#D35400',           // Paths (usually unpaved)
-              ['all', 
-                ['has', 'structure'],
-                ['==', ['get', 'structure'], 'none'],
-                ['in', ['get', 'class'], ['literal', ['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'street']]]
-              ], '#4A90E2',  // Major roads (usually paved)
-              '#888888'  // Default color for unknown
+              'match',
+              ['get', 'surface'],
+              ['paved', 'asphalt', 'concrete', 'compacted', 'sealed', 'bitumen', 'tar'],
+              '#4A90E2',
+              ['unpaved', 'gravel', 'fine', 'fine_gravel', 'dirt', 'earth'],
+              '#D35400',
+              '#888888'
             ],
-            'line-width': [
-              'interpolate',
-              ['linear'],
-              ['zoom'],
-              10, 1,
-              13, 2,
-              16, 3
-            ],
-            'line-opacity': 0.8
-          },
-          filter: ['!=', ['get', 'structure'], 'tunnel']  // Don't show tunnels
+            'line-width': 2
+          }
         });
-
+      
+        // Debug: Add click handler to check road properties
+        newMap.on('click', (e) => {
+          const features = newMap.queryRenderedFeatures(e.point, {
+            layers: ['road-data']
+          });
+          
+          console.log('[Debug] Road features at click:', {
+            clickPoint: e.lngLat,
+            featuresFound: features.length,
+            zoom: newMap.getZoom(),
+            properties: features.map(f => ({
+              surface: f.properties.surface,
+              class: f.properties.class,
+              type: f.properties.type,
+              structure: f.properties.structure,
+              allProperties: f.properties
+            }))
+          });
+        });
+      
         setIsMapReady(true);
       });
 
