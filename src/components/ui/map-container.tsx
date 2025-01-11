@@ -11,7 +11,7 @@ import { parseString } from 'xml2js';  // For parsing GPX files
 import mapboxgl from 'mapbox-gl';      // Main mapping library
 import { CircularProgress, Box, Typography } from '@mui/material';  // UI components
 import 'mapbox-gl/dist/mapbox-gl.css';
-import { findPhotosNearPoints, type PhotoDocument } from '../lib/db';
+import { findPhotosNearPoints, type PhotoDocument } from '@/lib/db';
 import * as turf from '@turf/turf';
 import nearestPointOnLine from '@turf/nearest-point-on-line';
 import type { Feature, Point as TurfPoint, GeoJsonProperties } from 'geojson';

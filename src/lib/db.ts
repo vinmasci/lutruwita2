@@ -21,7 +21,7 @@ interface PhotoDocument {
 async function getMongoClient() {
   if (client) return client;
 
-  const uri = process.env.VITE_MONGODB_URI;
+  const uri = import.meta.env.VITE_MONGODB_URI;
   if (!uri) throw new Error('MongoDB URI not found in environment variables');
 
   client = new MongoClient(uri, {
