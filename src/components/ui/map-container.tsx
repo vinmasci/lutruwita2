@@ -227,12 +227,14 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       const coordinates = points.map(p => `${p.lon},${p.lat}`).join(';');
       const radiuses = Array(points.length).fill(25).join(';');
       
+      // Add steps=true to get detailed road information
       const params = new URLSearchParams({
         access_token: mapboxgl.accessToken,
         geometries: 'geojson',
         radiuses,
-        steps: 'true',
-        tidy: 'true'
+        steps: 'true',  // Important for getting road details
+        tidy: 'true',
+        overview: 'full'  // Get full route geometry
       });
   
       const url = `https://api.mapbox.com/matching/v5/mapbox/driving/${coordinates}?${params}`;
@@ -250,7 +252,25 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       }
   
       const result = await response.json();
-      console.log('[Debug] [matchRouteSegment] API Response:', result);
+      
+      // Debug: Log detailed matching response
+      console.log('[Debug] [matchRouteSegment] Full API Response:', JSON.stringify(result, null, 2));
+      
+      // Debug: Log steps information
+      if (result.matchings && result.matchings[0]) {
+        console.log('[Debug] [matchRouteSegment] First matching steps:', 
+          result.matchings[0].legs.map((leg: any) => 
+            leg.steps.map((step: any) => ({
+              name: step.name,
+              mode: step.mode,
+              geometry: step.geometry,
+              maneuver: step.maneuver,
+              // Add any other relevant step properties
+            }))
+          )
+        );
+      }
+
       return result;
     } catch (error) {
       console.error('[Debug] [matchRouteSegment] Error:', error);
@@ -261,7 +281,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
     } finally {
       clearTimeout(timeout);
     }
-  };
+};
 
   // Process route segments in parallel
   const processRouteSegments = async (coords: Point[]) => {
@@ -388,7 +408,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
 
     console.log('[Debug] [processRouteSegments] All segments processed:', matchedSegments);
     return matchedSegments;
-  };
+};
 
   // Add route to map with animation
   const addRouteToMap = useCallback(
@@ -740,18 +760,35 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
             url: 'mapbox://mapbox.mapbox-streets-v8'
           },
           'source-layer': 'road',
+          layout: {
+            'line-cap': 'round',
+            'line-join': 'round',
+            'visibility': 'visible'
+          },
           paint: {
             'line-color': [
-              'match',
-              ['get', 'surface'],
-              ['paved', 'asphalt', 'concrete', 'compacted', 'sealed', 'bitumen', 'tar'],
-              '#4A90E2',
-              ['unpaved', 'gravel', 'fine', 'fine_gravel', 'dirt', 'earth'],
-              '#D35400',
-              '#888888'
+              'case',
+              ['==', ['get', 'type'], 'service_track'], '#D35400',  // Unpaved service tracks
+              ['==', ['get', 'type'], 'track'], '#D35400',          // Unpaved tracks
+              ['==', ['get', 'type'], 'path'], '#D35400',           // Paths (usually unpaved)
+              ['all', 
+                ['has', 'structure'],
+                ['==', ['get', 'structure'], 'none'],
+                ['in', ['get', 'class'], ['literal', ['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'street']]]
+              ], '#4A90E2',  // Major roads (usually paved)
+              '#888888'  // Default color for unknown
             ],
-            'line-width': 2
-          }
+            'line-width': [
+              'interpolate',
+              ['linear'],
+              ['zoom'],
+              10, 1,
+              13, 2,
+              16, 3
+            ],
+            'line-opacity': 0.8
+          },
+          filter: ['!=', ['get', 'structure'], 'tunnel']  // Don't show tunnels
         });
 
         setIsMapReady(true);
