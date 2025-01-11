@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import type { MapRef } from './map-container';
 import { 
   Box, 
@@ -67,6 +67,11 @@ const Sidebar = ({ mapRef }: SidebarProps) => {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [mapReady, setMapReady] = useState(false);
+  const [userData, setUserData] = useState<{
+    picture?: string;
+    bioName?: string;
+    isAdmin?: boolean;
+  } | null>(null);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
@@ -118,6 +123,25 @@ const Sidebar = ({ mapRef }: SidebarProps) => {
       setMapReady(false);
     };
   }, [mapRef]);
+
+    // Add new useEffect for user data
+    useEffect(() => {
+      const fetchUserData = async () => {
+        try {
+          const response = await fetch('http://localhost:3001/api/profile', {
+            credentials: 'include'
+          });
+          if (response.ok) {
+            const data = await response.json();
+            setUserData(data);
+          }
+        } catch (error) {
+          console.log('Error fetching user data:', error);
+        }
+      };
+  
+      fetchUserData();
+    }, []);
 
   const handleFileUpload = async (file: File) => {
     console.log('Starting file upload process', { 
@@ -441,26 +465,40 @@ const Sidebar = ({ mapRef }: SidebarProps) => {
       
       {/* Profile section */}
       <Box sx={{ p: 1, borderTop: 1, borderColor: 'divider' }}>
-      <ListItemButton 
-  onClick={() => window.location.href = "http://localhost:3001/login"}
-  sx={{
-            justifyContent: open ? 'start' : 'center', 
-            minHeight: 48,
-            borderRadius: 1
+  <ListItemButton 
+    onClick={() => window.location.href = userData ? "http://localhost:3001/logout" : "http://localhost:3001/login"}
+    sx={{
+      justifyContent: open ? 'start' : 'center', 
+      minHeight: 48,
+      borderRadius: 1
+    }}
+  >
+    <ListItemIcon>
+      {userData?.picture ? (
+        <Box
+          component="img"
+          src={userData.picture}
+          alt={userData.bioName}
+          sx={{
+            width: 32,
+            height: 32,
+            borderRadius: '50%'
           }}
-        >
-          <ListItemIcon>
-            <AccountCircleIcon />
-          </ListItemIcon>
-          <ListItemText 
-            primary="Sign In" 
-            sx={{ 
-              opacity: open ? 1 : 0,
-              display: open ? 'block' : 'none'
-            }} 
-          />
-        </ListItemButton>
-      </Box>
+        />
+      ) : (
+        <AccountCircleIcon />
+      )}
+    </ListItemIcon>
+    <ListItemText 
+      primary={userData ? "Sign Out" : "Sign In"}
+      secondary={userData?.bioName}
+      sx={{ 
+        opacity: open ? 1 : 0,
+        display: open ? 'block' : 'none'
+      }} 
+    />
+  </ListItemButton>
+</Box>
     </StyledDrawer>
   );
 };

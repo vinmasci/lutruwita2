@@ -44,7 +44,7 @@ app.use(Auth0(config));
 
 // Handle successful authentication
 app.get('/callback', (req, res) => {
-  // After successful authentication, redirect to frontend with session info
+  console.log('Callback route hit - redirecting to frontend');
   res.redirect('http://localhost:5173');
 });
 
@@ -63,6 +63,19 @@ app.use(cors({
   credentials: true,
   maxAge: 86400 // Cache preflight requests for 24 hours
 }));
+
+// After Auth0 middleware, but before CSP headers
+app.use((req, res, next) => {
+  console.log('Current path:', req.path);
+  console.log('Authentication state:', req.oidc ? 'User is authenticated' : 'User is not authenticated');
+  console.log('User info:', req.oidc?.user);
+  
+  if (req.path === '/' && req.oidc.isAuthenticated()) {
+    console.log('User authenticated, redirecting to frontend');
+    return res.redirect('http://localhost:5173');
+  }
+  next();
+});
 
 // Add CSP headers
 app.use((req, res, next) => {
