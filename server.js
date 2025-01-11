@@ -58,10 +58,10 @@ console.log('MongoDB URI found:', MONGODB_URI.substring(0, 20) + '...');
 
 app.use(cors({
   origin: ['http://localhost:5173', 'http://localhost:5174'],
-  methods: ['GET', 'POST', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-csrf-token'],
   credentials: true,
-  maxAge: 86400 // Cache preflight requests for 24 hours
+  maxAge: 86400
 }));
 
 // After Auth0 middleware, but before CSP headers
@@ -277,5 +277,6 @@ app.listen(PORT, () => {
   console.log('- GET  /api/photos/near');
   console.log('- POST /api/photos/upload');
   console.log('- GET  /api/profile (requires auth)');
+  console.log('- PUT  /api/profile (requires auth)'); // Add this line
   console.log('- GET  /health');
 });
