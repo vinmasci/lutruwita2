@@ -6,7 +6,7 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-import { auth } from 'express-openid-connect';
+import { auth, requiresAuth } from 'express-openid-connect';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -40,8 +40,18 @@ console.log('MongoDB URI found:', MONGODB_URI.substring(0, 20) + '...');
 app.use(cors({
   origin: ['http://localhost:5173', 'http://localhost:5174'],
   methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
+
+// Add CSP headers
+app.use((req, res, next) => {
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'"
+  );
+  next();
+});
 
 // Add OPTIONS handling for preflight requests
 app.options('*', cors());
@@ -155,11 +165,17 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date() });
 });
 
+// Add profile endpoint
+app.get('/api/profile', requiresAuth(), (req, res) => {
+  res.json(req.oidc.user);
+});
+
 const PORT = 3001;
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
   console.log('Available routes:');
   console.log('- GET  /api/photos/near');
   console.log('- POST /api/photos/upload');
+  console.log('- GET  /api/profile (requires auth)');
   console.log('- GET  /health');
 });

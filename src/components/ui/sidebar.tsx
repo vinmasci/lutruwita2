@@ -25,7 +25,8 @@ import {
   Route as RouteIcon,
   Terrain as TerrainIcon,
   Layers as LayersIcon,
-  UploadFile as UploadFileIcon
+  UploadFile as UploadFileIcon,
+  AccountCircle as AccountCircleIcon
 } from '@mui/icons-material';
 
 const drawerWidth = 240;
@@ -38,6 +39,8 @@ const StyledDrawer = styled(Drawer)(({ theme }) => ({
   '& .MuiDrawer-paper': {
     position: 'relative',
     width: drawerWidth,
+    display: 'flex',
+    flexDirection: 'column',
     transition: theme.transitions.create('width', {
       easing: theme.transitions.easing.sharp,
       duration: theme.transitions.duration.enteringScreen,
@@ -432,6 +435,32 @@ const Sidebar = ({ mapRef }: SidebarProps) => {
           {snackbar.message}
         </Alert>
       </Snackbar>
+
+      {/* Spacer to push profile to bottom */}
+      <Box sx={{ flexGrow: 1 }} />
+      
+      {/* Profile section */}
+      <Box sx={{ p: 1, borderTop: 1, borderColor: 'divider' }}>
+      <ListItemButton 
+  onClick={() => window.location.href = "http://localhost:3001/login"}
+  sx={{
+            justifyContent: open ? 'start' : 'center', 
+            minHeight: 48,
+            borderRadius: 1
+          }}
+        >
+          <ListItemIcon>
+            <AccountCircleIcon />
+          </ListItemIcon>
+          <ListItemText 
+            primary="Sign In" 
+            sx={{ 
+              opacity: open ? 1 : 0,
+              display: open ? 'block' : 'none'
+            }} 
+          />
+        </ListItemButton>
+      </Box>
     </StyledDrawer>
   );
 };
