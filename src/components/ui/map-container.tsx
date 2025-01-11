@@ -378,10 +378,6 @@ console.log('[addRouteToMap] -> route layers and distance markers added.');
   // ------------------------------------------------------------------
   // assignSurfacesViaNearest => Core surface detection function
   // Process:
-
-  // ------------------------------------------------------------------
-  // assignSurfacesViaNearest => Core surface detection function
-  // Process:
   // 1. Takes GPX points in chunks of 5
   // 2. For each chunk:
   //    - Moves map to first point's location
