@@ -43,30 +43,13 @@ interface ProcessingState {
   message: string;
 }
 
-interface MatchingResponse {
-  code: string;
-  matched_points: Array<{
-    coordinates: [number, number];
-    distance: number;
-  }>;
-  tracepoints: Array<{
-    waypoint_index: number;
-    location: [number, number];
-    name?: string;
-  }>;
-  matchings: Array<{
-    confidence: number;
-    geometry: {
-      coordinates: Array<[number, number]>;
-      type: 'LineString';
-    };
-    legs: Array<{
-      summary: string;
-      steps: Array<any>;
-      distance: number;
-      duration: number;
-    }>;
-  }>;
+interface MatchOptions {
+  profile?: 'driving' | 'walking' | 'cycling';
+  geometries?: 'geojson' | 'polyline';
+  radiuses?: number[];
+  steps?: boolean;
+  tidy?: boolean;
+  waypoints?: number[];
 }
 
 // --------------------------------------------
@@ -231,22 +214,54 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
   }, [isMapReady]);
 
   // Match route segment using Mapbox API
-  const matchRouteSegment = async (points: Point[]): Promise<MatchingResponse> => {
-    const coordinates = points.map(p => `${p.lon},${p.lat}`).join(';');
-    const url = `https://api.mapbox.com/matching/v5/mapbox/driving/${coordinates}?access_token=${mapboxgl.accessToken}&tidy=true&geometries=geojson&radiuses=${Array(points.length).fill(25).join(';')}`;
-
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Map matching failed: ${response.statusText}`);
+  const matchRouteSegment = async (points: Point[], options: MatchOptions = {}): Promise<MatchingResponse> => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
+  
+    try {
+      const coordinates = points.map(p => `${p.lon},${p.lat}`).join(';');
+      const radiuses = Array(points.length).fill(25).join(';');
+      
+      const params = new URLSearchParams({
+        access_token: mapboxgl.accessToken,
+        geometries: 'geojson',
+        radiuses,
+        steps: 'true',
+        tidy: 'true',
+        profile: 'cycling'  // Using cycling profile for better path matching
+      });
+  
+      const url = `https://api.mapbox.com/matching/v5/mapbox/cycling/${coordinates}?${params}`;
+  
+      const response = await fetch(url, { 
+        signal: controller.signal,
+        method: 'GET'
+      });
+  
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Map matching failed: ${response.statusText} ${JSON.stringify(errorData)}`);
+      }
+  
+      return await response.json();
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        throw new Error('Map matching request timed out');
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
     }
-    return response.json();
   };
 
   // Process route segments in parallel
   const processRouteSegments = async (coords: Point[]) => {
+    // Reduce chunk size for better reliability
+    const chunkSize = 50;
     const segments: Point[][] = [];
-    for (let i = 0; i < coords.length; i += 100) {
-      segments.push(coords.slice(i, i + 100));
+    
+    for (let i = 0; i < coords.length; i += chunkSize) {
+      segments.push(coords.slice(i, Math.min(i + chunkSize, coords.length)));
     }
 
     setProcessing(prev => ({
@@ -258,28 +273,55 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
     }));
 
     const matchedSegments: MatchingResponse[] = [];
+    let retryCount = 0;
+    const maxRetries = 3;
     
     for (let i = 0; i < segments.length; i++) {
       try {
-        const result = await requestQueue.current.add(() => 
-          matchRouteSegment(segments[i])
-        );
+        // Add delay between requests to respect rate limits
+        if (i > 0) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+
+        const result = await requestQueue.current.add(async () => {
+          try {
+            const response = await matchRouteSegment(segments[i], {
+              profile: 'cycling',
+              steps: true,
+              tidy: true
+            });
+            retryCount = 0; // Reset retry count on success
+            return response;
+          } catch (error) {
+            if (retryCount < maxRetries) {
+              retryCount++;
+              // Exponential backoff
+              await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 500));
+              throw error; // Re-throw to trigger retry
+            }
+            throw error;
+          }
+        });
+
         matchedSegments.push(result);
         
         setProcessing(prev => ({
           ...prev,
-          progress: i + 1
+          progress: i + 1,
+          message: `Matched ${i + 1} of ${segments.length} segments`
         }));
+
       } catch (error) {
         console.error('Error matching segment:', error);
-        // Fall back to original points if matching fails
+        // Use more sophisticated fallback that maintains route shape
+        const points = segments[i];
         const fallbackResponse: MatchingResponse = {
           code: 'NoMatch',
-          matched_points: segments[i].map(p => ({
+          matched_points: points.map(p => ({
             coordinates: [p.lon, p.lat],
             distance: 0
           })),
-          tracepoints: segments[i].map((p, idx) => ({
+          tracepoints: points.map((p, idx) => ({
             waypoint_index: idx,
             location: [p.lon, p.lat]
           })),
@@ -287,7 +329,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
             confidence: 0,
             geometry: {
               type: 'LineString',
-              coordinates: segments[i].map(p => [p.lon, p.lat])
+              coordinates: points.map(p => [p.lon, p.lat])
             },
             legs: [{
               summary: 'fallback',
@@ -312,123 +354,190 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
         return;
       }
 
-      // Combine all matched coordinates
-      const allCoordinates = matchedSegments.flatMap(segment => 
-        segment.matchings[0].geometry.coordinates
-      );
-
-      // Clean up existing layers
-      if (map.current.getSource(routeSourceId)) {
-        if (map.current.getLayer(routeLayerId + '-white-stroke')) {
-          map.current.removeLayer(routeLayerId + '-white-stroke');
-        }
-        if (map.current.getLayer(routeLayerId)) {
-          map.current.removeLayer(routeLayerId);
-        }
-        if (map.current.getLayer(routeLayerId + '-unpaved')) {
-          map.current.removeLayer(routeLayerId + '-unpaved');
-        }
-        map.current.removeSource(routeSourceId);
-      }
-
-      // Add source
-      map.current.addSource(routeSourceId, {
-        type: 'geojson',
-        data: {
-          type: 'Feature',
-          properties: {},
-          geometry: {
-            type: 'LineString',
-            coordinates: allCoordinates
+      try {
+        // Safely combine all matched coordinates with error checking
+        const allCoordinates = matchedSegments.reduce((coords: [number, number][], segment) => {
+          if (segment?.matchings?.[0]?.geometry?.coordinates) {
+            return [...coords, ...segment.matchings[0].geometry.coordinates];
           }
-        }
-      });
+          console.warn('Skipping invalid segment:', segment);
+          return coords;
+        }, []);
 
-      // Add white stroke base layer
-      map.current.addLayer({
-        id: routeLayerId + '-white-stroke',
-        type: 'line',
-        source: routeSourceId,
-        layout: {
-          'line-join': 'round',
-          'line-cap': 'round',
-        },
-        paint: {
-          'line-color': '#FFFFFF',
-          'line-width': 5,
-          'line-dasharray': [1, 0]
+        if (allCoordinates.length === 0) {
+          throw new Error('No valid coordinates after processing segments');
         }
-      });
 
-      // Add main route layer
-      map.current.addLayer({
-        id: routeLayerId,
-        type: 'line',
-        source: routeSourceId,
-        layout: {
-          'line-join': 'round',
-          'line-cap': 'round'
-        },
-        paint: {
-          'line-color': '#e17055',
-          'line-width': 3,
-          'line-dasharray': [1, 0]
-        }
-      });
+        // Clean up existing layers and markers
+        const cleanup = () => {
+          try {
+            if (map.current?.getLayer(routeLayerId + '-white-stroke')) {
+              map.current.removeLayer(routeLayerId + '-white-stroke');
+            }
+            if (map.current?.getLayer(routeLayerId)) {
+              map.current.removeLayer(routeLayerId);
+            }
+            if (map.current?.getLayer(routeLayerId + '-unpaved')) {
+              map.current.removeLayer(routeLayerId + '-unpaved');
+            }
+            if (map.current?.getSource(routeSourceId)) {
+              map.current.removeSource(routeSourceId);
+            }
+            // Remove existing markers
+            document.querySelectorAll('.mapboxgl-marker').forEach(marker => marker.remove());
+          } catch (error) {
+            console.warn('Error during cleanup:', error);
+          }
+        };
 
-      // Start animation
-      let progress = 0;
-      const animateRoute = () => {
-        progress += 0.005;
-        
-        map.current?.setPaintProperty(
-          routeLayerId + '-white-stroke',
-          'line-dasharray',
-          [1, progress, 0, 0]
-        );
-        
-        map.current?.setPaintProperty(
-          routeLayerId,
-          'line-dasharray',
-          [1, progress, 0, 0]
+        cleanup();
+
+        // Fit bounds to show full route
+        const bounds = allCoordinates.reduce(
+          (bounds, coord) => bounds.extend(coord as [number, number]),
+          new mapboxgl.LngLatBounds(allCoordinates[0], allCoordinates[0])
         );
 
-        if (progress < 2) {
-          animationFrameRef.current = requestAnimationFrame(animateRoute);
-        } else {
-          // Animation complete
-          setProcessing(prev => ({
-            ...prev,
-            isProcessing: false
-          }));
+        map.current.fitBounds(bounds, {
+          padding: 50,
+          maxZoom: 15,
+          duration: 0
+        });
 
-          // Add distance markers
-          const lineString = turf.lineString(allCoordinates);
-          const totalLength = turf.length(lineString, { units: 'kilometers' });
-          const distancePoints = getDistancePoints(map.current!, lineString, totalLength);
+        // Add source with error handling
+        map.current.addSource(routeSourceId, {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            properties: {},
+            geometry: {
+              type: 'LineString',
+              coordinates: allCoordinates
+            }
+          }
+        });
 
-          distancePoints.forEach(({ point, distance }) => {
-            const el = document.createElement('div');
-            const root = createRoot(el);
-            root.render(
-              <DistanceMarker 
-                distance={distance} 
-                totalDistance={totalLength} 
-              />
+        // Add white stroke base layer
+        map.current.addLayer({
+          id: routeLayerId + '-white-stroke',
+          type: 'line',
+          source: routeSourceId,
+          layout: {
+            'line-join': 'round',
+            'line-cap': 'round',
+            visibility: 'visible'
+          },
+          paint: {
+            'line-color': '#FFFFFF',
+            'line-width': 5,
+            'line-dasharray': [1, 0]
+          }
+        });
+
+        // Add main route layer
+        map.current.addLayer({
+          id: routeLayerId,
+          type: 'line',
+          source: routeSourceId,
+          layout: {
+            'line-join': 'round',
+            'line-cap': 'round',
+            visibility: 'visible'
+          },
+          paint: {
+            'line-color': '#e17055',
+            'line-width': 3,
+            'line-dasharray': [1, 0]
+          }
+        });
+
+        // Start animation with error handling
+        let progress = 0;
+        let isAnimating = true;
+
+        const animateRoute = () => {
+          if (!isAnimating || !map.current) return;
+
+          try {
+            progress += 0.005;
+            
+            map.current.setPaintProperty(
+              routeLayerId + '-white-stroke',
+              'line-dasharray',
+              [1, progress, 0, 0]
+            );
+            
+            map.current.setPaintProperty(
+              routeLayerId,
+              'line-dasharray',
+              [1, progress, 0, 0]
             );
 
-            new mapboxgl.Marker({
-              element: el,
-              anchor: 'center',
-              scale: 0.25
-            })
-              .setLngLat(point.geometry.coordinates)
-              .addTo(map.current!);
-          });
-        }
-      };
+            if (progress < 2) {
+              animationFrameRef.current = requestAnimationFrame(animateRoute);
+            } else {
+              // Animation complete
+              isAnimating = false;
+              setProcessing(prev => ({
+                ...prev,
+                isProcessing: false
+              }));
 
-      animationFrameRef.current = requestAnimationFrame(animateRoute);
+              // Add distance markers
+              const lineString = turf.lineString(allCoordinates);
+              const totalLength = turf.length(lineString, { units: 'kilometers' });
+              const distancePoints = getDistancePoints(map.current, lineString, totalLength);
+
+              distancePoints.forEach(({ point, distance }) => {
+                if (!map.current) return;
+
+                const el = document.createElement('div');
+                const root = createRoot(el);
+                
+                try {
+                  root.render(
+                    <DistanceMarker 
+                      distance={distance} 
+                      totalDistance={totalLength} 
+                    />
+                  );
+
+                  new mapboxgl.Marker({
+                    element: el,
+                    anchor: 'center',
+                    scale: 0.25
+                  })
+                    .setLngLat(point.geometry.coordinates)
+                    .addTo(map.current);
+                } catch (error) {
+                  console.warn('Error creating distance marker:', error);
+                }
+              });
+            }
+          } catch (error) {
+            console.error('Animation error:', error);
+            isAnimating = false;
+          }
+        };
+
+        // Start the animation
+        animationFrameRef.current = requestAnimationFrame(animateRoute);
+
+        // Cleanup function
+        return () => {
+          isAnimating = false;
+          if (animationFrameRef.current) {
+            cancelAnimationFrame(animationFrameRef.current);
+          }
+        };
+
+      } catch (error) {
+        console.error('Error in addRouteToMap:', error);
+        setProcessing(prev => ({
+          ...prev,
+          isProcessing: false
+        }));
+      }
     },
     [isReady]
   );
