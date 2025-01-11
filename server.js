@@ -26,7 +26,8 @@ const config = {
   clientSecret: process.env.AUTH0_CLIENT_SECRET,
   issuerBaseURL: 'https://dev-8jmwfh4hugvdjwh8.au.auth0.com',
   routes: {
-    callback: '/callback'
+    callback: '/callback',
+    postLogoutRedirect: 'http://localhost:5173'
   },
   authorizationParams: {
     response_type: 'code',
@@ -34,6 +35,9 @@ const config = {
   },
   session: {
     absoluteDuration: 24 * 60 * 60
+  },
+  logoutParams: {
+    returnTo: 'http://localhost:5173'
   }
 };
 

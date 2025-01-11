@@ -245,7 +245,10 @@ const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
 
   const handleSaveProfile = async () => {
     try {
-      console.log('Saving profile with data:', userData);
+      // Remove _id from userData before sending
+      const { _id, ...updateData } = userData || {};
+      
+      console.log('Saving profile with data:', updateData);
       
       const response = await fetch('http://localhost:3001/api/profile', {
         method: 'PUT',
@@ -253,7 +256,7 @@ const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(userData)
+        body: JSON.stringify(updateData)
       });
   
       console.log('Save response status:', response.status);
@@ -692,15 +695,19 @@ const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
             borderTop: 1,
             borderColor: 'divider'
           }}>
-            <Button 
-              onClick={() => window.location.href = "http://localhost:3001/logout"}
-              color="error"
-              variant="contained"
-              fullWidth
-              sx={{ height: 42 }}
-            >
-              Sign Out
-            </Button>
+<Button 
+  onClick={() => window.location.href = "http://localhost:3001/logout?returnTo=http://localhost:5173"}
+  variant="contained"
+  color="error"
+  sx={{ 
+    flex: 1,
+    height: 48,
+    borderRadius: 2,
+    fontSize: '1rem'
+  }}
+>
+  SIGN OUT
+</Button>
             <Button 
               variant="contained"
               color="success"
