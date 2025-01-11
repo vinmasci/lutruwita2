@@ -6,7 +6,9 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-import { auth, requiresAuth } from 'express-openid-connect';
+import { auth as Auth0 } from 'express-openid-connect';
+import pkg from 'express-openid-connect';
+const { requiresAuth } = pkg;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -19,15 +21,25 @@ const config = {
   authRequired: false,
   auth0Logout: true,
   secret: process.env.AUTH0_SECRET,
-  baseURL: 'http://localhost:3001',  // Change this from 5173 to 3001
+  baseURL: 'http://localhost:3001',
   clientID: 'hLnq0z7KNvwcORjFF9KdC4kGPtu51kVB',
-  issuerBaseURL: 'https://dev-8jmwfh4hugvdjwh8.au.auth0.com'
+  issuerBaseURL: 'https://dev-8jmwfh4hugvdjwh8.au.auth0.com',
+  routes: {
+    postLogoutRedirect: 'http://localhost:5173',
+    callback: '/callback',
+    returnTo: 'http://localhost:5173'
+  }
 };
 
 const app = express();
 
 // Auth router must be set up before other routes
-app.use(auth(config));
+app.use(Auth0(config));
+
+// Handle successful authentication
+app.get('/callback', (req, res) => {
+  res.redirect('http://localhost:5173');
+});
 
 const MONGODB_URI = process.env.VITE_MONGODB_URI; // Changed to match your .env.local
 if (!MONGODB_URI) {
