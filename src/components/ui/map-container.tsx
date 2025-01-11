@@ -102,9 +102,13 @@ const getDistancePoints = (
   const zoom = map.getZoom();
   // Set interval based on zoom level
   let interval = 25; // Default to 25km for zoomed out
-  if (zoom >= 13) interval = 5;      // Closest zoom: 5km intervals
-  else if (zoom >= 11) interval = 10; // Medium zoom: 10km intervals
-  else interval = 25;                 // Far zoom: 25km intervals
+  if (zoom >= 15) interval = 5;       // Very close zoom: 5km intervals
+  else if (zoom >= 13) interval = 10;  // Medium zoom: 10km intervals
+  else if (zoom >= 11) interval = 15;  // Medium-far zoom: 15km intervals
+  else interval = 25;                  // Far zoom: 25km intervals
+
+  // Don't show markers if zoomed out too far
+  if (zoom < 9) return [];
 
   // Don't show markers if zoomed out too far
   if (zoom < 9) return [];
@@ -286,7 +290,7 @@ map.current.addLayer({
       1,
       0
     ],
-    'line-dasharray': [0.5, 1]
+    'line-dasharray': [0.5, 1.5]
   }
 });
 
@@ -314,7 +318,8 @@ distancePoints.forEach(({ point, distance }) => {
 
   new mapboxgl.Marker({
     element: el,
-    anchor: 'bottom'
+    anchor: 'center',
+    scale: 0.25  // Make markers 4x smaller
   })
     .setLngLat(point.geometry.coordinates)
     .addTo(map.current);
