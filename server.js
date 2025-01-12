@@ -222,7 +222,7 @@ app.get('/api/profile', requiresAuth(), async (req, res) => {
         auth0Id: req.oidc.user.sub,
         bioName: req.oidc.user.name,
         email: req.oidc.user.email,
-        picture: req.oidc.user.picture,
+        picture: req.oidc.user.picture.replace('=s96-c', ''),  // Remove size constraint from Google URL
         socialLinks: {
           instagram: '',
           strava: '',

@@ -603,7 +603,7 @@ const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
       borderRadius: 1
     }}
   >
-    <ListItemIcon>
+<ListItemIcon>
       {userData?.picture ? (
         <Box
           component="img"

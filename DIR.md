@@ -1,3 +1,8 @@
+# Project Structure and Components
+
+## Directory Overview
+
+```
 ├── .env.local - Environment variables for local development
 ├── .gitignore - Specifies files to ignore in version control
 ├── eslint.config.js - ESLint configuration for code linting
@@ -54,8 +59,47 @@
     └── types/
         ├── map-types.ts - Type definitions for mapping functionality
         └── note-types.ts - Type definitions for notes functionality
+```
 
-# Map Saving Process
+## Key Components and Relationships
+
+### Core UI Components
+- **MapContainer**: Main map visualization component
+  - Manages map state and interactions
+  - Integrates with MapControls and NotesPanel
+  - Handles route drawing and surface type visualization
+
+- **Sidebar**: Primary navigation and controls
+  - Contains map controls, route tools, and user settings
+  - Integrates with BottomTabs for mobile view
+
+- **SaveMapModal**: Map saving interface
+  - Collects map metadata and configuration
+  - Coordinates with MapService for data persistence
+
+### Data Flow
+1. **User Interaction** → UI Components → Services
+2. **Services** → API Calls → Backend
+3. **Backend** → Database Operations → Response
+4. **Response** → State Updates → UI Rendering
+
+## Development Workflow
+
+### Component Development
+1. Create new component in `src/components/ui/`
+2. Add TypeScript interfaces in `src/types/`
+3. Implement required services in `src/services/`
+4. Add storybook stories for component testing
+5. Write unit tests using Jest
+
+### API Integration
+1. Define API endpoints in `src/services/`
+2. Create corresponding types in `src/types/`
+3. Implement data fetching logic
+4. Handle loading/error states
+5. Update UI components with new data
+
+## Map Saving Process
 
 1. User initiates save from UI
 2. SaveMapModal (src/components/ui/save-map-modal.tsx) collects:
@@ -71,3 +115,38 @@
    - Associated photos
    - Map style configuration
 5. Backend persists map data and returns saved map object
+
+## Testing Strategy
+
+### Unit Tests
+- Components: Jest + React Testing Library
+- Services: Jest + Mock Service Worker
+- Utilities: Jest
+
+### Integration Tests
+- Component interactions
+- API response handling
+- State management
+
+### End-to-End Tests
+- Cypress for UI workflows
+- API contract testing
+
+## Code Quality Standards
+
+### Linting
+- ESLint with TypeScript rules
+- Prettier for code formatting
+- Stylelint for CSS
+
+### Type Safety
+- Strict TypeScript configuration
+- Type checking in CI pipeline
+- Comprehensive type definitions
+
+### Documentation
+- JSDoc for all public APIs
+- Storybook for UI components
+- TypeDoc for type documentation
+
+For more detailed project information, see [README.md](README.md)

@@ -67,6 +67,12 @@ Current Status: **In Active Development**
    - Information points
    - Custom POI creation
 
+## Project Overview
+
+For detailed information about the project structure and components, see [DIR.md](DIR.md).
+
+For specific documentation about the map saving functionality, see [SAVEMAP.md](SAVEMAP.md).
+
 ## Technical Details
 
 ### Dependencies 📦
