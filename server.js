@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { MongoClient } from 'mongodb';
+import { MongoClient, ObjectId } from 'mongodb';
 import multer from 'multer';
 import path from 'path';
 import dotenv from 'dotenv';
@@ -330,28 +330,33 @@ app.get('/api/maps', requiresAuth(), async (req, res) => {
 });
 
 // Get specific map
-app.get('/api/maps/:id', requiresAuth(), async (req, res) => {
+app.put('/api/maps/:id', requiresAuth(), async (req, res) => {
   try {
-    console.log('Fetching map:', req.params.id);
+    console.log('Updating map:', req.params.id);
     await client.connect();
     const db = client.db('photoApp');
-    const map = await db.collection('maps').findOne({
-      _id: req.params.id,
-      $or: [
-        { createdBy: req.oidc.user.sub },
-        { isPublic: true }
-      ]
-    });
+    const result = await db.collection('maps').updateOne(
+      { 
+        _id: new ObjectId(req.params.id),
+        createdBy: req.oidc.user.sub
+      },
+      { 
+        $set: {
+          ...req.body,
+          updatedAt: new Date()
+        }
+      }
+    );
 
-    if (!map) {
-      console.log('Map not found or access denied');
-      return res.status(404).json({ error: 'Map not found' });
+    if (result.matchedCount === 0) {
+      console.log('Map not found or unauthorized');
+      return res.status(404).json({ error: 'Map not found or unauthorized' });
     }
 
-    console.log('Map found:', map._id);
-    res.json(map);
+    console.log('Map updated successfully');
+    res.json({ message: 'Map updated successfully' });
   } catch (error) {
-    console.error('Error fetching map:', error);
+    console.error('Error updating map:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -395,7 +400,7 @@ app.delete('/api/maps/:id', requiresAuth(), async (req, res) => {
     await client.connect();
     const db = client.db('photoApp');
     const result = await db.collection('maps').deleteOne({
-      _id: req.params.id,
+      _id: new ObjectId(req.params.id),
       createdBy: req.oidc.user.sub
     });
 
