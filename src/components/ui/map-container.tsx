@@ -1053,20 +1053,29 @@ console.log('Final photos array:', photos);
         }
       }))
     },
-    photos,
+    photos: currentPhotos.map(photo => ({
+      id: photo._id,
+      url: photo.url,
+      caption: photo.originalName,
+      location: {
+        lat: photo.latitude,
+        lon: photo.longitude
+      }
+    })),
     viewState,
     mapStyle: map.current.getStyle().name || 'mapbox://styles/mapbox/satellite-streets-v12',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
 
+  console.log('Saving map with data:', mapData);
   // Save to database
   const savedMap = await mapService.createMap(mapData);
   console.log('Map saved successfully:', savedMap);
 } catch (error) {
   console.error('Error saving map:', error);
 }
-}, [routeStore, mapService]);
+}, [routeStore, mapService, currentPhotos]);
 
   // ------------------------------------------------------------------
   // Expose methods to parent component
@@ -1132,27 +1141,104 @@ console.log('Final photos array:', photos);
           bearing: viewState.bearing
         });
       },
-      clearRoutes: () => {
-        if (!map.current) return;
-        // Remove existing route layers
-        ['route-layer-white-stroke', 'route-layer', 'route-layer-unpaved'].forEach(layerId => {
-          if (map.current?.getLayer(layerId)) {
-            map.current.removeLayer(layerId);
-          }
-        });
-        if (map.current.getSource(routeSourceId)) {
-          map.current.removeSource(routeSourceId);
+
+clearRoutes: () => {
+  if (!map.current) return;
+  // Remove existing route layers
+  ['route-layer-white-stroke', 'route-layer', 'route-layer-unpaved'].forEach(layerId => {
+    if (map.current?.getLayer(layerId)) {
+      map.current.removeLayer(layerId);
+    }
+  });
+  if (map.current.getSource(routeSourceId)) {
+    map.current.removeSource(routeSourceId);
+  }
+  // Clear distance markers
+  document.querySelectorAll('.mapboxgl-marker:not(.photo-marker):not(.photo-marker-container)').forEach(marker => marker.remove());
+  // Clear photo markers
+  document.querySelectorAll('.photo-marker, .photo-marker-container').forEach(el => el.remove());
+  document.querySelectorAll('.photo-modal-container').forEach(el => el.remove());
+  setRouteStore([]);
+  setCurrentPhotos([]); // Clear photo state
+},
+
+loadRoute: async (route) => {
+  if (!map.current || !route.gpxData) return;
+  
+  try {
+    // Skip file upload since we already have gpxData and filepath
+    console.log('Loading route:', route);
+
+    // Parse GPX content directly
+    const rawCoords = await new Promise<Point[]>((resolve, reject) => {
+      parseString(route.gpxData, { explicitArray: false }, (err: Error | null, result: any) => {
+        if (err) {
+          console.error('[loadRoute] parseString error:', err);
+          reject(new Error('Failed to parse GPX data'));
+          return;
         }
-        // Clear distance markers
-        document.querySelectorAll('.mapboxgl-marker:not(.photo-marker):not(.photo-marker-container)').forEach(marker => marker.remove());
-        setRouteStore([]);
-      },
-      loadRoute: async (route) => {
-        if (!map.current || !route.gpxData) return;
-        await handleGpxUpload(route.gpxData);
-        // Add to route store
-        setRouteStore(prev => [...prev, route]);
-      }
+        try {
+          if (!result?.gpx) {
+            throw new Error('Invalid GPX structure: missing root gpx element');
+          }
+          const points = result.gpx?.rte?.rtept || result.gpx?.trk?.trkseg?.trkpt;
+          if (!points) {
+            throw new Error('Invalid GPX format: missing track points');
+          }
+
+          const arr = Array.isArray(points) ? points : [points];
+          console.log('[loadRoute] Points found:', arr.length);
+
+          const coords = arr
+            .map((pt: any) => {
+              try {
+                if (!pt?.$?.lat || !pt?.$?.lon) {
+                  throw new Error('Missing lat/lon attributes');
+                }
+                const lat = parseFloat(pt.$.lat);
+                const lon = parseFloat(pt.$.lon);
+                if (isNaN(lat) || isNaN(lon)) {
+                  throw new Error('Invalid lat/lon numeric values');
+                }
+                return { lat, lon };
+              } catch (err2) {
+                console.warn('[loadRoute] Skipping invalid point:', pt, err2);
+                return null;
+              }
+            })
+            .filter((x: Point | null): x is Point => x !== null);
+
+          if (coords.length === 0) {
+            throw new Error('No valid coordinates found in GPX');
+          }
+          resolve(coords);
+        } catch (err2) {
+          reject(err2);
+        }
+      });
+    });
+
+    // Process coordinates for surface types
+    const finalCoords = await assignSurfacesViaNearest(rawCoords);
+    if (!finalCoords || finalCoords.length !== rawCoords.length) {
+      throw new Error('Not all points were processed');
+    }
+
+    // Add the route to the map
+    addRouteToMap(finalCoords, route.gpxData);
+
+    // Add photo markers
+    await addPhotoMarkersToMap(finalCoords);
+
+    // Update route store
+    setRouteStore(prev => [...prev, route]);
+
+  } catch (error) {
+    console.error('Error loading route:', error);
+    throw new Error('Failed to load route');
+  }
+}
+
     }),
     [handleGpxUpload, isReady, routeStore]
   );

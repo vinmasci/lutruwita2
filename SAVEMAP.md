@@ -352,3 +352,23 @@ photos: Array<{
 - [x] Photo markers displaying correctly
 - [ ] Photo data saving with maps
 - [ ] Photo data loading with saved maps
+
+J
+I can show you the log of the photos without adding consoles:
+[Log] [findNearbyPhotos] Found 4 photos: (db.ts, line 90)
+Array (4)
+0 {_id: "67627960af793a1d3a2a4347", url: "https://bikepath.s3.ap-southeast-2.amazonaws.com/1734506847644-IMG_4115.jpeg", originalName: "IMG_4115.jpeg", uploadedAt: "2024-12-18T07:27:28.814Z", latitude: -41.35268888888889, …}
+1 {_id: "67627963af793a1d3a2a4348", url: "https://bikepath.s3.ap-southeast-2.amazonaws.com/1734506850450-IMG_4116.jpeg", originalName: "IMG_4116.jpeg", uploadedAt: "2024-12-18T07:27:31.436Z", latitude: -41.35256944444445, …}
+2 {_id: "67627967af793a1d3a2a4349", url: "https://bikepath.s3.ap-southeast-2.amazonaws.com/1734506854609-IMG_4117.jpeg", originalName: "IMG_4117.jpeg", uploadedAt: "2024-12-18T07:27:35.630Z", latitude: -41.35156666666667, …}
+3 {_id: "6762796aaf793a1d3a2a434a", url: "https://bikepath.s3.ap-southeast-2.amazonaws.com/1734506857194-IMG_4119.jpeg", originalName: "IMG_4119.jpeg", uploadedAt: "2024-12-18T07:27:38.057Z", latitude: -41.35183055555556, …}
+Array Prototype
+
+also:
+[Log] [findPhotosNearPoints] Found 10 unique photos (db.ts, line 111)
+[Log] Photo markers added to map (map-container.tsx, line 463)
+[Log] [handleGpxUpload] => Photo markers added (map-container.tsx, line 747)
+
+also:
+[Log] [findPhotosNearPoints] Starting to process 443 points (db.ts, line 101)
+[Log] [findNearbyPhotos] Fetching photos near: 147.34734, -41.33872 (db.ts, line 70)
+[Log] [findNearbyPhotos] Request URL: http://localhost:3001/api/photos/near?longitude=147.34734&latitude=-41.33872 (db.ts, line 73)
