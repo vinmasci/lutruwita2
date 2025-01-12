@@ -959,6 +959,20 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
   }) => {
     if (!map.current) return;
   
+    try {
+      // Get current route data
+      const source = map.current.getSource(routeSourceId) as mapboxgl.GeoJSONSource;
+      const routeData = (source as any)._data as FeatureCollection;
+
+      // Get all routes with their GPX data from the route store
+      const routes = routeStore.map(route => ({
+        id: route.id,
+        name: route.name,
+        color: route.color,
+        isVisible: route.isVisible,
+        gpxData: route.gpxData
+      }));
+
       // Get current map view state
       const center = map.current.getCenter();
       const viewState = {
@@ -1000,16 +1014,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
     } catch (error) {
       console.error('Error saving map:', error);
     }
-  }; // Add semicolon here
-  
-  // Expose methods to parent component
-  interface Route {
-    id: string;
-    name: string;
-    color: string;
-    isVisible: boolean;
-    gpxData: string;
-  }
+  }, [routeStore, mapService]);  // Add dependencies array here
 
   // ------------------------------------------------------------------
   // Expose methods to parent component
@@ -1022,8 +1027,6 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
     isVisible: boolean;
     gpxData: string;
   }
-  
-  const [routeStore, setRouteStore] = useState<Route[]>([]);
   
   React.useImperativeHandle(
     ref,
@@ -1283,3 +1286,4 @@ MapContainer.displayName = 'MapContainer';
 
 export default MapContainer;
 export type { MapRef };
+
