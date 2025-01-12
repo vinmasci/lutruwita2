@@ -1,8 +1,4 @@
-import { MongoClient, ServerApiVersion } from 'mongodb';
 import { SavedMap } from '../types/map-types';
-
-// Cache the MongoDB connection
-let client: MongoClient | null = null;
 
 // Interface for photo documents
 interface PhotoDocument {
@@ -18,54 +14,88 @@ interface PhotoDocument {
     picture: string;
 }
 
-// Connect to MongoDB
-async function connectToDatabase() {
-    if (client) return client;
-    
-    client = new MongoClient(process.env.VITE_MONGODB_URI || '');
-    await client.connect();
-    return client;
-}
-
 // Save map
 export async function saveMap(map: Omit<SavedMap, '_id'>): Promise<string> {
-    const db = (await connectToDatabase()).db('photoApp');
-    const result = await db.collection('maps').insertOne({
-        ...map,
-        createdAt: new Date(),
-        updatedAt: new Date()
-    });
-    return result.insertedId.toString();
+    try {
+        const response = await fetch('http://localhost:3001/api/maps', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            body: JSON.stringify(map)
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to save map: ${response.status} ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        return result.mapId;
+    } catch (error) {
+        console.error('[saveMap] Error:', error);
+        throw error;
+    }
 }
 
 // Get map by ID
 export async function getMap(id: string): Promise<SavedMap | null> {
-    const db = (await connectToDatabase()).db('photoApp');
-    return db.collection('maps').findOne({ _id: id });
+    try {
+        const response = await fetch(`http://localhost:3001/api/maps/${id}`, {
+            credentials: 'include'
+        });
+
+        if (!response.ok) {
+            if (response.status === 404) return null;
+            throw new Error(`Failed to get map: ${response.status} ${response.statusText}`);
+        }
+
+        return response.json();
+    } catch (error) {
+        console.error('[getMap] Error:', error);
+        throw error;
+    }
 }
 
 // Update map
 export async function updateMap(id: string, map: Partial<SavedMap>): Promise<boolean> {
-    const db = (await connectToDatabase()).db('photoApp');
-    const result = await db.collection('maps').updateOne(
-        { _id: id },
-        { 
-            $set: {
-                ...map,
-                updatedAt: new Date()
-            }
+    try {
+        const response = await fetch(`http://localhost:3001/api/maps/${id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            body: JSON.stringify(map)
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to update map: ${response.status} ${response.statusText}`);
         }
-    );
-    return result.matchedCount > 0;
+
+        return true;
+    } catch (error) {
+        console.error('[updateMap] Error:', error);
+        throw error;
+    }
 }
 
 // List maps for user
 export async function listMaps(userId: string): Promise<SavedMap[]> {
-    const db = (await connectToDatabase()).db('photoApp');
-    return db.collection('maps')
-        .find({ createdBy: userId })
-        .sort({ updatedAt: -1 })
-        .toArray();
+    try {
+        const response = await fetch('http://localhost:3001/api/maps', {
+            credentials: 'include'
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to list maps: ${response.status} ${response.statusText}`);
+        }
+
+        return response.json();
+    } catch (error) {
+        console.error('[listMaps] Error:', error);
+        throw error;
+    }
 }
 
 // Find photos near a point
