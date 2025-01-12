@@ -20,6 +20,7 @@ import {
   Button,
   Paper
 } from '@mui/material';
+import SaveMapModal from './save-map-modal';
 import { styled } from '@mui/material/styles';
 import {
   ChevronLeft as ChevronLeftIcon,
@@ -28,7 +29,8 @@ import {
   Terrain as TerrainIcon,
   Layers as LayersIcon,
   UploadFile as UploadFileIcon,
-  AccountCircle as AccountCircleIcon
+  AccountCircle as AccountCircleIcon,
+  Save as SaveIcon
 } from '@mui/icons-material';
 
 const drawerWidth = 240;
@@ -82,6 +84,13 @@ const Sidebar = ({ mapRef }: SidebarProps) => {
   } | null>(null);
 const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
 const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
+  const [saveMapModalOpen, setSaveMapModalOpen] = useState(false);
+  const [routes, setRoutes] = useState<Array<{
+    id: string;
+    name: string;
+    color: string;
+    isVisible: boolean;
+  }>>([]);
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -245,8 +254,13 @@ const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
 
   const handleSaveProfile = async () => {
     try {
-      // Remove _id from userData before sending
-      const { _id, ...updateData } = userData || {};
+      if (!userData) return;
+      
+      const updateData = {
+        bioName: userData.bioName,
+        socialLinks: userData.socialLinks,
+        website: userData.website
+      };
       
       console.log('Saving profile with data:', updateData);
       
@@ -277,7 +291,7 @@ const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
       console.error('Error in handleSaveProfile:', error);
       setSnackbar({
         open: true,
-        message: error.message || 'Failed to update profile',
+        message: error instanceof Error ? error.message : 'Failed to update profile',
         severity: 'error'
       });
     }
@@ -361,7 +375,32 @@ const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
             }} 
           />
         </ListItemButton>
+
+        <ListItemButton
+          disabled={!mapReady}
+          onClick={() => setSaveMapModalOpen(true)}
+          sx={{ justifyContent: open ? 'start' : 'center', minHeight: 48 }}
+        >
+          <ListItemIcon>
+            <SaveIcon />
+          </ListItemIcon>
+          <ListItemText 
+            primary="Save Map" 
+            sx={{ 
+              opacity: open ? 1 : 0,
+              display: open ? 'block' : 'none'
+            }} 
+          />
+        </ListItemButton>
       </List>
+
+      <SaveMapModal
+        open={saveMapModalOpen}
+        onClose={() => setSaveMapModalOpen(false)}
+        mapRef={mapRef}
+        onSave={() => {}}
+        routes={routes}
+      />
 
       <Dialog
         open={uploadDialogOpen}

@@ -14,10 +14,16 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { findPhotosNearPoints, type PhotoDocument } from '@/lib/db';
 import * as turf from '@turf/turf';
 import nearestPointOnLine from '@turf/nearest-point-on-line';
-import type { Feature, Point as TurfPoint, GeoJsonProperties, Position } from 'geojson';
-import type { FeatureCollection } from 'geojson';
-import type { LineString, MultiLineString } from 'geojson';
-import type { Units } from '@turf/helpers';
+import type { 
+  Feature,
+  Point as TurfPoint,
+  GeoJsonProperties,
+  Position,
+  LineString,
+  MultiLineString,
+  FeatureCollection
+} from 'geojson';
+import { mapService } from '@/services/maps';
 import { PhotoModal } from '@/components/ui/photo-modal';
 import DistanceMarker from './distance-marker';
 import Supercluster from 'supercluster';
@@ -318,7 +324,7 @@ const combinedLine = turf.lineString(
 );
 
 // Calculate total length in kilometers
-const totalLength = Number(turf.length(combinedLine, { units: 'kilometers' }));
+const totalLength = turf.length(combinedLine, { units: 'kilometers' as const });
 
 // Get distance points based on zoom level
 const distancePoints = getDistancePoints(map.current, combinedLine, totalLength);
@@ -886,6 +892,35 @@ const pavedCount = finalCoords.filter((c) => c.surface === 'paved').length;
     },
     [isReady, assignSurfacesViaNearest, addRouteToMap, addPhotoMarkersToMap]
   );
+  // Save map handler
+  const handleSaveMap = useCallback(async (data: {
+    name: string;
+    description: string;
+    isPublic: boolean;
+  }) => {
+    if (!map.current) return;
+
+    try {
+      // Get current route data
+      const source = map.current.getSource(routeSourceId) as mapboxgl.GeoJSONSource;
+      const routeData = (source as any)._data as FeatureCollection;
+
+      // Create map data object
+      const mapData = {
+        ...data,
+        route: routeData,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      // Save to database
+      const savedMap = await mapService.createMap(mapData);
+      console.log('Map saved successfully:', savedMap);
+    } catch (error) {
+      console.error('Error saving map:', error);
+    }
+  }, []);
+
   // ------------------------------------------------------------------
   // Expose methods to parent component
   // Makes key functionality available to parent components

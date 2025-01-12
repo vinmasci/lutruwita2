@@ -54,3 +54,20 @@
     └── types/
         ├── map-types.ts - Type definitions for mapping functionality
         └── note-types.ts - Type definitions for notes functionality
+
+# Map Saving Process
+
+1. User initiates save from UI
+2. SaveMapModal (src/components/ui/save-map-modal.tsx) collects:
+   - Map name (required)
+   - Description (optional)
+   - Public/private status
+   - Included routes
+3. Parent component calls mapService.createMap() (src/services/maps.ts)
+4. API request sent to backend with SavedMap data (src/types/map-types.ts):
+   - Map metadata (name, description, visibility)
+   - Current map view state
+   - Included routes with GPX data
+   - Associated photos
+   - Map style configuration
+5. Backend persists map data and returns saved map object
