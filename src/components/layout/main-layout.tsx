@@ -5,21 +5,24 @@ import type { MapRef } from '../ui/map-container';
 import MapContainer from '../ui/map-container';
 import Sidebar from '../ui/sidebar';
 import BottomTabs from '../ui/bottom-tabs';
+import { FloatingIconProvider } from '../../contexts/floating-icon-context';
 
 const MainLayout = () => {
   const mapRef = useRef<MapRef>(null);
 
   return (
-<div className="h-screen w-full flex overflow-hidden">
-  <Sidebar mapRef={mapRef} />
-  <main className="flex-1 flex flex-col">
-    <div className="flex-1 relative h-[calc(100vh-48px)]"> {/* Using Tailwind's arbitrary value */}
-      <MapContainer ref={mapRef} />
-      <Outlet />
-    </div>
-    <BottomTabs />
-  </main>
-</div>
+    <FloatingIconProvider>
+      <div className="h-screen w-full flex overflow-hidden">
+        <Sidebar mapRef={mapRef} />
+        <main className="flex-1 flex flex-col">
+          <div className="flex-1 relative h-[calc(100vh-48px)]">
+            <MapContainer ref={mapRef} />
+            <Outlet />
+          </div>
+          <BottomTabs />
+        </main>
+      </div>
+    </FloatingIconProvider>
   );
 };
 
