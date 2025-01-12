@@ -854,26 +854,38 @@ const handleGpxUpload = useCallback(
 
     // First, upload the GPX file
     try {
+      console.log('Preparing GPX upload:', {
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type
+      });
+    
       const formData = new FormData();
       formData.append('gpx', file);
-      
+    
+      console.log('Sending GPX upload request...');
       const response = await fetch('http://localhost:3001/api/gpx/upload', {
         method: 'POST',
         body: formData,
         credentials: 'include',
-        headers: {
-          'Accept': 'application/json',
-        }
       });
-
+    
+      console.log('GPX upload response status:', response.status);
       if (!response.ok) {
-        throw new Error('Failed to upload GPX file');
+        const errorText = await response.text();
+        console.error('GPX upload failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          errorText
+        });
+        throw new Error(`Failed to upload GPX file: ${errorText}`);
       }
-
+    
       const uploadResult = await response.json();
+      console.log('GPX upload successful:', uploadResult);
       gpxFilePath = uploadResult.path;
     } catch (error) {
-      console.error('Error uploading GPX file:', error);
+      console.error('Detailed GPX upload error:', error);
       throw new Error('Failed to upload GPX file');
     }
 

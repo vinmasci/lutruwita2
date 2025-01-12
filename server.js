@@ -214,7 +214,14 @@ app.get('/api/photos/near', async (req, res) => {
 // Upload GPX endpoint
 app.post('/api/gpx/upload', requiresAuth(), gpxUpload.single('gpx'), async (req, res) => {
   try {
+    console.log('GPX upload request received:', {
+      file: req.file,
+      body: req.body,
+      headers: req.headers
+    });
+
     if (!req.file) {
+      console.log('No file received in request');
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
@@ -227,13 +234,18 @@ app.post('/api/gpx/upload', requiresAuth(), gpxUpload.single('gpx'), async (req,
       uploadedAt: new Date()
     });
 
-    res.json({ 
-      success: true, 
+    console.log('GPX file saved successfully:', {
+      filename: req.file.filename,
+      id: result.insertedId
+    });
+
+    res.json({
+      success: true,
       gpxId: result.insertedId,
       path: `/uploads/${req.file.filename}`
     });
   } catch (error) {
-    console.error('Error uploading GPX:', error);
+    console.error('Detailed GPX upload error:', error);
     res.status(500).json({ error: error.message });
   }
 });
