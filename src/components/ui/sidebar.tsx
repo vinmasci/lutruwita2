@@ -301,6 +301,46 @@ const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
     setOpen(!open);
   };
 
+  const handleSaveMap = async (data: {
+    name: string;
+    description: string;
+    isPublic: boolean;
+    viewState: {
+      center: [number, number];
+      zoom: number;
+      pitch: number;
+      bearing: number;
+    };
+    mapStyle: string;
+  }) => {
+    try {
+      if (!mapRef.current) return;
+
+      const routes = mapRef.current.getCurrentRoutes();
+      const mapData = {
+        ...data,
+        routes,
+      };
+
+      await mapService.createMap(mapData);
+      setSnackbar({
+        open: true,
+        message: 'Map saved successfully',
+        severity: 'success'
+      });
+      setSaveMapModalOpen(false);
+    } catch (error) {
+      console.error('Error saving map:', error);
+      setSnackbar({
+        open: true,
+        message: error instanceof Error ? error.message : 'Error saving map',
+        severity: 'error'
+      });
+    }
+  };
+
+  return (
+
   return (
     <StyledDrawer
       variant="permanent"
@@ -392,45 +432,7 @@ const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
             }} 
           />
         </ListItemButton>
-      </List>
-
-      const handleSaveMap = async (data: {
-  name: string;
-  description: string;
-  isPublic: boolean;
-  viewState: {
-    center: [number, number];
-    zoom: number;
-    pitch: number;
-    bearing: number;
-  };
-  mapStyle: string;
-}) => {
-  try {
-    if (!mapRef.current) return;
-
-    const routes = mapRef.current.getCurrentRoutes();
-    const mapData = {
-      ...data,
-      routes,
-    };
-
-    await mapService.createMap(mapData);
-    setSnackbar({
-      open: true,
-      message: 'Map saved successfully',
-      severity: 'success'
-    });
-    setSaveMapModalOpen(false);
-  } catch (error) {
-    console.error('Error saving map:', error);
-    setSnackbar({
-      open: true,
-      message: error instanceof Error ? error.message : 'Error saving map',
-      severity: 'error'
-    });
-  }
-};
+        </List>
 
 <SaveMapModal
   open={saveMapModalOpen}
