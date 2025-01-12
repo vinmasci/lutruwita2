@@ -62,7 +62,7 @@ console.log('MongoDB URI found:', MONGODB_URI.substring(0, 20) + '...');
 
 app.use(cors({
   origin: ['http://localhost:5173', 'http://localhost:5174'],
-  methods: ['GET', 'POST', 'PUT', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Added DELETE for map endpoints
   allowedHeaders: ['Content-Type', 'Authorization', 'x-csrf-token'],
   credentials: true,
   maxAge: 86400
@@ -283,6 +283,135 @@ app.put('/api/profile', requiresAuth(), async (req, res) => {
   }
 });
 
+// New Map Endpoints
+// Create new map
+app.post('/api/maps', requiresAuth(), async (req, res) => {
+  try {
+    console.log('Creating new map for user:', req.oidc.user.sub);
+    const mapData = {
+      ...req.body,
+      createdBy: req.oidc.user.sub,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    await client.connect();
+    const db = client.db('photoApp');
+    const result = await db.collection('maps').insertOne(mapData);
+
+    console.log('Map created:', result.insertedId);
+    res.json({ 
+      success: true,
+      mapId: result.insertedId 
+    });
+  } catch (error) {
+    console.error('Error creating map:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get all maps for user
+app.get('/api/maps', requiresAuth(), async (req, res) => {
+  try {
+    console.log('Fetching maps for user:', req.oidc.user.sub);
+    await client.connect();
+    const db = client.db('photoApp');
+    const maps = await db.collection('maps')
+      .find({ createdBy: req.oidc.user.sub })
+      .sort({ updatedAt: -1 })
+      .toArray();
+
+    console.log(`Found ${maps.length} maps`);
+    res.json(maps);
+  } catch (error) {
+    console.error('Error fetching maps:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get specific map
+app.get('/api/maps/:id', requiresAuth(), async (req, res) => {
+  try {
+    console.log('Fetching map:', req.params.id);
+    await client.connect();
+    const db = client.db('photoApp');
+    const map = await db.collection('maps').findOne({
+      _id: req.params.id,
+      $or: [
+        { createdBy: req.oidc.user.sub },
+        { isPublic: true }
+      ]
+    });
+
+    if (!map) {
+      console.log('Map not found or access denied');
+      return res.status(404).json({ error: 'Map not found' });
+    }
+
+    console.log('Map found:', map._id);
+    res.json(map);
+  } catch (error) {
+    console.error('Error fetching map:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update map
+app.put('/api/maps/:id', requiresAuth(), async (req, res) => {
+  try {
+    console.log('Updating map:', req.params.id);
+    await client.connect();
+    const db = client.db('photoApp');
+    const result = await db.collection('maps').updateOne(
+      { 
+        _id: req.params.id,
+        createdBy: req.oidc.user.sub
+      },
+      { 
+        $set: {
+          ...req.body,
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      console.log('Map not found or unauthorized');
+      return res.status(404).json({ error: 'Map not found or unauthorized' });
+    }
+
+    console.log('Map updated successfully');
+    res.json({ message: 'Map updated successfully' });
+  } catch (error) {
+    console.error('Error updating map:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete map
+app.delete('/api/maps/:id', requiresAuth(), async (req, res) => {
+  try {
+    console.log('Deleting map:', req.params.id);
+    await client.connect();
+    const db = client.db('photoApp');
+    const result = await db.collection('maps').deleteOne({
+      _id: req.params.id,
+      createdBy: req.oidc.user.sub
+    });
+
+    if (result.deletedCount === 0) {
+      console.log('Map not found or unauthorized');
+      return res.status(404).json({ error: 'Map not found or unauthorized' });
+    }
+
+    console.log('Map deleted successfully');
+    res.json({ message: 'Map deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting map:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 const PORT = 3001;
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
@@ -290,6 +419,11 @@ app.listen(PORT, () => {
   console.log('- GET  /api/photos/near');
   console.log('- POST /api/photos/upload');
   console.log('- GET  /api/profile (requires auth)');
-  console.log('- PUT  /api/profile (requires auth)'); // Add this line
+  console.log('- PUT  /api/profile (requires auth)');
+  console.log('- POST /api/maps (requires auth)');
+  console.log('- GET  /api/maps (requires auth)');
+  console.log('- GET  /api/maps/:id (requires auth)');
+  console.log('- PUT  /api/maps/:id (requires auth)');
+  console.log('- DELETE /api/maps/:id (requires auth)');
   console.log('- GET  /health');
 });

@@ -1,4 +1,5 @@
 import { MongoClient, ServerApiVersion } from 'mongodb';
+import { SavedMap } from '../types/map-types';
 
 // Cache the MongoDB connection
 let client: MongoClient | null = null;
@@ -16,7 +17,57 @@ interface PhotoDocument {
     caption: string;
     picture: string;
 }
-  
+
+// Connect to MongoDB
+async function connectToDatabase() {
+    if (client) return client;
+    
+    client = new MongoClient(process.env.VITE_MONGODB_URI || '');
+    await client.connect();
+    return client;
+}
+
+// Save map
+export async function saveMap(map: Omit<SavedMap, '_id'>): Promise<string> {
+    const db = (await connectToDatabase()).db('photoApp');
+    const result = await db.collection('maps').insertOne({
+        ...map,
+        createdAt: new Date(),
+        updatedAt: new Date()
+    });
+    return result.insertedId.toString();
+}
+
+// Get map by ID
+export async function getMap(id: string): Promise<SavedMap | null> {
+    const db = (await connectToDatabase()).db('photoApp');
+    return db.collection('maps').findOne({ _id: id });
+}
+
+// Update map
+export async function updateMap(id: string, map: Partial<SavedMap>): Promise<boolean> {
+    const db = (await connectToDatabase()).db('photoApp');
+    const result = await db.collection('maps').updateOne(
+        { _id: id },
+        { 
+            $set: {
+                ...map,
+                updatedAt: new Date()
+            }
+        }
+    );
+    return result.matchedCount > 0;
+}
+
+// List maps for user
+export async function listMaps(userId: string): Promise<SavedMap[]> {
+    const db = (await connectToDatabase()).db('photoApp');
+    return db.collection('maps')
+        .find({ createdBy: userId })
+        .sort({ updatedAt: -1 })
+        .toArray();
+}
+
 // Find photos near a point
 export async function findNearbyPhotos(longitude: number, latitude: number) {
     console.log(`[findNearbyPhotos] Fetching photos near: ${longitude}, ${latitude}`);
@@ -54,12 +105,12 @@ export async function findNearbyPhotos(longitude: number, latitude: number) {
         throw error;
     }
 }
-  
+
 // Find photos near multiple points
 export async function findPhotosNearPoints(points: Array<{ longitude: number, latitude: number }>) {
     console.log(`[findPhotosNearPoints] Starting to process ${points.length} points`);
     const uniquePhotos = new Map<string, PhotoDocument>();
-  
+
     try {
         for (const point of points) {
             const photos = await findNearbyPhotos(point.longitude, point.latitude);
@@ -76,5 +127,5 @@ export async function findPhotosNearPoints(points: Array<{ longitude: number, la
         throw error;
     }
 }
-  
-export type { PhotoDocument };
+
+export type { PhotoDocument, SavedMap };
