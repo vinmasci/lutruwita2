@@ -207,15 +207,16 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
   const map = useRef<mapboxgl.Map | null>(null);            // Mapbox instance
   const cachedRoadsRef = useRef<FeatureCollection | null>(null);  // Temporary road data cache
 
-  // State management
-  const [isMapReady, setIsMapReady] = React.useState(false);
-  const [streetsLayersLoaded, setStreetsLayersLoaded] = React.useState(false);
-  const [isUploading, setIsUploading] = React.useState(false);
-  const [surfaceProgress, setSurfaceProgress] = React.useState<SurfaceProgressState>({
-    isProcessing: false,
-    progress: 0,
-    total: 0
-  });
+// State management
+const [isMapReady, setIsMapReady] = React.useState(false);
+const [streetsLayersLoaded, setStreetsLayersLoaded] = React.useState(false);
+const [isUploading, setIsUploading] = React.useState(false);
+const [currentPhotos, setCurrentPhotos] = useState<PhotoDocument[]>([]);
+const [surfaceProgress, setSurfaceProgress] = React.useState<SurfaceProgressState>({
+  isProcessing: false,
+  progress: 0,
+  total: 0
+});
 
   // ------------------------------------------------------------------
   // isReady => Checks if map and all layers are fully loaded
@@ -410,7 +411,8 @@ const addPhotoMarkersToMap = useCallback(async (coordinates: Point[]) => {
 
   // Find photos near route
   const photos = await findPhotosNearPoints(points);
-
+  setCurrentPhotos(photos); // Store photos in state
+  
   // Remove any existing photo markers and modal containers
   document.querySelectorAll('.photo-marker').forEach(el => el.remove());
   document.querySelectorAll('.photo-modal-container').forEach(el => el.remove());
@@ -1023,46 +1025,17 @@ try {
   };
 
 // Get all photo markers currently on the map
-const photoMarkers = document.querySelectorAll('.photo-marker');
-console.log('Found photo markers:', photoMarkers.length);
+const photos = currentPhotos.map(photo => ({
+  id: photo._id,
+  url: photo.url,
+  caption: photo.originalName,
+  location: {
+    lat: photo.latitude,
+    lon: photo.longitude
+  }
+}));
 
-const photos = Array.from(photoMarkers)
-  .map(marker => {
-    const markerDiv = marker as HTMLDivElement;
-    const imgElement = markerDiv.querySelector('img');
-    if (!imgElement) {
-      console.log('No img element found in marker');
-      return null;
-    }
-    
-    const photo = {
-      id: marker.getAttribute('data-id') || '',
-      url: marker.getAttribute('data-url') || '',
-      caption: imgElement.alt || '',
-      location: {
-        lat: parseFloat(marker.getAttribute('data-lat') || '0'),
-        lon: parseFloat(marker.getAttribute('data-lon') || '0')
-      }
-    };
-
-    console.log('Processing photo:', photo);
-  
-    if (!photo.id || !photo.url || !photo.location.lat || !photo.location.lon) {
-      console.log('Invalid photo data:', { id: photo.id, url: photo.url, location: photo.location });
-      return null;
-    }
-  
-    return photo;
-  })
-  .filter((p): p is {
-    id: string;
-    url: string;
-    caption: string;
-    location: {
-      lat: number;
-      lon: number;
-    }
-  } => p !== null);
+console.log('Photos to save:', photos);
 
 console.log('Final photos array:', photos);
 
@@ -1115,21 +1088,15 @@ console.log('Final photos array:', photos);
         }
       },
       getCurrentRoutes: () => routeStore,
-getCurrentPhotos: () => {
-  return Array.from(document.querySelectorAll('.photo-marker'))
-    .map(marker => {
-      const photo = (marker as any).photo;
-      if (!photo) return null;
-      return {
-        id: photo.id,
-        url: photo.url,
-        caption: photo.caption,
-        longitude: photo.longitude,
-        latitude: photo.latitude
-      };
-    })
-    .filter((p): p is { id: string; url: string; caption?: string; longitude: number; latitude: number } => p !== null);
-},
+      getCurrentPhotos: () => {
+        return currentPhotos.map(photo => ({
+          id: photo._id,
+          url: photo.url,
+          caption: photo.originalName,
+          longitude: photo.longitude,
+          latitude: photo.latitude
+        }));
+      },
       getRouteData: () => {
         if (!map.current) return { type: 'FeatureCollection', features: [] };
         const source = map.current.getSource(routeSourceId) as mapboxgl.GeoJSONSource;
