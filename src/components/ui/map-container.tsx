@@ -1178,38 +1178,49 @@ getCurrentPhotos: () => {
             maxzoom: 14
           });
 
-          // Add custom roads layer with surface-based styling
-          newMap.addLayer({
-            id: 'custom-roads',
-            type: 'line',
-            source: 'australia-roads',
-            'source-layer': 'lutruwita',
-            minzoom: 12,
-            maxzoom: 14,
-            layout: {
-              visibility: 'visible'
-            },
-            paint: {
-              'line-opacity': 1,
-              'line-color': [
-                'match',
-                ['get', 'surface'],
+          // Add Mapbox Streets source
+newMap.addSource('mapbox-streets', {
+  type: 'vector',
+  url: 'mapbox://mapbox.mapbox-streets-v8'
+});
 
-                // Color roads based on surface type
-                // Paved roads in blue
-                ['paved', 'asphalt', 'concrete', 'compacted', 'sealed', 'bitumen', 'tar'],
-                '#4A90E2',
-
-                // Unpaved roads in orange
-                ['unpaved', 'gravel', 'fine', 'fine_gravel', 'dirt', 'earth'],
-                '#D35400',
-
-                // Unknown surfaces in grey
-                '#888888'
-              ],
-              'line-width': 2
-            }
-          });
+newMap.addLayer({
+  id: 'streets-layer',
+  type: 'line',
+  source: 'mapbox-streets',
+  'source-layer': 'road',
+  minzoom: 8,
+  maxzoom: 22,
+  layout: {
+    visibility: 'visible'
+  },
+  paint: {
+    'line-opacity': [
+      'case',
+      // Show unpaved roads with full opacity
+      ['==', ['get', 'surface'], 'unpaved'], 0.4,
+      ['==', ['get', 'surface'], 'track'], 0.4,
+      ['==', ['get', 'surface'], 'path'], 0.4,
+      
+      // Make everything else fully transparent
+      0
+    ],
+    'line-color': [
+      'case',
+      // Color unpaved roads orange
+      ['==', ['get', 'surface'], 'unpaved'], '#ffb142',
+      ['==', ['get', 'surface'], 'track'], '#ffb142',
+      ['==', ['get', 'surface'], 'path'], '#ffb142',
+      ['==', ['get', 'surface'], 'gravel'], '#ffb142',
+      ['==', ['get', 'surface'], 'fine_gravel'], '#ffb142',
+      ['==', ['get', 'surface'], 'dirt'], '#ffb142',
+      
+      // Other colors don't matter since they'll be transparent
+      '#000000'
+    ],
+    'line-width': 4
+  }
+});
 
           // Mark map as ready
           setStreetsLayersLoaded(true);
