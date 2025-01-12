@@ -199,14 +199,14 @@ interface Route {
 }
 
 const MapContainer = forwardRef<MapRef>((props, ref) => {
-  // Constants for identifying map layers
   const routeSourceId = 'route';
   const routeLayerId = 'route-layer';
-
+  
   // Core references
-  const mapContainer = useRef<HTMLDivElement>(null);         // DOM element for map
-  const map = useRef<mapboxgl.Map | null>(null);            // Mapbox instance
-  const cachedRoadsRef = useRef<FeatureCollection | null>(null);  // Temporary road data cache
+  const mapContainer = useRef<HTMLDivElement>(null);
+  const map = useRef<mapboxgl.Map | null>(null);
+  const cachedRoadsRef = useRef<FeatureCollection | null>(null);
+  const [routeName, setRouteName] = useState<string>("");
 
 // State management
 const [isMapReady, setIsMapReady] = React.useState(false);
@@ -495,26 +495,11 @@ const updateMarkers = useCallback((clusterIndex: Supercluster) => {
 // Remove the existing flyTo on the click handler - let clustering handle zoom naturally
 el.addEventListener('click', (e) => {
   e.stopPropagation();
-  const coordinates = routeData.features.reduce((coords: number[][], feature) => {
-    if (feature.geometry.type === 'LineString') {
-      return [...coords, ...feature.geometry.coordinates];
-    }
-    return coords;
-  }, []);
-
-  if (coordinates.length > 0) {
-    const bounds = coordinates.reduce((bounds, coord) => {
-      return [
-        [Math.min(bounds[0][0], coord[0]), Math.min(bounds[0][1], coord[1])],
-        [Math.max(bounds[1][0], coord[0]), Math.max(bounds[1][1], coord[1])]
-      ];
-    }, [[coordinates[0][0], coordinates[0][1]], [coordinates[0][0], coordinates[0][1]]]);
-
-    map.current?.fitBounds(bounds, {
-      padding: 50,
-      duration: 1000
-    });
-  }
+  map.current?.flyTo({
+    center: coordinates,
+    zoom: (map.current.getZoom() || 0) + 2,
+    duration: 1000
+  });
 });
 
     } else {
@@ -1088,6 +1073,7 @@ React.useImperativeHandle(
   () => ({
     handleGpxUpload,
     isReady,
+    getMap: () => map.current,  // Add this line
     on: (evt: string, cb: (event: any) => void) => {
       if (map.current) {
         map.current.on(evt, cb);
@@ -1439,6 +1425,7 @@ if (savedPhotos?.length) {
         }
 
         setRouteStore(prev => [...prev, route]);
+        setRouteName(route.name);  // Add this line here
 
       } catch (error) {
         console.error('Error loading route:', error);
@@ -1546,7 +1533,13 @@ if (savedPhotos?.length) {
 
 // Add standard map controls
 newMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
-newMap.addControl(new mapboxgl.FullscreenControl());
+newMap.addControl(new mapboxgl.FullscreenControl(), 'top-right');
+
+// Add control margin for navbar
+const controlContainer = document.querySelector('.mapboxgl-control-container');
+if (controlContainer) {
+  (controlContainer as HTMLElement).style.marginTop = '64px';
+}
 
 // Track current interval
 let currentInterval = 25;
@@ -1621,6 +1614,9 @@ console.error('[MapContainer] Error creating map:', err);
   // ------------------------------------------------------------------
   return (
     <div className="w-full h-full relative">
+<div className="absolute top-0 left-[160px] right-0 right-[40px] z-10 bg-black/0 p-4">
+  <h1 className="text-white text-2xl font-fraunces font-bold pl-4 drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">{routeName}</h1>
+</div>
       <div ref={mapContainer} className="w-full h-full" />
       {surfaceProgress.isProcessing && (
         <LoadingOverlay
