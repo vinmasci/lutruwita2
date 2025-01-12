@@ -34,7 +34,7 @@ import { createRoot } from 'react-dom/client';
 // Type definitions for the component
 // --------------------------------------------
 interface MapRef {
-  handleGpxUpload: (content: string) => Promise<void>;  
+  handleGpxUpload: (content: string, file: File) => Promise<void>;
   isReady: () => boolean;                               
   on: (event: string, callback: (event: any) => void) => void;    
   off: (event: string, callback: (event: any) => void) => void;   
@@ -860,7 +860,10 @@ const handleGpxUpload = useCallback(
       const response = await fetch('http://localhost:3001/api/gpx/upload', {
         method: 'POST',
         body: formData,
-        credentials: 'include'
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+        }
       });
 
       if (!response.ok) {
