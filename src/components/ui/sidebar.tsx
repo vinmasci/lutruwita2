@@ -32,9 +32,11 @@ import {
   UploadFile as UploadFileIcon,
   AccountCircle as AccountCircleIcon,
   Save as SaveIcon,
-  FolderOpen as FolderOpenIcon
+  FolderOpen as FolderOpenIcon,
+  LocationOn as LocationOnIcon
 } from '@mui/icons-material';
 import LoadMapModal from './load-map-modal';
+import { POIModal } from './poi-modal';
 
 const drawerWidth = 240;
 const closedWidth = 65;
@@ -89,6 +91,7 @@ const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
 const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
 const [saveMapModalOpen, setSaveMapModalOpen] = useState(false);
 const [loadMapModalOpen, setLoadMapModalOpen] = useState(false);
+const [poiModalOpen, setPoiModalOpen] = useState(false);
 const [routes, setRoutes] = useState<Array<{
   id: string;
   name: string;
@@ -399,9 +402,25 @@ const [routes, setRoutes] = useState<Array<{
               display: open ? 'block' : 'none'
             }} 
           />
-        </ListItemButton>
+</ListItemButton>
 
-        <Divider sx={{ my: 1 }} />
+<ListItemButton
+  onClick={() => setPoiModalOpen(true)}
+  sx={{ justifyContent: open ? 'start' : 'center', minHeight: 48 }}
+>
+  <ListItemIcon>
+    <LocationOnIcon />
+  </ListItemIcon>
+  <ListItemText 
+    primary="Add POI" 
+    sx={{ 
+      opacity: open ? 1 : 0,
+      display: open ? 'block' : 'none'
+    }} 
+  />
+</ListItemButton>
+
+<Divider sx={{ my: 1 }} />
 
         <ListItemButton
           disabled={!mapReady}
@@ -476,6 +495,22 @@ const [routes, setRoutes] = useState<Array<{
       message: 'Map loaded successfully',
       severity: 'success'
     });
+  }}
+/>
+
+<POIModal 
+  open={poiModalOpen}
+  onClose={() => setPoiModalOpen(false)}
+  onAdd={(poiData) => {
+    if (mapRef.current) {
+      mapRef.current.handleAddPOI(poiData);
+      setSnackbar({
+        open: true,
+        message: 'POI added successfully',
+        severity: 'success'
+      });
+    }
+    setPoiModalOpen(false);
   }}
 />
 

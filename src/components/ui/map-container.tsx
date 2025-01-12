@@ -15,6 +15,8 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { findPhotosNearPoints, type PhotoDocument } from '@/lib/db';
 import * as turf from '@turf/turf';
 import nearestPointOnLine from '@turf/nearest-point-on-line';
+import { POI } from '@/types/note-types';
+import { createPOIMarkerElement } from './poi-marker';
 import type { 
   Feature,
   Point as TurfPoint,
@@ -26,6 +28,7 @@ import type {
 } from 'geojson';
 import { mapService } from "../../services/map-service";
 import { PhotoModal } from '@/components/ui/photo-modal';
+import { POIModal } from '@/components/ui/poi-modal';
 import DistanceMarker from './distance-marker';
 import Supercluster from 'supercluster';
 import { createRoot } from 'react-dom/client';
@@ -44,8 +47,9 @@ interface MapRef {
     color: string;
     isVisible: boolean;
     gpxData: string;
-    gpxFilePath?: string;  // Add filepath here too
+    gpxFilePath?: string;
   }>;
+  getCurrentPOIs: () => POI[];  // Add this line
   getCurrentPhotos: () => Array<{
     id: string;
     url: string;
@@ -213,6 +217,8 @@ const [isMapReady, setIsMapReady] = React.useState(false);
 const [streetsLayersLoaded, setStreetsLayersLoaded] = React.useState(false);
 const [isUploading, setIsUploading] = React.useState(false);
 const [currentPhotos, setCurrentPhotos] = useState<PhotoDocument[]>([]);
+const [currentPOIs, setCurrentPOIs] = useState<POI[]>([]);
+const [poiModalOpen, setPoiModalOpen] = useState(false);
 const [surfaceProgress, setSurfaceProgress] = React.useState<SurfaceProgressState>({
   isProcessing: false,
   progress: 0,
@@ -459,6 +465,32 @@ const createMarkerElement = useCallback((photo: any, count?: number) => {
 
   return el;
 }, []);
+
+const addPOIMarkerToMap = useCallback((poi: POI) => {
+  if (!map.current) return;
+  
+  // Remove existing marker with same ID if it exists
+  const existingMarker = document.querySelector(`[data-poi-id="${poi.id}"]`);
+  if (existingMarker) {
+    existingMarker.remove();
+  }
+
+  const el = createPOIMarkerElement(poi);
+  const markerEl = document.createElement('div');
+  markerEl.className = 'mapboxgl-marker poi-marker-container';
+  markerEl.setAttribute('data-poi-id', poi.id);
+  markerEl.appendChild(el);
+
+  new mapboxgl.Marker({
+    element: markerEl,
+    anchor: 'bottom',
+    offset: [0, 8],
+    clickTolerance: 3
+  })
+    .setLngLat([poi.location.lon, poi.location.lat])
+    .addTo(map.current);
+
+}, [map]);
 
 const updateMarkers = useCallback((clusterIndex: Supercluster) => {
   if (!map.current) return;
@@ -973,6 +1005,32 @@ const handleGpxUpload = useCallback(
 // State to store current routes
 const [routeStore, setRouteStore] = useState<Route[]>([]);
 
+// POI handler
+const handleAddPOI = useCallback(async (poiData: Omit<POI, 'id' | 'createdAt' | 'updatedAt'>) => {
+  if (!map.current) return;
+
+  const center = map.current.getCenter();
+  
+  const newPOI: POI = {
+    ...poiData,
+    id: `poi-${Date.now()}`,  // Generate temporary ID (replace with DB ID later)
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    location: {
+      lat: center.lat,
+      lon: center.lng
+    }
+  };
+
+  // Add to state
+  setCurrentPOIs(prev => [...prev, newPOI]);
+
+  // Add marker to map
+  addPOIMarkerToMap(newPOI);
+
+  return newPOI;
+}, [map, addPOIMarkerToMap]);
+
 // Save map handler
 const handleSaveMap = useCallback(async (data: {
 name: string;
@@ -1026,21 +1084,22 @@ console.log('Photos to save:', photos);
 
 console.log('Final photos array:', photos);
 
-  // Create complete map data object
-  const mapData = {
-    ...data,
-    routes,
-    routeData: {
-      ...routeData,
-      features: routeData.features.map(f => ({
-        ...f,
-        properties: {
-          surface: f.properties?.surface || 'unpaved',
-          segmentIndex: f.properties?.segmentIndex || 0
-        }
-      }))
-    },
-    photos: currentPhotos.map(photo => ({
+// Create complete map data object
+const mapData = {
+  ...data,
+  routes,
+  routeData: {
+    ...routeData,
+    features: routeData.features.map(f => ({
+      ...f,
+      properties: {
+        surface: f.properties?.surface || 'unpaved',
+        segmentIndex: f.properties?.segmentIndex || 0
+      }
+    }))
+  },
+  pois: currentPOIs,  // Add this line
+  photos: currentPhotos.map(photo => ({
       id: photo._id,
       url: photo.url,
       caption: photo.originalName,
@@ -1073,7 +1132,9 @@ React.useImperativeHandle(
   () => ({
     handleGpxUpload,
     isReady,
-    getMap: () => map.current,  // Add this line
+    getMap: () => map.current,
+    handleAddPOI,  // Add this line
+    getCurrentPOIs: () => currentPOIs,  // Add this line
     on: (evt: string, cb: (event: any) => void) => {
       if (map.current) {
         map.current.on(evt, cb);
@@ -1142,11 +1203,14 @@ React.useImperativeHandle(
       }
       // Clear distance markers
       document.querySelectorAll('.mapboxgl-marker:not(.photo-marker):not(.photo-marker-container)').forEach(marker => marker.remove());
-      // Clear photo markers
-      document.querySelectorAll('.photo-marker, .photo-marker-container').forEach(el => el.remove());
-      document.querySelectorAll('.photo-modal-container').forEach(el => el.remove());
-      setRouteStore([]);
-      setCurrentPhotos([]); // Clear photo state
+// Clear photo markers
+document.querySelectorAll('.photo-marker, .photo-marker-container').forEach(el => el.remove());
+document.querySelectorAll('.photo-modal-container').forEach(el => el.remove());
+// Clear POI markers
+document.querySelectorAll('.poi-marker-container').forEach(el => el.remove());
+setRouteStore([]);
+setCurrentPhotos([]); // Clear photo state
+setCurrentPOIs([]); // Clear POI state
     },
     loadRoute: async (route, routeData?: FeatureCollection, savedPhotos?: Array<{
       id: string;
@@ -1614,9 +1678,17 @@ console.error('[MapContainer] Error creating map:', err);
   // ------------------------------------------------------------------
   return (
     <div className="w-full h-full relative">
-<div className="absolute top-0 left-[160px] right-0 right-[40px] z-10 bg-black/0 p-4">
-  <h1 className="text-white text-2xl font-fraunces font-bold pl-4 drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">{routeName}</h1>
-</div>
+      <div className="absolute top-0 left-[160px] right-0 right-[40px] z-10 bg-black/0 p-4">
+        <h1 className="text-white text-2xl font-fraunces font-bold pl-4 drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">{routeName}</h1>
+      </div>
+      <POIModal 
+        open={poiModalOpen}
+        onClose={() => setPoiModalOpen(false)}
+        onAdd={(poiData) => {
+          handleAddPOI(poiData);
+          setPoiModalOpen(false);
+        }}
+      />
       <div ref={mapContainer} className="w-full h-full" />
       {surfaceProgress.isProcessing && (
         <LoadingOverlay
