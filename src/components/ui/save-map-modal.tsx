@@ -25,12 +25,20 @@ interface SaveMapModalProps {
     name: string;
     description: string;
     isPublic: boolean;
+    viewState: {
+      center: [number, number];
+      zoom: number;
+      pitch: number;
+      bearing: number;
+    };
+    mapStyle: string;
   }) => void;
   routes: Array<{
     id: string;
     name: string;
     color: string;
     isVisible: boolean;
+    gpxData: string;
   }>;
   mapRef: RefObject<MapRef>;
 }
@@ -41,13 +49,26 @@ const SaveMapModal = ({ open, onClose, onSave, routes }: SaveMapModalProps) => {
   const [isPublic, setIsPublic] = useState(false);
 
   const handleSave = () => {
-    if (!name.trim()) {
+    if (!name.trim() || !mapRef.current) {
       return;
     }
+  
+    const map = mapRef.current;
+    const center = map.getCenter();
+    const zoom = map.getZoom();
+    const pitch = map.getPitch();
+    const bearing = map.getBearing();
+  
     onSave({
       name: name.trim(),
       description: description.trim(),
-      isPublic
+      isPublic,
+      viewState: {
+        center: [center.lng, center.lat],
+        zoom,
+        pitch,
+        bearing,
+      }
     });
   };
 

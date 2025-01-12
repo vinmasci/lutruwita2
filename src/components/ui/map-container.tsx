@@ -38,7 +38,20 @@ interface MapRef {
   isReady: () => boolean;                               // Map readiness check
   on: (event: string, callback: (event: any) => void) => void;    // Event listener binding
   off: (event: string, callback: (event: any) => void) => void;   // Event listener removal
+  getCurrentRoutes: () => Array<{
+    id: string;
+    name: string;
+    color: string;
+    isVisible: boolean;
+    gpxData: string;
+  }>;
+  getCenter: () => { lng: number; lat: number; };
+  getZoom: () => number;
+  getPitch: () => number;
+  getBearing: () => number;
+  getStyle: () => string;
 }
+
 
 interface Point {
   // Definition of a geographic point with surface type
@@ -188,7 +201,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
   // - Handles map layer management
   // ------------------------------------------------------------------
   const addRouteToMap = useCallback(
-    (coordinates: Point[]) => {
+    (coordinates: Point[], gpxContent: string) => {
       if (!map.current || !isReady()) {
         console.error('[addRouteToMap] Map not ready, cannot add route');
         return;
@@ -882,13 +895,13 @@ const pavedCount = finalCoords.filter((c) => c.surface === 'paved').length;
         `[handleGpxUpload] Surfaces assigned => paved=${pavedCount}, unpaved=${unpavedCount}, total=${finalCoords.length}`
       );
 
-      // Add the processed route to the map
-      addRouteToMap(finalCoords);
-      console.log('[handleGpxUpload] => Route displayed with surfaces');
+// Add the processed route to the map with original GPX content
+addRouteToMap(finalCoords, gpxContent);  // Pass the GPX content
+console.log('[handleGpxUpload] => Route displayed with surfaces');
 
-      // Add photo markers
-      await addPhotoMarkersToMap(finalCoords);
-      console.log('[handleGpxUpload] => Photo markers added');
+// Add photo markers
+await addPhotoMarkersToMap(finalCoords);
+console.log('[handleGpxUpload] => Photo markers added');
     },
     [isReady, assignSurfacesViaNearest, addRouteToMap, addPhotoMarkersToMap]
   );
@@ -925,6 +938,16 @@ const pavedCount = finalCoords.filter((c) => c.surface === 'paved').length;
   // Expose methods to parent component
   // Makes key functionality available to parent components
   // ------------------------------------------------------------------
+  interface Route {
+    id: string;
+    name: string;
+    color: string;
+    isVisible: boolean;
+    gpxData: string;
+  }
+  
+  const [routeStore, setRouteStore] = useState<Route[]>([]);
+  
   React.useImperativeHandle(
     ref,
     () => ({
@@ -939,9 +962,31 @@ const pavedCount = finalCoords.filter((c) => c.surface === 'paved').length;
         if (map.current) {
           map.current.off(evt, cb);
         }
+      },
+      getCurrentRoutes: () => routeStore,
+      getCenter: () => {
+        if (!map.current) return { lng: 0, lat: 0 };
+        const center = map.current.getCenter();
+        return { lng: center.lng, lat: center.lat };
+      },
+      getZoom: () => {
+        if (!map.current) return 0;
+        return map.current.getZoom();
+      },
+      getPitch: () => {
+        if (!map.current) return 0;
+        return map.current.getPitch();
+      },
+      getBearing: () => {
+        if (!map.current) return 0;
+        return map.current.getBearing();
+      },
+      getStyle: () => {
+        if (!map.current) return 'mapbox://styles/mapbox/satellite-streets-v12';
+        return map.current.getStyle().name || 'mapbox://styles/mapbox/satellite-streets-v12';
       }
     }),
-    [handleGpxUpload, isReady]
+    [handleGpxUpload, isReady, routeStore]
   );
 
   // ------------------------------------------------------------------
