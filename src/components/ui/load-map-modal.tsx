@@ -41,6 +41,30 @@ interface SavedMapData {
     color: string;
     isVisible: boolean;
     gpxData: string;
+    gpxFilePath?: string;
+  }>;
+  routeData: {
+    type: "FeatureCollection";
+    features: Array<{
+      type: "Feature";
+      properties: {
+        surface: "paved" | "unpaved";
+        segmentIndex: number;
+      };
+      geometry: {
+        type: "LineString";
+        coordinates: number[][];
+      };
+    }>;
+  };
+  photos: Array<{
+    id: string;
+    url: string;
+    caption?: string;
+    location: {
+      lat: number;
+      lon: number;
+    };
   }>;
   viewState: {
     center: [number, number];
@@ -78,22 +102,22 @@ const LoadMapModal = ({ open, onClose, mapRef, onLoadSuccess }: LoadMapModalProp
 
   const handleLoadMap = async (map: SavedMapData) => {
     if (!mapRef.current) return;
-
+  
     try {
       setLoading(true);
       setError(null);
-
-      // Load the map's view state
-      mapRef.current.setViewState(map.viewState);
-
-      // Clear existing routes
+  
+      // Clear existing routes first
       mapRef.current.clearRoutes();
-
-      // Load each route
+  
+      // Load each route with its saved data
       for (const route of map.routes) {
-        await mapRef.current.loadRoute(route);
+        await mapRef.current.loadRoute(route, map.routeData, map.photos);
       }
-
+  
+      // Load the map's view state after routes are loaded
+      mapRef.current.setViewState(map.viewState);
+  
       onLoadSuccess();
       onClose();
     } catch (err) {

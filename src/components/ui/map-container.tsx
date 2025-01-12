@@ -396,28 +396,164 @@ console.log('[addRouteToMap] -> route layers and distance markers added.');
     [isReady]
   );
 
-// ------------------------------------------------------------------
-// Add photo markers to map
-// Creates markers with popups for photos near the route
-// ------------------------------------------------------------------
+// First, add these component-level functions (before useImperativeHandle):
+const createMarkerElement = useCallback((photo: any, count?: number) => {
+  const el = document.createElement('div');
+  el.className = 'photo-marker';
+  el.style.position = 'relative';
+  el.setAttribute('data-lat', photo.latitude.toString());
+  el.setAttribute('data-lon', photo.longitude.toString());
+  el.setAttribute('data-id', photo._id);
+  el.setAttribute('data-url', photo.url);
+
+  const imgContainer = document.createElement('div');
+  imgContainer.style.position = 'relative';
+  imgContainer.style.backgroundColor = '#1f2937';
+  imgContainer.style.padding = '2px';
+  imgContainer.style.borderRadius = '4px';
+  imgContainer.style.boxShadow = '0 2px 4px rgba(0,0,0,0.5)';
+  imgContainer.style.width = 'fit-content';
+  imgContainer.style.display = 'inline-block';
+  imgContainer.style.cursor = 'pointer';
+
+  const img = document.createElement('img');
+  img.src = photo.url;
+  img.alt = photo.originalName || '';
+  img.style.width = '32px';
+  img.style.height = '32px';
+  img.style.objectFit = 'cover';
+  img.style.borderRadius = '2px';
+  img.style.border = '1px solid #374151';
+
+  if (count) {
+    const badge = document.createElement('div');
+    badge.style.position = 'absolute';
+    badge.style.top = '-8px';
+    badge.style.right = '-8px';
+    badge.style.backgroundColor = '#e17055';
+    badge.style.color = 'white';
+    badge.style.borderRadius = '9999px';
+    badge.style.padding = '0px 4px';
+    badge.style.fontSize = '10px';
+    badge.style.fontWeight = 'bold';
+    badge.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
+    badge.textContent = `+${count}`;
+    imgContainer.appendChild(badge);
+  }
+
+  const arrow = document.createElement('div');
+  arrow.style.position = 'absolute';
+  arrow.style.bottom = '-6px';
+  arrow.style.left = '50%';
+  arrow.style.transform = 'translateX(-50%)';
+  arrow.style.width = '0';
+  arrow.style.height = '0';
+  arrow.style.borderLeft = '6px solid transparent';
+  arrow.style.borderRight = '6px solid transparent';
+  arrow.style.borderTop = '6px solid #1f2937';
+
+  imgContainer.appendChild(img);
+  imgContainer.appendChild(arrow);
+  el.appendChild(imgContainer);
+
+  return el;
+}, []);
+
+const updateMarkers = useCallback((clusterIndex: Supercluster) => {
+  if (!map.current) return;
+
+  const bounds = map.current.getBounds();
+  const zoom = Math.floor(map.current.getZoom());
+
+  const clusters = clusterIndex.getClusters(
+    [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
+    zoom
+  );
+
+  // Remove existing markers first
+  document.querySelectorAll('.photo-marker-container').forEach(el => el.remove());
+
+  clusters.forEach(cluster => {
+    const coordinates = cluster.geometry.coordinates as [number, number];
+    const markerEl = document.createElement('div');
+    markerEl.className = 'mapboxgl-marker photo-marker-container';
+
+    if (cluster.properties.cluster) {
+      const leaves = clusterIndex.getLeaves(cluster.properties.cluster_id, Infinity);
+      const firstPhoto = leaves[0].properties.photo;
+      const count = leaves.length - 1;
+
+      const el = createMarkerElement(firstPhoto, count);
+      markerEl.appendChild(el);
+
+      const modalContainer = document.createElement('div');
+      modalContainer.className = 'photo-modal-container';
+      document.body.appendChild(modalContainer);
+      const modalRoot = createRoot(modalContainer);
+
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        map.current?.flyTo({
+          center: coordinates,
+          zoom: zoom + 2
+        });
+      });
+    } else {
+      const photo = cluster.properties.photo;
+      const el = createMarkerElement(photo);
+      markerEl.appendChild(el);
+
+      const modalContainer = document.createElement('div');
+      modalContainer.className = 'photo-modal-container';
+      document.body.appendChild(modalContainer);
+      const modalRoot = createRoot(modalContainer);
+
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        modalRoot.render(
+          <PhotoModal
+            open={true}
+            onClose={() => {
+              modalRoot.render(
+                <PhotoModal
+                  open={false}
+                  onClose={() => {}}
+                  photo={photo}
+                />
+              );
+            }}
+            photo={photo}
+          />
+        );
+      });
+    }
+
+    new mapboxgl.Marker({
+      element: markerEl,
+      anchor: 'bottom',
+      offset: [0, 8],
+      clickTolerance: 3
+    })
+      .setLngLat(coordinates)
+      .addTo(map.current);
+  });
+}, [map, createMarkerElement]);
+
+// Then update the addPhotoMarkersToMap function:
 const addPhotoMarkersToMap = useCallback(async (coordinates: Point[]) => {
   if (!map.current) return;
 
-  // Convert coordinates to format needed for photo query
   const points = coordinates.map(coord => ({
     longitude: coord.lon,
     latitude: coord.lat
   }));
 
-  // Find photos near route
   const photos = await findPhotosNearPoints(points);
-  setCurrentPhotos(photos); // Store photos in state
+  setCurrentPhotos(photos);
   
-  // Remove any existing photo markers and modal containers
   document.querySelectorAll('.photo-marker').forEach(el => el.remove());
   document.querySelectorAll('.photo-modal-container').forEach(el => el.remove());
 
-  // Create GeoJSON features for clustering
   const features = photos.map((photo, index) => ({
     type: 'Feature',
     properties: {
@@ -430,173 +566,20 @@ const addPhotoMarkersToMap = useCallback(async (coordinates: Point[]) => {
     }
   }));
 
-  // Initialize supercluster
-const clusterIndex = new Supercluster({
-  radius: 40,
-  maxZoom: 16,
-  minPoints: 2
-});
+  const clusterIndex = new Supercluster({
+    radius: 40,
+    maxZoom: 16,
+    minPoints: 2
+  });
 
   clusterIndex.load(features);
 
-  const createMarkerElement = (photo: any, count?: number) => {
-    const el = document.createElement('div');
-    el.className = 'photo-marker';
-    el.style.position = 'relative';
-    el.setAttribute('data-lat', photo.latitude.toString());
-    el.setAttribute('data-lon', photo.longitude.toString());
-    el.setAttribute('data-id', photo._id);
-    el.setAttribute('data-url', photo.url);
-
-    const imgContainer = document.createElement('div');
-    imgContainer.style.position = 'relative';
-    imgContainer.style.backgroundColor = '#1f2937';
-    imgContainer.style.padding = '2px';
-    imgContainer.style.borderRadius = '4px';
-    imgContainer.style.boxShadow = '0 2px 4px rgba(0,0,0,0.5)';
-    imgContainer.style.width = 'fit-content';
-    imgContainer.style.display = 'inline-block';
-    imgContainer.style.cursor = 'pointer';
-
-    const img = document.createElement('img');
-    img.src = photo.url;
-    img.alt = photo.originalName || '';
-    img.style.width = '32px';
-    img.style.height = '32px';
-    img.style.objectFit = 'cover';
-    img.style.borderRadius = '2px';
-    img.style.border = '1px solid #374151';
-
-    if (count) {
-      const badge = document.createElement('div');
-      badge.style.position = 'absolute';
-      badge.style.top = '-8px';
-      badge.style.right = '-8px';
-      badge.style.backgroundColor = '#e17055';
-      badge.style.color = 'white';
-      badge.style.borderRadius = '9999px';
-      badge.style.padding = '0px 4px'; // Reduced vertical padding, kept horizontal padding
-      badge.style.fontSize = '10px';
-      badge.style.fontWeight = 'bold';
-      badge.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
-      badge.textContent = `+${count}`;
-      imgContainer.appendChild(badge);
-    }
-
-    const arrow = document.createElement('div');
-    arrow.style.position = 'absolute';
-    arrow.style.bottom = '-6px';
-    arrow.style.left = '50%';
-    arrow.style.transform = 'translateX(-50%)';
-    arrow.style.width = '0';
-    arrow.style.height = '0';
-    arrow.style.borderLeft = '6px solid transparent';
-    arrow.style.borderRight = '6px solid transparent';
-    arrow.style.borderTop = '6px solid #1f2937';
-
-    imgContainer.appendChild(img);
-    imgContainer.appendChild(arrow);
-    el.appendChild(imgContainer);
-
-    return el;
-  };
-
-  const updateMarkers = () => {
-    if (!map.current) return;
-
-    const bounds = map.current.getBounds();
-    const zoom = Math.floor(map.current.getZoom());
-
-    const clusters = clusterIndex.getClusters(
-      [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
-      zoom
-    );
-
-    // Remove existing markers first
-    document.querySelectorAll('.photo-marker-container').forEach(el => el.remove());
-
-    clusters.forEach(cluster => {
-      const coordinates = cluster.geometry.coordinates as [number, number];
-
-      // Create marker container
-      const markerEl = document.createElement('div');
-      markerEl.className = 'mapboxgl-marker photo-marker-container';
-
-      if (cluster.properties.cluster) {
-        // Get cluster info
-        const leaves = clusterIndex.getLeaves(cluster.properties.cluster_id, Infinity);
-        const firstPhoto = leaves[0].properties.photo;
-        const count = leaves.length - 1; // -1 because we're showing one photo
-
-        const el = createMarkerElement(firstPhoto, count);
-        markerEl.appendChild(el);
-
-        // Create React root for the modal
-        const modalContainer = document.createElement('div');
-        modalContainer.className = 'photo-modal-container';
-        document.body.appendChild(modalContainer);
-        const modalRoot = createRoot(modalContainer);
-
-        // Add click handler for cluster
-        el.addEventListener('click', (e) => {
-          e.stopPropagation();
-          // Zoom in when clicking cluster
-          map.current?.flyTo({
-            center: coordinates,
-            zoom: zoom + 2
-          });
-        });
-      } else {
-        // Single photo marker
-        const photo = cluster.properties.photo;
-        const el = createMarkerElement(photo);
-        markerEl.appendChild(el);
-
-        // Create React root for the modal
-        const modalContainer = document.createElement('div');
-        modalContainer.className = 'photo-modal-container';
-        document.body.appendChild(modalContainer);
-        const modalRoot = createRoot(modalContainer);
-
-        // Add click handler for single photo
-        el.addEventListener('click', (e) => {
-          e.stopPropagation();
-          modalRoot.render(
-            <PhotoModal
-              open={true}
-              onClose={() => {
-                modalRoot.render(
-                  <PhotoModal
-                    open={false}
-                    onClose={() => {}}
-                    photo={photo}
-                  />
-                );
-              }}
-              photo={photo}
-            />
-          );
-        });
-      }
-
-      new mapboxgl.Marker({
-        element: markerEl,
-        anchor: 'bottom',
-        offset: [0, 8],
-        clickTolerance: 3
-      })
-        .setLngLat(coordinates)
-        .addTo(map.current);
-    });
-  };
-
-  // Initial update and add listeners
-  updateMarkers();
-  map.current.on('moveend', updateMarkers);
-  map.current.on('zoomend', updateMarkers);
+  updateMarkers(clusterIndex);
+  map.current.on('moveend', () => updateMarkers(clusterIndex));
+  map.current.on('zoomend', () => updateMarkers(clusterIndex));
 
   console.log('Photo markers added to map');
-}, []);
+}, [updateMarkers]);
 
   // ------------------------------------------------------------------
   // assignSurfacesViaNearest => Core surface detection function
@@ -1077,171 +1060,345 @@ console.log('Final photos array:', photos);
 }
 }, [routeStore, mapService, currentPhotos]);
 
-  // ------------------------------------------------------------------
-  // Expose methods to parent component
-  // Makes key functionality available to parent components
-  // ------------------------------------------------------------------
-  React.useImperativeHandle(
-    ref,
-    () => ({
-      handleGpxUpload,
-      isReady,
-      on: (evt: string, cb: (event: any) => void) => {
-        if (map.current) {
-          map.current.on(evt, cb);
-        }
-      },
-      off: (evt: string, cb: (event: any) => void) => {
-        if (map.current) {
-          map.current.off(evt, cb);
-        }
-      },
-      getCurrentRoutes: () => routeStore,
-      getCurrentPhotos: () => {
-        return currentPhotos.map(photo => ({
-          id: photo._id,
-          url: photo.url,
-          caption: photo.originalName,
-          longitude: photo.longitude,
-          latitude: photo.latitude
-        }));
-      },
-      getRouteData: () => {
-        if (!map.current) return { type: 'FeatureCollection', features: [] };
-        const source = map.current.getSource(routeSourceId) as mapboxgl.GeoJSONSource;
-        return (source as any)._data as FeatureCollection;
-      },
-      getCenter: () => {
-        if (!map.current) return { lng: 0, lat: 0 };
-        const center = map.current.getCenter();
-        return { lng: center.lng, lat: center.lat };
-      },
-      getZoom: () => {
-        if (!map.current) return 0;
-        return map.current.getZoom();
-      },
-      getPitch: () => {
-        if (!map.current) return 0;
-        return map.current.getPitch();
-      },
-      getBearing: () => {
-        if (!map.current) return 0;
-        return map.current.getBearing();
-      },
-      getStyle: () => {
-        if (!map.current) return 'mapbox://styles/mapbox/satellite-streets-v12';
-        return map.current.getStyle().name || 'mapbox://styles/mapbox/satellite-streets-v12';
-      },
-      setViewState: (viewState) => {
-        if (!map.current) return;
-        map.current.flyTo({
-          center: viewState.center,
-          zoom: viewState.zoom,
-          pitch: viewState.pitch,
-          bearing: viewState.bearing
-        });
-      },
-
-clearRoutes: () => {
-  if (!map.current) return;
-  // Remove existing route layers
-  ['route-layer-white-stroke', 'route-layer', 'route-layer-unpaved'].forEach(layerId => {
-    if (map.current?.getLayer(layerId)) {
-      map.current.removeLayer(layerId);
-    }
-  });
-  if (map.current.getSource(routeSourceId)) {
-    map.current.removeSource(routeSourceId);
-  }
-  // Clear distance markers
-  document.querySelectorAll('.mapboxgl-marker:not(.photo-marker):not(.photo-marker-container)').forEach(marker => marker.remove());
-  // Clear photo markers
-  document.querySelectorAll('.photo-marker, .photo-marker-container').forEach(el => el.remove());
-  document.querySelectorAll('.photo-modal-container').forEach(el => el.remove());
-  setRouteStore([]);
-  setCurrentPhotos([]); // Clear photo state
-},
-
-loadRoute: async (route) => {
-  if (!map.current || !route.gpxData) return;
-  
-  try {
-    // Skip file upload since we already have gpxData and filepath
-    console.log('Loading route:', route);
-
-    // Parse GPX content directly
-    const rawCoords = await new Promise<Point[]>((resolve, reject) => {
-      parseString(route.gpxData, { explicitArray: false }, (err: Error | null, result: any) => {
-        if (err) {
-          console.error('[loadRoute] parseString error:', err);
-          reject(new Error('Failed to parse GPX data'));
-          return;
-        }
-        try {
-          if (!result?.gpx) {
-            throw new Error('Invalid GPX structure: missing root gpx element');
-          }
-          const points = result.gpx?.rte?.rtept || result.gpx?.trk?.trkseg?.trkpt;
-          if (!points) {
-            throw new Error('Invalid GPX format: missing track points');
-          }
-
-          const arr = Array.isArray(points) ? points : [points];
-          console.log('[loadRoute] Points found:', arr.length);
-
-          const coords = arr
-            .map((pt: any) => {
-              try {
-                if (!pt?.$?.lat || !pt?.$?.lon) {
-                  throw new Error('Missing lat/lon attributes');
-                }
-                const lat = parseFloat(pt.$.lat);
-                const lon = parseFloat(pt.$.lon);
-                if (isNaN(lat) || isNaN(lon)) {
-                  throw new Error('Invalid lat/lon numeric values');
-                }
-                return { lat, lon };
-              } catch (err2) {
-                console.warn('[loadRoute] Skipping invalid point:', pt, err2);
-                return null;
-              }
-            })
-            .filter((x: Point | null): x is Point => x !== null);
-
-          if (coords.length === 0) {
-            throw new Error('No valid coordinates found in GPX');
-          }
-          resolve(coords);
-        } catch (err2) {
-          reject(err2);
+// ------------------------------------------------------------------
+// Expose methods to parent component
+// Makes key functionality available to parent components
+// ------------------------------------------------------------------
+React.useImperativeHandle(
+  ref,
+  () => ({
+    handleGpxUpload,
+    isReady,
+    on: (evt: string, cb: (event: any) => void) => {
+      if (map.current) {
+        map.current.on(evt, cb);
+      }
+    },
+    off: (evt: string, cb: (event: any) => void) => {
+      if (map.current) {
+        map.current.off(evt, cb);
+      }
+    },
+    getCurrentRoutes: () => routeStore,
+    getCurrentPhotos: () => {
+      return currentPhotos.map(photo => ({
+        id: photo._id,
+        url: photo.url,
+        caption: photo.originalName,
+        longitude: photo.longitude,
+        latitude: photo.latitude
+      }));
+    },
+    getRouteData: () => {
+      if (!map.current) return { type: 'FeatureCollection', features: [] };
+      const source = map.current.getSource(routeSourceId) as mapboxgl.GeoJSONSource;
+      return (source as any)._data as FeatureCollection;
+    },
+    getCenter: () => {
+      if (!map.current) return { lng: 0, lat: 0 };
+      const center = map.current.getCenter();
+      return { lng: center.lng, lat: center.lat };
+    },
+    getZoom: () => {
+      if (!map.current) return 0;
+      return map.current.getZoom();
+    },
+    getPitch: () => {
+      if (!map.current) return 0;
+      return map.current.getPitch();
+    },
+    getBearing: () => {
+      if (!map.current) return 0;
+      return map.current.getBearing();
+    },
+    getStyle: () => {
+      if (!map.current) return 'mapbox://styles/mapbox/satellite-streets-v12';
+      return map.current.getStyle().name || 'mapbox://styles/mapbox/satellite-streets-v12';
+    },
+    setViewState: (viewState) => {
+      if (!map.current) return;
+      map.current.flyTo({
+        center: viewState.center,
+        zoom: viewState.zoom,
+        pitch: viewState.pitch,
+        bearing: viewState.bearing
+      });
+    },
+    clearRoutes: () => {
+      if (!map.current) return;
+      // Remove existing route layers
+      ['route-layer-white-stroke', 'route-layer', 'route-layer-unpaved'].forEach(layerId => {
+        if (map.current?.getLayer(layerId)) {
+          map.current.removeLayer(layerId);
         }
       });
-    });
+      if (map.current.getSource(routeSourceId)) {
+        map.current.removeSource(routeSourceId);
+      }
+      // Clear distance markers
+      document.querySelectorAll('.mapboxgl-marker:not(.photo-marker):not(.photo-marker-container)').forEach(marker => marker.remove());
+      // Clear photo markers
+      document.querySelectorAll('.photo-marker, .photo-marker-container').forEach(el => el.remove());
+      document.querySelectorAll('.photo-modal-container').forEach(el => el.remove());
+      setRouteStore([]);
+      setCurrentPhotos([]); // Clear photo state
+    },
+    loadRoute: async (route, routeData?: FeatureCollection, savedPhotos?: Array<{
+      id: string;
+      url: string;
+      caption?: string;
+      location: {
+        lat: number;
+        lon: number;
+      }
+    }>) => {
+      if (!map.current) return;
+      
+      try {
+        console.log('Loading route with data:', { route, routeData, savedPhotos });
 
-    // Process coordinates for surface types
-    const finalCoords = await assignSurfacesViaNearest(rawCoords);
-    if (!finalCoords || finalCoords.length !== rawCoords.length) {
-      throw new Error('Not all points were processed');
+        if (routeData) {
+          // Clear existing layers
+          ['route-layer-white-stroke', 'route-layer', 'route-layer-unpaved'].forEach(layerId => {
+            if (map.current?.getLayer(layerId)) {
+              map.current.removeLayer(layerId);
+            }
+          });
+          if (map.current.getSource(routeSourceId)) {
+            map.current.removeSource(routeSourceId);
+          }
+
+          // Add source with saved route data
+          map.current.addSource(routeSourceId, {
+            type: 'geojson',
+            data: routeData
+          });
+
+          // Add route layers
+          map.current.addLayer({
+            id: routeLayerId + '-white-stroke',
+            type: 'line',
+            source: routeSourceId,
+            layout: {
+              'line-join': 'round',
+              'line-cap': 'round'
+            },
+            paint: {
+              'line-color': '#FFFFFF',
+              'line-width': 5
+            }
+          });
+
+          map.current.addLayer({
+            id: routeLayerId,
+            type: 'line',
+            source: routeSourceId,
+            layout: {
+              'line-join': 'round',
+              'line-cap': 'round'
+            },
+            paint: {
+              'line-color': '#e17055',
+              'line-width': 3,
+              'line-opacity': [
+                'case',
+                ['==', ['get', 'surface'], 'paved'],
+                1,
+                0
+              ]
+            }
+          });
+
+          map.current.addLayer({
+            id: routeLayerId + '-unpaved',
+            type: 'line',
+            source: routeSourceId,
+            layout: {
+              'line-join': 'round',
+              'line-cap': 'round'
+            },
+            paint: {
+              'line-color': '#e17055',
+              'line-width': 3,
+              'line-opacity': [
+                'case',
+                ['==', ['get', 'surface'], 'unpaved'],
+                1,
+                0
+              ],
+              'line-dasharray': [0.5, 1.5]
+            }
+          });
+
+          // Add distance markers
+          const combinedLine = turf.lineString(
+            routeData.features.reduce((coords: number[][], feature) => {
+              if (feature.geometry.type === 'LineString') {
+                return [...coords, ...feature.geometry.coordinates];
+              }
+              return coords;
+            }, [])
+          );
+
+          const totalLength = turf.length(combinedLine, { units: 'kilometers' });
+          const distancePoints = getDistancePoints(map.current, combinedLine, totalLength);
+
+          distancePoints.forEach(({ point, distance }) => {
+            const el = document.createElement('div');
+            const root = createRoot(el);
+            root.render(<DistanceMarker distance={distance} totalDistance={totalLength} />);
+
+            new mapboxgl.Marker({
+              element: el,
+              anchor: 'center',
+              scale: 0.25
+            })
+              .setLngLat(point.geometry.coordinates as [number, number])
+              .addTo(map.current);
+          });
+
+          // If we have saved photos, use them directly
+// Inside loadRoute
+if (savedPhotos?.length) {
+  setCurrentPhotos(savedPhotos.map(photo => ({
+    _id: photo.id,
+    url: photo.url,
+    originalName: photo.caption || '',
+    latitude: photo.latitude,
+    longitude: photo.longitude,
+    uploadedAt: new Date().toISOString()
+  })));
+
+            // Create markers for saved photos
+            const features = savedPhotos.map((photo, index) => ({
+              type: 'Feature' as const,
+              properties: {
+                id: `photo-${index}`,
+                photo: {
+                  _id: photo.id,
+                  url: photo.url,
+                  originalName: photo.caption || '',
+                  latitude: photo.location.lat,
+                  longitude: photo.location.lon
+                }
+              },
+              geometry: {
+                type: 'Point' as const,
+                coordinates: [photo.location.lon, photo.location.lat]
+              }
+            }));
+
+            const clusterIndex = new Supercluster({
+              radius: 40,
+              maxZoom: 16,
+              minPoints: 2
+            });
+
+            clusterIndex.load(features);
+            const bounds = map.current.getBounds();
+            const zoom = Math.floor(map.current.getZoom());
+
+            const clusters = clusterIndex.getClusters(
+              [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
+              zoom
+            );
+
+            clusters.forEach(cluster => {
+              const coordinates = cluster.geometry.coordinates as [number, number];
+              const markerEl = document.createElement('div');
+              markerEl.className = 'mapboxgl-marker photo-marker-container';
+
+              if (cluster.properties.cluster) {
+                const leaves = clusterIndex.getLeaves(cluster.properties.cluster_id, Infinity);
+                const firstPhoto = leaves[0].properties.photo;
+                const count = leaves.length - 1;
+                const el = createMarkerElement(firstPhoto, count);
+                markerEl.appendChild(el);
+              } else {
+                const photo = cluster.properties.photo;
+                const el = createMarkerElement(photo);
+                markerEl.appendChild(el);
+              }
+
+              new mapboxgl.Marker({
+                element: markerEl,
+                anchor: 'bottom',
+                offset: [0, 8],
+                clickTolerance: 3
+              })
+                .setLngLat(coordinates)
+                .addTo(map.current);
+            });
+          }
+        } else if (route.gpxData) {
+          // Original GPX processing path for new routes
+          const rawCoords = await new Promise<Point[]>((resolve, reject) => {
+            parseString(route.gpxData, { explicitArray: false }, (err: Error | null, result: any) => {
+              if (err) {
+                console.error('[loadRoute] parseString error:', err);
+                reject(new Error('Failed to parse GPX data'));
+                return;
+              }
+              try {
+                if (!result?.gpx) {
+                  throw new Error('Invalid GPX structure: missing root gpx element');
+                }
+                const points = result.gpx?.rte?.rtept || result.gpx?.trk?.trkseg?.trkpt;
+                if (!points) {
+                  throw new Error('Invalid GPX format: missing track points');
+                }
+
+                const arr = Array.isArray(points) ? points : [points];
+                console.log('[loadRoute] Points found:', arr.length);
+
+                const coords = arr
+                  .map((pt: any) => {
+                    try {
+                      if (!pt?.$?.lat || !pt?.$?.lon) {
+                        throw new Error('Missing lat/lon attributes');
+                      }
+                      const lat = parseFloat(pt.$.lat);
+                      const lon = parseFloat(pt.$.lon);
+                      if (isNaN(lat) || isNaN(lon)) {
+                        throw new Error('Invalid lat/lon numeric values');
+                      }
+                      return { lat, lon };
+                    } catch (err2) {
+                      console.warn('[loadRoute] Skipping invalid point:', pt, err2);
+                      return null;
+                    }
+                  })
+                  .filter((x: Point | null): x is Point => x !== null);
+
+                if (coords.length === 0) {
+                  throw new Error('No valid coordinates found in GPX');
+                }
+                resolve(coords);
+              } catch (err2) {
+                reject(err2);
+              }
+            });
+          });
+
+          const finalCoords = await assignSurfacesViaNearest(rawCoords);
+          if (!finalCoords || finalCoords.length !== rawCoords.length) {
+            throw new Error('Not all points were processed');
+          }
+
+          addRouteToMap(finalCoords, route.gpxData);
+          await addPhotoMarkersToMap(finalCoords);
+        }
+
+        setRouteStore(prev => [...prev, route]);
+
+      } catch (error) {
+        console.error('Error loading route:', error);
+        throw new Error('Failed to load route');
+      }
     }
-
-    // Add the route to the map
-    addRouteToMap(finalCoords, route.gpxData);
-
-    // Add photo markers
-    await addPhotoMarkersToMap(finalCoords);
-
-    // Update route store
-    setRouteStore(prev => [...prev, route]);
-
-  } catch (error) {
-    console.error('Error loading route:', error);
-    throw new Error('Failed to load route');
-  }
-}
-
-    }),
-    [handleGpxUpload, isReady, routeStore]
-  );
+  }),
+  [handleGpxUpload, isReady, routeStore, addRouteToMap, addPhotoMarkersToMap, assignSurfacesViaNearest, createMarkerElement]
+);
 
   // ------------------------------------------------------------------
   // Map initialization

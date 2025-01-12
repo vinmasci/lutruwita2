@@ -194,181 +194,83 @@ Needed:
 3. Mobile responsiveness
 4. Multi-user collaboration features
 
+## CURRENT
+# Photo Implementation Progress Summary
 
-yes so:
-During GPX Processing:
-* Take the processed GPX data
-* Save it as a physical file in uploads/
-* Get a filepath reference for it
-* Include this filepath in the map save data
-* During Photo Association:
-* Take the photos that were found nearby
-* Save copies in uploads/ specific to this map, or
+## What We've Achieved
+1. **Photo Saving Implementation**
+   - Successfully modified the save functionality to include photos in the map data
+   - Photos are now properly stored with their metadata (id, url, caption, latitude, longitude)
+   - Verified data structure is correct in the saved map object
+   - Confirmed photos are being saved to the database
 
-Then all this data will get saved to Mongo
+2. **State Management**
+   - Added `currentPhotos` state to track active photos
+   - Implemented proper state updates when loading and clearing routes
+   - Successfully integrated photo state with the map save process
 
-# GPX File Upload Implementation Status
+## Current Issues
+1. **Map Loading**
+   - Loading saved maps is failing due to photo data structure mismatch
+   - Error occurs when trying to access `photo.location.lat` but photos are stored with flat structure
+   - Need to update code to handle both data structures:
+     ```typescript
+     Stored format:
+     {
+       id: string,
+       url: string,
+       caption: string,
+       latitude: number,
+       longitude: number
+     }
+     ```
 
-## Implemented Features ✅
-1. GPX file upload endpoint in server.js with multer configuration
-2. File path storage in MongoDB integration
-3. Frontend components updated to handle file uploads:
-   - GPX-uploader component modified to pass file object
-   - MapContainer updated to handle file upload and storage
-   - Route interface updated to include gpxFilePath
-
-## Issues Encountered and Fixed 🔧
-1. **File Upload Chain**
-   - Initial issue: File object wasn't being passed through the component chain
-   - Resolution: Updated sidebar.tsx to pass file object to handleGpxUpload
-
-2. **MapRef Interface**
-   - Issue: Interface didn't match implementation
-   - Fix: Updated MapRef interface to include file parameter in handleGpxUpload signature
-
-3. **Server Upload Error**
-   - Current Issue: 500 error when trying to save files
-   - Error: `ENOENT: no such file or directory, open 'uploads/1736660601162-317301749.gpx'`
-   - Root Cause: Missing uploads directory in project root
-
-## Pending Fixes 🔄
-1. **Server-side Upload Directory**
-   ```javascript
-   import fs from 'fs';
-   import path from 'path';
-
-   // Add to server.js
-   const uploadsDir = path.join(process.cwd(), 'uploads');
-   if (!fs.existsSync(uploadsDir)) {
-       fs.mkdirSync(uploadsDir, { recursive: true });
-   }
-   ```
-
-2. **File Permissions**
-   - Ensure server has write permissions to uploads directory
-   - Verify directory path is correct in production environment
-
-## Next Steps 📋
-1. **Immediate**
-   - Implement uploads directory creation
-   - Test full upload flow
-   - Add error handling for directory creation
-
-2. **Short Term**
-   - Add file cleanup routine for unused GPX files
-   - Implement file size limits and validations
-   - Add progress indicator for large file uploads
-
-3. **Future Considerations**
-   - Consider cloud storage integration for scalability
-   - Implement file compression for large GPX files
-   - Add file validation and sanitization
-
-## Related Components
-- server.js: Main server implementation
-- gpx-uploader.tsx: Frontend upload component
-- map-container.tsx: Map handling and GPX processing
-- sidebar.tsx: User interface for file upload
-
-## Testing Checklist
-- [ ] Uploads directory exists and has correct permissions
-- [ ] GPX file uploads successfully
-- [ ] File path saved correctly in MongoDB
-- [ ] File retrievable after save
-- [ ] Error handling works as expected
-- [ ] Upload progress indicator functions correctly
-
-## Notes
-- Keep monitoring for 500 errors after implementing directory creation
-- Consider adding file type validation on server side
-- May need to add cleanup routine for temporary files
-- Consider implementing file deduplication
-
-# Photo Implementation Findings
-
-## Initial Approach (Overcomplicated)
-We initially tried to implement photo saving through DOM markers:
-1. Create markers with photo data attributes
-2. Set latitude, longitude on markers
-3. When saving map:
-   - Query all photo markers
-   - Extract data from markers
-   - Reconstruct photo objects
-   - Save to database
-
-Problems with this approach:
-- Converting database photos -> markers -> database photos
-- Lost original photo IDs in the process
-- Empty photos array in saved maps
-- Extra complexity for no benefit
-
-## The Simple Solution
-We already have the photo data from our database query:
-```typescript
-// In map-container.tsx
-const photos = await findPhotosNearPoints(points);
-```
-
-These photos already contain all needed information:
-```typescript
-{
-    _id: string,          // Original database ID
-    url: string,          // Original S3 URL
-    originalName: string, // Can be used as caption
-    latitude: number,     // Original coordinates
-    longitude: number
-}
-```
-
-To save photos with a map, we just need to:
-1. Keep track of the found photos
-2. Format them to match our SavedMap type:
-```typescript
-photos: Array<{
-    id: string,           // Use photo._id
-    url: string,          // Use photo.url
-    caption?: string,     // Use photo.originalName
-    location: {
-        lat: number,      // Use photo.latitude
-        lon: number       // Use photo.longitude
-    }
-}>
-```
-
-## Key Learnings
-1. Don't reconstruct data you already have
-2. DOM manipulation should be for display only, not data storage
-3. Keep original data intact when possible
-4. Simpler solutions are usually better
+2. **Photo Marker Creation**
+   - Error in createMarkerElement function when handling loaded photo data
+   - Need to ensure consistent data structure between save and load operations
 
 ## Next Steps
-1. Store photos array when they're found
-2. Format photos to match SavedMap type when saving
-3. Remove marker data attribute complexity
-4. Focus markers on display functionality only
+1. **Fix Photo Loading**
+   - Update loadRoute function to use correct photo data structure
+   - Modify clustering code to work with flat photo structure
+   - Add error handling for photo data format variations
 
-## Implementation Status
-- [x] Photo finding near points working
-- [x] Photo markers displaying correctly
-- [ ] Photo data saving with maps
-- [ ] Photo data loading with saved maps
+2. **Code Updates Needed**
+   - Review all places where photo.location is accessed
+   - Update photo marker creation to use direct lat/long properties
+   - Add data structure validation before processing photos
 
-J
-I can show you the log of the photos without adding consoles:
-[Log] [findNearbyPhotos] Found 4 photos: (db.ts, line 90)
-Array (4)
-0 {_id: "67627960af793a1d3a2a4347", url: "https://bikepath.s3.ap-southeast-2.amazonaws.com/1734506847644-IMG_4115.jpeg", originalName: "IMG_4115.jpeg", uploadedAt: "2024-12-18T07:27:28.814Z", latitude: -41.35268888888889, …}
-1 {_id: "67627963af793a1d3a2a4348", url: "https://bikepath.s3.ap-southeast-2.amazonaws.com/1734506850450-IMG_4116.jpeg", originalName: "IMG_4116.jpeg", uploadedAt: "2024-12-18T07:27:31.436Z", latitude: -41.35256944444445, …}
-2 {_id: "67627967af793a1d3a2a4349", url: "https://bikepath.s3.ap-southeast-2.amazonaws.com/1734506854609-IMG_4117.jpeg", originalName: "IMG_4117.jpeg", uploadedAt: "2024-12-18T07:27:35.630Z", latitude: -41.35156666666667, …}
-3 {_id: "6762796aaf793a1d3a2a434a", url: "https://bikepath.s3.ap-southeast-2.amazonaws.com/1734506857194-IMG_4119.jpeg", originalName: "IMG_4119.jpeg", uploadedAt: "2024-12-18T07:27:38.057Z", latitude: -41.35183055555556, …}
-Array Prototype
+3. **Testing Required**
+   - Test complete save and load cycle
+   - Verify photo markers appear correctly after loading
+   - Ensure clustering still works with loaded photos
+   - Test photo modal functionality with loaded photos
 
-also:
-[Log] [findPhotosNearPoints] Found 10 unique photos (db.ts, line 111)
-[Log] Photo markers added to map (map-container.tsx, line 463)
-[Log] [handleGpxUpload] => Photo markers added (map-container.tsx, line 747)
+## Implementation Details
+```typescript
+// Current photo data structure when loading
+{
+  id: string          // MongoDB ID
+  url: string         // S3 URL
+  caption: string     // Original filename
+  longitude: number   // Direct coordinates
+  latitude: number    // Direct coordinates
+}
 
-also:
-[Log] [findPhotosNearPoints] Starting to process 443 points (db.ts, line 101)
-[Log] [findNearbyPhotos] Fetching photos near: 147.34734, -41.33872 (db.ts, line 70)
-[Log] [findNearbyPhotos] Request URL: http://localhost:3001/api/photos/near?longitude=147.34734&latitude=-41.33872 (db.ts, line 73)
+// Required changes for createMarkerElement
+const el = document.createElement('div');
+el.setAttribute('data-lat', photo.latitude.toString());    // Was photo.location.lat
+el.setAttribute('data-lon', photo.longitude.toString());   // Was photo.location.lon
+```
+
+## Code Changes Required
+1. `loadRoute` function needs updating to handle photo data correctly
+2. `createMarkerElement` needs modification to use direct lat/long
+3. Photo clustering code needs updating to use correct data structure
+4. Error handling needs to be added for data structure validation
+
+## Future Considerations
+1. Consider standardizing photo data structure across the application
+2. Add data validation layer for photo objects
+3. Implement error recovery for malformed photo data
+4. Add loading states for photo markers
