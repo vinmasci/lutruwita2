@@ -235,7 +235,7 @@ const [routes, setRoutes] = useState<Array<{
       });
 
       console.log('Starting GPX upload to map...');
-      await mapRef.current.handleGpxUpload(content);
+      await mapRef.current.handleGpxUpload(content, file);
       console.log('GPX upload completed successfully');
       
       setSnackbar({

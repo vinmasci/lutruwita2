@@ -206,3 +206,80 @@ During GPX Processing:
 * Save copies in uploads/ specific to this map, or
 
 Then all this data will get saved to Mongo
+
+# GPX File Upload Implementation Status
+
+## Implemented Features ✅
+1. GPX file upload endpoint in server.js with multer configuration
+2. File path storage in MongoDB integration
+3. Frontend components updated to handle file uploads:
+   - GPX-uploader component modified to pass file object
+   - MapContainer updated to handle file upload and storage
+   - Route interface updated to include gpxFilePath
+
+## Issues Encountered and Fixed 🔧
+1. **File Upload Chain**
+   - Initial issue: File object wasn't being passed through the component chain
+   - Resolution: Updated sidebar.tsx to pass file object to handleGpxUpload
+
+2. **MapRef Interface**
+   - Issue: Interface didn't match implementation
+   - Fix: Updated MapRef interface to include file parameter in handleGpxUpload signature
+
+3. **Server Upload Error**
+   - Current Issue: 500 error when trying to save files
+   - Error: `ENOENT: no such file or directory, open 'uploads/1736660601162-317301749.gpx'`
+   - Root Cause: Missing uploads directory in project root
+
+## Pending Fixes 🔄
+1. **Server-side Upload Directory**
+   ```javascript
+   import fs from 'fs';
+   import path from 'path';
+
+   // Add to server.js
+   const uploadsDir = path.join(process.cwd(), 'uploads');
+   if (!fs.existsSync(uploadsDir)) {
+       fs.mkdirSync(uploadsDir, { recursive: true });
+   }
+   ```
+
+2. **File Permissions**
+   - Ensure server has write permissions to uploads directory
+   - Verify directory path is correct in production environment
+
+## Next Steps 📋
+1. **Immediate**
+   - Implement uploads directory creation
+   - Test full upload flow
+   - Add error handling for directory creation
+
+2. **Short Term**
+   - Add file cleanup routine for unused GPX files
+   - Implement file size limits and validations
+   - Add progress indicator for large file uploads
+
+3. **Future Considerations**
+   - Consider cloud storage integration for scalability
+   - Implement file compression for large GPX files
+   - Add file validation and sanitization
+
+## Related Components
+- server.js: Main server implementation
+- gpx-uploader.tsx: Frontend upload component
+- map-container.tsx: Map handling and GPX processing
+- sidebar.tsx: User interface for file upload
+
+## Testing Checklist
+- [ ] Uploads directory exists and has correct permissions
+- [ ] GPX file uploads successfully
+- [ ] File path saved correctly in MongoDB
+- [ ] File retrievable after save
+- [ ] Error handling works as expected
+- [ ] Upload progress indicator functions correctly
+
+## Notes
+- Keep monitoring for 500 errors after implementing directory creation
+- Consider adding file type validation on server side
+- May need to add cleanup routine for temporary files
+- Consider implementing file deduplication

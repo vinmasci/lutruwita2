@@ -8,10 +8,18 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { auth as Auth0 } from 'express-openid-connect';
 import pkg from 'express-openid-connect';
+import fs from 'fs';
+import path from 'path';
 const { requiresAuth } = pkg;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// Ensure uploads directory exists
+const uploadsDir = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
 // Load environment variables from .env.local
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
