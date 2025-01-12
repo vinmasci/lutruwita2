@@ -44,6 +44,7 @@ interface MapRef {
     color: string;
     isVisible: boolean;
     gpxData: string;
+    gpxFilePath?: string;  // Add filepath here too
   }>;
   getCurrentPhotos: () => Array<{
     id: string;
@@ -193,6 +194,7 @@ interface Route {
   color: string;
   isVisible: boolean;
   gpxData: string;
+  gpxFilePath?: string;  // Add this line
 }
 
 const MapContainer = forwardRef<MapRef>((props, ref) => {
@@ -829,206 +831,229 @@ if (dist < minDist - DISTANCE_THRESHOLD ||
     []
   );
 
-  // ------------------------------------------------------------------
-  // handleGpxUpload => Main entry point for GPX processing
-  // Process:
-  // 1. Validates input and map readiness
-  // 2. Parses GPX file into coordinate points
-  // 3. Processes points to detect surface types
-  // 4. Renders final route on map
-  // ------------------------------------------------------------------
-  const handleGpxUpload = useCallback(
-    async (gpxContent: string) => {
-      console.log('[handleGpxUpload] Checking if map is ready...');
-      if (!map.current || !isReady()) {
-        console.warn('[handleGpxUpload] Map not ready, aborting GPX upload');
-        throw new Error('Map not ready. Try again later.');
-      }
-      if (!gpxContent || typeof gpxContent !== 'string') {
-        throw new Error('Invalid GPX content');
-      }
+// ------------------------------------------------------------------
+// handleGpxUpload => Main entry point for GPX processing
+// Process:
+// 1. Validates input and map readiness
+// 2. Parses GPX file into coordinate points
+// 3. Processes points to detect surface types
+// 4. Renders final route on map
+// ------------------------------------------------------------------
+const handleGpxUpload = useCallback(
+  async (gpxContent: string, file: File) => {
+    console.log('[handleGpxUpload] Checking if map is ready...');
+    if (!map.current || !isReady()) {
+      console.warn('[handleGpxUpload] Map not ready, aborting GPX upload');
+      throw new Error('Map not ready. Try again later.');
+    }
+    if (!gpxContent || typeof gpxContent !== 'string') {
+      throw new Error('Invalid GPX content');
+    }
 
-      // Parse GPX file
-      console.log('[handleGpxUpload] Parsing GPX...');
-      const rawCoords = await new Promise<Point[]>((resolve, reject) => {
-        parseString(gpxContent, { explicitArray: false }, (err: Error | null, result: any) => {
-          if (err) {
-            // If XML parsing fails, reject with error
-            console.error('[handleGpxUpload] parseString error:', err);
-            reject(new Error('Failed to parse GPX file'));
-            return;
-          }
-          try {
-            // Check for required GPX root element
-            if (!result?.gpx) {
-              throw new Error('Invalid GPX structure: missing root gpx element');
-            }
-            // Try to get points from either route (rte/rtept) or track (trk/trkseg/trkpt)
-            const points = result.gpx?.rte?.rtept || result.gpx?.trk?.trkseg?.trkpt;
-            if (!points) {
-              throw new Error('Invalid GPX format: missing track points');
-            }
+    let gpxFilePath: string;
 
-            // Handle both single point and array of points
-            const arr = Array.isArray(points) ? points : [points];
-            console.log('[handleGpxUpload] Points found:', arr.length);
-
-            // Transform each point to our internal format
-            const coords = arr
-              .map((pt: any) => {
-                try {
-                  // Extract lat/lon from GPX format
-                  if (!pt?.$?.lat || !pt?.$?.lon) {
-                    throw new Error('Missing lat/lon attributes');
-                  }
-                  const lat = parseFloat(pt.$.lat);
-                  const lon = parseFloat(pt.$.lon);
-                  if (isNaN(lat) || isNaN(lon)) {
-                    throw new Error('Invalid lat/lon numeric values');
-                  }
-                  return { lat, lon };
-                } catch (err2) {
-                  // Log and skip invalid points
-                  console.warn('[handleGpxUpload] Skipping invalid point:', pt, err2);
-                  return null;
-                }
-              })
-              // Remove any invalid points that returned null
-              .filter((x: Point | null): x is Point => x !== null);
-
-            if (coords.length === 0) {
-              throw new Error('No valid coordinates found in GPX');
-            }
-            resolve(coords);
-          } catch (err2) {
-            reject(err2);
-          }
-        });
+    // First, upload the GPX file
+    try {
+      const formData = new FormData();
+      formData.append('gpx', file);
+      
+      const response = await fetch('http://localhost:3001/api/gpx/upload', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include'
       });
 
-      console.log('[handleGpxUpload] => Starting nearest-line logic for', rawCoords.length, 'pts');
-      // Clear any leftover roads from previous operations
-      cachedRoadsRef.current = null;
-
-// Process all points to detect surface types
-const finalCoords = await assignSurfacesViaNearest(rawCoords);
-
-// Ensure all points are processed before continuing
-if (!finalCoords || finalCoords.length !== rawCoords.length) {
-  console.error('[handleGpxUpload] Not all points were processed');
-  return;
-}
-
-// Calculate surface statistics
-const pavedCount = finalCoords.filter((c) => c.surface === 'paved').length;
-      const unpavedCount = finalCoords.length - pavedCount;
-      console.log(
-        `[handleGpxUpload] Surfaces assigned => paved=${pavedCount}, unpaved=${unpavedCount}, total=${finalCoords.length}`
-      );
-
-// Add the processed route to the map with original GPX content
-addRouteToMap(finalCoords, gpxContent);  // Pass the GPX content
-console.log('[handleGpxUpload] => Route displayed with surfaces');
-
-// Add photo markers
-await addPhotoMarkersToMap(finalCoords);
-console.log('[handleGpxUpload] => Photo markers added');
-    },
-    [isReady, assignSurfacesViaNearest, addRouteToMap, addPhotoMarkersToMap]
-  );
-
-  // State to store current routes
-  const [routeStore, setRouteStore] = useState<Route[]>([]);
-
-  // Save map handler
-  const handleSaveMap = useCallback(async (data: {
-    name: string;
-    description: string;
-    isPublic: boolean;
-  }) => {
-    if (!map.current) return;
-  
-    try {
-      // Get current route data
-      const source = map.current.getSource(routeSourceId);
-      if (!source) {
-        throw new Error('No route source found');
-      }
-      
-      const routeData = (source as mapboxgl.GeoJSONSource)._data;
-      if (!routeData || routeData.type !== 'FeatureCollection') {
-        throw new Error('Invalid route data');
+      if (!response.ok) {
+        throw new Error('Failed to upload GPX file');
       }
 
-      // Get all routes with their GPX data from the route store
-      const routes = routeStore.map(route => ({
-        id: route.id,
-        name: route.name,
-        color: route.color,
-        isVisible: route.isVisible,
-        gpxData: route.gpxData
-      }));
-
-      // Get current map view state
-      const center = map.current.getCenter();
-      const viewState = {
-        center: [center.lng, center.lat] as [number, number],
-        zoom: map.current.getZoom(),
-        pitch: map.current.getPitch(),
-        bearing: map.current.getBearing()
-      };
-  
-      // Get all photo markers currently on the map
-      const photos = Array.from(document.querySelectorAll('.photo-marker'))
-        .map(marker => {
-          const photo = (marker as any).photo;
-          if (!photo || !photo.id || !photo.url || !photo.longitude || !photo.latitude) {
-            return null;
-          }
-          return {
-            id: photo.id.toString(),
-            url: photo.url.toString(),
-            caption: photo.caption?.toString() || '',
-            longitude: parseFloat(photo.longitude),
-            latitude: parseFloat(photo.latitude)
-          };
-        })
-        .filter((p): p is {
-          id: string;
-          url: string;
-          caption: string;
-          longitude: number;
-          latitude: number;
-        } => p !== null);
-  
-      // Create complete map data object
-      const mapData = {
-        ...data,
-        routes,
-        routeData: {
-          ...routeData,
-          features: routeData.features.map(f => ({
-            ...f,
-            properties: {
-              surface: f.properties?.surface || 'unpaved',
-              segmentIndex: f.properties?.segmentIndex || 0
-            }
-          }))
-        },
-        photos,
-        viewState,
-        mapStyle: map.current.getStyle().name || 'mapbox://styles/mapbox/satellite-streets-v12',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-  
-      // Save to database
-      const savedMap = await mapService.createMap(mapData);
-      console.log('Map saved successfully:', savedMap);
+      const uploadResult = await response.json();
+      gpxFilePath = uploadResult.path;
     } catch (error) {
-      console.error('Error saving map:', error);
+      console.error('Error uploading GPX file:', error);
+      throw new Error('Failed to upload GPX file');
     }
-  }, [routeStore, mapService]);  // Add dependencies array here
+
+    // Parse GPX file
+    console.log('[handleGpxUpload] Parsing GPX...');
+    const rawCoords = await new Promise<Point[]>((resolve, reject) => {
+      parseString(gpxContent, { explicitArray: false }, (err: Error | null, result: any) => {
+        if (err) {
+          console.error('[handleGpxUpload] parseString error:', err);
+          reject(new Error('Failed to parse GPX file'));
+          return;
+        }
+        try {
+          if (!result?.gpx) {
+            throw new Error('Invalid GPX structure: missing root gpx element');
+          }
+          const points = result.gpx?.rte?.rtept || result.gpx?.trk?.trkseg?.trkpt;
+          if (!points) {
+            throw new Error('Invalid GPX format: missing track points');
+          }
+
+          const arr = Array.isArray(points) ? points : [points];
+          console.log('[handleGpxUpload] Points found:', arr.length);
+
+          const coords = arr
+            .map((pt: any) => {
+              try {
+                if (!pt?.$?.lat || !pt?.$?.lon) {
+                  throw new Error('Missing lat/lon attributes');
+                }
+                const lat = parseFloat(pt.$.lat);
+                const lon = parseFloat(pt.$.lon);
+                if (isNaN(lat) || isNaN(lon)) {
+                  throw new Error('Invalid lat/lon numeric values');
+                }
+                return { lat, lon };
+              } catch (err2) {
+                console.warn('[handleGpxUpload] Skipping invalid point:', pt, err2);
+                return null;
+              }
+            })
+            .filter((x: Point | null): x is Point => x !== null);
+
+          if (coords.length === 0) {
+            throw new Error('No valid coordinates found in GPX');
+          }
+          resolve(coords);
+        } catch (err2) {
+          reject(err2);
+        }
+      });
+    });
+
+    console.log('[handleGpxUpload] => Starting nearest-line logic for', rawCoords.length, 'pts');
+    cachedRoadsRef.current = null;
+
+    const finalCoords = await assignSurfacesViaNearest(rawCoords);
+
+    if (!finalCoords || finalCoords.length !== rawCoords.length) {
+      console.error('[handleGpxUpload] Not all points were processed');
+      return;
+    }
+
+    const pavedCount = finalCoords.filter((c) => c.surface === 'paved').length;
+    const unpavedCount = finalCoords.length - pavedCount;
+    console.log(
+      `[handleGpxUpload] Surfaces assigned => paved=${pavedCount}, unpaved=${unpavedCount}, total=${finalCoords.length}`
+    );
+
+    // Add the processed route to the map with original GPX content
+    addRouteToMap(finalCoords, gpxContent);
+    console.log('[handleGpxUpload] => Route displayed with surfaces');
+
+    // Update route store with the new route including filepath
+    const newRoute = {
+      id: Date.now().toString(), // Temporary ID until we save
+      name: file.name,
+      color: '#e17055',
+      isVisible: true,
+      gpxData: gpxContent,
+      gpxFilePath: gpxFilePath
+    };
+    setRouteStore(prev => [...prev, newRoute]);
+
+    // Add photo markers
+    await addPhotoMarkersToMap(finalCoords);
+    console.log('[handleGpxUpload] => Photo markers added');
+  },
+  [isReady, assignSurfacesViaNearest, addRouteToMap, addPhotoMarkersToMap]
+);
+
+// State to store current routes
+const [routeStore, setRouteStore] = useState<Route[]>([]);
+
+// Save map handler
+const handleSaveMap = useCallback(async (data: {
+name: string;
+description: string;
+isPublic: boolean;
+}) => {
+if (!map.current) return;
+
+try {
+  const source = map.current.getSource(routeSourceId);
+  if (!source) {
+    throw new Error('No route source found');
+  }
+  
+  const routeData = (source as mapboxgl.GeoJSONSource)._data;
+  if (!routeData || routeData.type !== 'FeatureCollection') {
+    throw new Error('Invalid route data');
+  }
+
+  // Get all routes with their GPX data and filepath from the route store
+  const routes = routeStore.map(route => ({
+    id: route.id,
+    name: route.name,
+    color: route.color,
+    isVisible: route.isVisible,
+    gpxData: route.gpxData,
+    gpxFilePath: route.gpxFilePath // Include the filepath
+  }));
+
+  // Get current map view state
+  const center = map.current.getCenter();
+  const viewState = {
+    center: [center.lng, center.lat] as [number, number],
+    zoom: map.current.getZoom(),
+    pitch: map.current.getPitch(),
+    bearing: map.current.getBearing()
+  };
+
+  // Get all photo markers currently on the map
+  const photos = Array.from(document.querySelectorAll('.photo-marker'))
+    .map(marker => {
+      const photo = (marker as any).photo;
+      if (!photo || !photo.id || !photo.url || !photo.longitude || !photo.latitude) {
+        return null;
+      }
+      return {
+        id: photo.id.toString(),
+        url: photo.url.toString(),
+        caption: photo.caption?.toString() || '',
+        longitude: parseFloat(photo.longitude),
+        latitude: parseFloat(photo.latitude)
+      };
+    })
+    .filter((p): p is {
+      id: string;
+      url: string;
+      caption: string;
+      longitude: number;
+      latitude: number;
+    } => p !== null);
+
+  // Create complete map data object
+  const mapData = {
+    ...data,
+    routes,
+    routeData: {
+      ...routeData,
+      features: routeData.features.map(f => ({
+        ...f,
+        properties: {
+          surface: f.properties?.surface || 'unpaved',
+          segmentIndex: f.properties?.segmentIndex || 0
+        }
+      }))
+    },
+    photos,
+    viewState,
+    mapStyle: map.current.getStyle().name || 'mapbox://styles/mapbox/satellite-streets-v12',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  // Save to database
+  const savedMap = await mapService.createMap(mapData);
+  console.log('Map saved successfully:', savedMap);
+} catch (error) {
+  console.error('Error saving map:', error);
+}
+}, [routeStore, mapService]);
 
   // ------------------------------------------------------------------
   // Expose methods to parent component
@@ -1178,49 +1203,38 @@ getCurrentPhotos: () => {
             maxzoom: 14
           });
 
-          // Add Mapbox Streets source
-newMap.addSource('mapbox-streets', {
-  type: 'vector',
-  url: 'mapbox://mapbox.mapbox-streets-v8'
-});
+          // Add custom roads layer with surface-based styling
+          newMap.addLayer({
+            id: 'custom-roads',
+            type: 'line',
+            source: 'australia-roads',
+            'source-layer': 'lutruwita',
+            minzoom: 12,
+            maxzoom: 14,
+            layout: {
+              visibility: 'visible'
+            },
+            paint: {
+              'line-opacity': 1,
+              'line-color': [
+                'match',
+                ['get', 'surface'],
 
-newMap.addLayer({
-  id: 'streets-layer',
-  type: 'line',
-  source: 'mapbox-streets',
-  'source-layer': 'road',
-  minzoom: 8,
-  maxzoom: 22,
-  layout: {
-    visibility: 'visible'
-  },
-  paint: {
-    'line-opacity': [
-      'case',
-      // Show unpaved roads with full opacity
-      ['==', ['get', 'surface'], 'unpaved'], 0.4,
-      ['==', ['get', 'surface'], 'track'], 0.4,
-      ['==', ['get', 'surface'], 'path'], 0.4,
-      
-      // Make everything else fully transparent
-      0
-    ],
-    'line-color': [
-      'case',
-      // Color unpaved roads orange
-      ['==', ['get', 'surface'], 'unpaved'], '#ffb142',
-      ['==', ['get', 'surface'], 'track'], '#ffb142',
-      ['==', ['get', 'surface'], 'path'], '#ffb142',
-      ['==', ['get', 'surface'], 'gravel'], '#ffb142',
-      ['==', ['get', 'surface'], 'fine_gravel'], '#ffb142',
-      ['==', ['get', 'surface'], 'dirt'], '#ffb142',
-      
-      // Other colors don't matter since they'll be transparent
-      '#000000'
-    ],
-    'line-width': 4
-  }
-});
+                // Color roads based on surface type
+                // Paved roads in blue
+                ['paved', 'asphalt', 'concrete', 'compacted', 'sealed', 'bitumen', 'tar'],
+                '#4A90E2',
+
+                // Unpaved roads in orange
+                ['unpaved', 'gravel', 'fine', 'fine_gravel', 'dirt', 'earth'],
+                '#D35400',
+
+                // Unknown surfaces in grey
+                '#888888'
+              ],
+              'line-width': 2
+            }
+          });
 
           // Mark map as ready
           setStreetsLayersLoaded(true);

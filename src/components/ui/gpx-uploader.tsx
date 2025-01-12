@@ -36,7 +36,7 @@ const GpxUploader: React.FC<GpxUploaderProps> = ({ mapRef }) => {
         throw new Error('Please select a GPX file');
       }
 
-      // Read file content
+      // Read file content for map display
       const content = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => resolve(e.target?.result as string);
@@ -44,8 +44,8 @@ const GpxUploader: React.FC<GpxUploaderProps> = ({ mapRef }) => {
         reader.readAsText(file);
       });
 
-      // Upload to map
-      await mapRef.current.handleGpxUpload(content);
+      // Upload to map with the file object
+      await mapRef.current.handleGpxUpload(content, file);
       
       // Clear input for future uploads
       if (fileInputRef.current) {

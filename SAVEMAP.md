@@ -193,3 +193,16 @@ Needed:
 2. Offline support possibilities
 3. Mobile responsiveness
 4. Multi-user collaboration features
+
+
+yes so:
+During GPX Processing:
+* Take the processed GPX data
+* Save it as a physical file in uploads/
+* Get a filepath reference for it
+* Include this filepath in the map save data
+* During Photo Association:
+* Take the photos that were found nearby
+* Save copies in uploads/ specific to this map, or
+
+Then all this data will get saved to Mongo

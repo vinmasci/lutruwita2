@@ -107,7 +107,7 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ 
+const photoUpload = multer({ 
   storage,
   fileFilter: (req, file, cb) => {
     const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg'];
@@ -122,10 +122,24 @@ const upload = multer({
   }
 });
 
+const gpxUpload = multer({
+  storage,
+  fileFilter: (req, file, cb) => {
+    if (file.originalname.toLowerCase().endsWith('.gpx')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only GPX files are allowed.'));
+    }
+  },
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit for GPX files
+  }
+});
+
 const client = new MongoClient(MONGODB_URI);
 
 // Upload photo endpoint
-app.post('/api/photos/upload', upload.single('photo'), async (req, res) => {
+app.post('/api/photos/upload', photoUpload.single('photo'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -193,6 +207,33 @@ app.get('/api/photos/near', async (req, res) => {
     res.json(photos);
   } catch (error) {
     console.error('Error fetching photos:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Upload GPX endpoint
+app.post('/api/gpx/upload', requiresAuth(), gpxUpload.single('gpx'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    await client.connect();
+    const db = client.db('photoApp');
+    const result = await db.collection('gpxFiles').insertOne({
+      filename: req.file.filename,
+      path: `/uploads/${req.file.filename}`,
+      uploadedBy: req.oidc.user.sub,
+      uploadedAt: new Date()
+    });
+
+    res.json({ 
+      success: true, 
+      gpxId: result.insertedId,
+      path: `/uploads/${req.file.filename}`
+    });
+  } catch (error) {
+    console.error('Error uploading GPX:', error);
     res.status(500).json({ error: error.message });
   }
 });
