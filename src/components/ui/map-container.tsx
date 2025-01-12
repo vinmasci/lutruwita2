@@ -5,7 +5,8 @@ import React, {
   useEffect,
   useRef,
   useCallback,
-  forwardRef
+  forwardRef,
+  useState
 } from 'react';
 import { parseString } from 'xml2js';  // For parsing GPX files
 import mapboxgl from 'mapbox-gl';      // Main mapping library

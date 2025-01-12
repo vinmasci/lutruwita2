@@ -340,8 +340,6 @@ const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
   };
 
   return (
-
-  return (
     <StyledDrawer
       variant="permanent"
       open={open}
