@@ -920,27 +920,44 @@ console.log('[handleGpxUpload] => Photo markers added');
     },
     [isReady, assignSurfacesViaNearest, addRouteToMap, addPhotoMarkersToMap]
   );
-  // Save map handler
+  
+// Move Route interface to top with other interfaces (around line 30)
+interface Route {
+  id: string;
+  name: string;
+  color: string;
+  isVisible: boolean;
+  gpxData: string;
+}
+
+const MapContainer = forwardRef<MapRef>((props, ref) => {
+  // Constants for identifying map layers
+  const routeSourceId = 'route';
+  const routeLayerId = 'route-layer';
+
+  // Core references
+  const mapContainer = useRef<HTMLDivElement>(null);
+  const map = useRef<mapboxgl.Map | null>(null);
+  const cachedRoadsRef = useRef<FeatureCollection | null>(null);
+
+  // State management
+  const [isMapReady, setIsMapReady] = React.useState(false);
+  const [streetsLayersLoaded, setStreetsLayersLoaded] = React.useState(false);
+  const [isUploading, setIsUploading] = React.useState(false);
+  const [routeStore, setRouteStore] = useState<Route[]>([]); // Move this up here
+  const [surfaceProgress, setSurfaceProgress] = React.useState<SurfaceProgressState>({
+    isProcessing: false,
+    progress: 0,
+    total: 0
+  });
+
+  // Save map handler - rest of the code remains the same
   const handleSaveMap = useCallback(async (data: {
     name: string;
     description: string;
     isPublic: boolean;
   }) => {
     if (!map.current) return;
-  
-    try {
-      // Get current route data
-      const source = map.current.getSource(routeSourceId) as mapboxgl.GeoJSONSource;
-      const routeData = (source as any)._data as FeatureCollection;
-  
-      // Get all routes with their GPX data from the route store
-      const routes = routeStore.map(route => ({
-        id: route.id,
-        name: route.name,
-        color: route.color,
-        isVisible: route.isVisible,
-        gpxData: route.gpxData
-      }));
   
       // Get current map view state
       const center = map.current.getCenter();
@@ -983,7 +1000,16 @@ console.log('[handleGpxUpload] => Photo markers added');
     } catch (error) {
       console.error('Error saving map:', error);
     }
-  }, [routeStore]); // Add routeStore to dependencies
+  }; // Add semicolon here
+  
+  // Expose methods to parent component
+  interface Route {
+    id: string;
+    name: string;
+    color: string;
+    isVisible: boolean;
+    gpxData: string;
+  }
 
   // ------------------------------------------------------------------
   // Expose methods to parent component
