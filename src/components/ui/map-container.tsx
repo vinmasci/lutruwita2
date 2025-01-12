@@ -45,6 +45,14 @@ interface MapRef {
     isVisible: boolean;
     gpxData: string;
   }>;
+  getCurrentPhotos: () => Array<{
+    id: string;
+    url: string;
+    caption?: string;
+    longitude: number;
+    latitude: number;
+  }>;
+  getRouteData: () => FeatureCollection;
   getCenter: () => { lng: number; lat: number; };
   getZoom: () => number;
   getPitch: () => number;
@@ -178,6 +186,15 @@ const getDistancePoints = (
 // Main MapContainer Component
 // Handles all map rendering and GPX processing
 // --------------------------------------------
+// Move Route interface to top with other interfaces (around line 30)
+interface Route {
+  id: string;
+  name: string;
+  color: string;
+  isVisible: boolean;
+  gpxData: string;
+}
+
 const MapContainer = forwardRef<MapRef>((props, ref) => {
   // Constants for identifying map layers
   const routeSourceId = 'route';
@@ -351,7 +368,7 @@ const combinedLine = turf.lineString(
 );
 
 // Calculate total length in kilometers
-const totalLength = turf.length(combinedLine, { units: 'kilometers' as const });
+const totalLength = turf.length(combinedLine, { units: 'kilometers' });
 
 // Get distance points based on zoom level
 const distancePoints = getDistancePoints(map.current, combinedLine, totalLength);
@@ -410,12 +427,11 @@ const addPhotoMarkersToMap = useCallback(async (coordinates: Point[]) => {
   }));
 
   // Initialize supercluster
-  const clusterIndex = new Supercluster({
-    radius: 40,
-    maxZoom: 16,
-    minPoints: 2,
-    initial: () => ({ photoCount: 0 })
-  });
+const clusterIndex = new Supercluster({
+  radius: 40,
+  maxZoom: 16,
+  minPoints: 2
+});
 
   clusterIndex.load(features);
 
@@ -920,38 +936,11 @@ console.log('[handleGpxUpload] => Photo markers added');
     },
     [isReady, assignSurfacesViaNearest, addRouteToMap, addPhotoMarkersToMap]
   );
-  
-// Move Route interface to top with other interfaces (around line 30)
-interface Route {
-  id: string;
-  name: string;
-  color: string;
-  isVisible: boolean;
-  gpxData: string;
-}
 
-const MapContainer = forwardRef<MapRef>((props, ref) => {
-  // Constants for identifying map layers
-  const routeSourceId = 'route';
-  const routeLayerId = 'route-layer';
+  // State to store current routes
+  const [routeStore, setRouteStore] = useState<Route[]>([]);
 
-  // Core references
-  const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<mapboxgl.Map | null>(null);
-  const cachedRoadsRef = useRef<FeatureCollection | null>(null);
-
-  // State management
-  const [isMapReady, setIsMapReady] = React.useState(false);
-  const [streetsLayersLoaded, setStreetsLayersLoaded] = React.useState(false);
-  const [isUploading, setIsUploading] = React.useState(false);
-  const [routeStore, setRouteStore] = useState<Route[]>([]); // Move this up here
-  const [surfaceProgress, setSurfaceProgress] = React.useState<SurfaceProgressState>({
-    isProcessing: false,
-    progress: 0,
-    total: 0
-  });
-
-  // Save map handler - rest of the code remains the same
+  // Save map handler
   const handleSaveMap = useCallback(async (data: {
     name: string;
     description: string;
@@ -961,8 +950,15 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
   
     try {
       // Get current route data
-      const source = map.current.getSource(routeSourceId) as mapboxgl.GeoJSONSource;
-      const routeData = (source as any)._data as FeatureCollection;
+      const source = map.current.getSource(routeSourceId);
+      if (!source) {
+        throw new Error('No route source found');
+      }
+      
+      const routeData = (source as mapboxgl.GeoJSONSource)._data;
+      if (!routeData || routeData.type !== 'FeatureCollection') {
+        throw new Error('Invalid route data');
+      }
 
       // Get all routes with their GPX data from the route store
       const routes = routeStore.map(route => ({
@@ -976,7 +972,7 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       // Get current map view state
       const center = map.current.getCenter();
       const viewState = {
-        center: [center.lng, center.lat],
+        center: [center.lng, center.lat] as [number, number],
         zoom: map.current.getZoom(),
         pitch: map.current.getPitch(),
         bearing: map.current.getBearing()
@@ -986,24 +982,42 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
       const photos = Array.from(document.querySelectorAll('.photo-marker'))
         .map(marker => {
           const photo = (marker as any).photo;
-          if (!photo) return null;
+          if (!photo || !photo.id || !photo.url || !photo.longitude || !photo.latitude) {
+            return null;
+          }
           return {
-            id: photo.id,
-            url: photo.url,
-            caption: photo.caption,
-            longitude: photo.longitude,
-            latitude: photo.latitude
+            id: photo.id.toString(),
+            url: photo.url.toString(),
+            caption: photo.caption?.toString() || '',
+            longitude: parseFloat(photo.longitude),
+            latitude: parseFloat(photo.latitude)
           };
         })
-        .filter(Boolean); // Remove any nulls
+        .filter((p): p is {
+          id: string;
+          url: string;
+          caption: string;
+          longitude: number;
+          latitude: number;
+        } => p !== null);
   
       // Create complete map data object
       const mapData = {
         ...data,
         routes,
-        routeData, // Keep the GeoJSON data for surface types
+        routeData: {
+          ...routeData,
+          features: routeData.features.map(f => ({
+            ...f,
+            properties: {
+              surface: f.properties?.surface || 'unpaved',
+              segmentIndex: f.properties?.segmentIndex || 0
+            }
+          }))
+        },
         photos,
         viewState,
+        mapStyle: map.current.getStyle().name || 'mapbox://styles/mapbox/satellite-streets-v12',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
@@ -1020,14 +1034,6 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
   // Expose methods to parent component
   // Makes key functionality available to parent components
   // ------------------------------------------------------------------
-  interface Route {
-    id: string;
-    name: string;
-    color: string;
-    isVisible: boolean;
-    gpxData: string;
-  }
-  
   React.useImperativeHandle(
     ref,
     () => ({
@@ -1044,6 +1050,26 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
         }
       },
       getCurrentRoutes: () => routeStore,
+getCurrentPhotos: () => {
+  return Array.from(document.querySelectorAll('.photo-marker'))
+    .map(marker => {
+      const photo = (marker as any).photo;
+      if (!photo) return null;
+      return {
+        id: photo.id,
+        url: photo.url,
+        caption: photo.caption,
+        longitude: photo.longitude,
+        latitude: photo.latitude
+      };
+    })
+    .filter((p): p is { id: string; url: string; caption?: string; longitude: number; latitude: number } => p !== null);
+},
+      getRouteData: () => {
+        if (!map.current) return { type: 'FeatureCollection', features: [] };
+        const source = map.current.getSource(routeSourceId) as mapboxgl.GeoJSONSource;
+        return (source as any)._data as FeatureCollection;
+      },
       getCenter: () => {
         if (!map.current) return { lng: 0, lat: 0 };
         const center = map.current.getCenter();
@@ -1286,4 +1312,3 @@ MapContainer.displayName = 'MapContainer';
 
 export default MapContainer;
 export type { MapRef };
-

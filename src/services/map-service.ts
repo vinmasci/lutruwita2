@@ -18,6 +18,27 @@ interface CreateMapData {
     isVisible: boolean;
     gpxData: string;
   }>;
+  photos: Array<{
+    id: string;
+    url: string;
+    caption?: string;
+    longitude: number;
+    latitude: number;
+  }>;
+  routeData: {
+    type: 'FeatureCollection';
+    features: Array<{
+      type: 'Feature';
+      properties: {
+        surface: string;
+        segmentIndex: number;
+      };
+      geometry: {
+        type: 'LineString';
+        coordinates: number[][];
+      };
+    }>;
+  };
 }
 
 const API_BASE = 'http://localhost:3001/api';

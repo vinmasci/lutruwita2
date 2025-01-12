@@ -321,9 +321,14 @@ const [routes, setRoutes] = useState<Array<{
       if (!mapRef.current) return;
 
       const routes = mapRef.current.getCurrentRoutes();
+      const photos = mapRef.current.getCurrentPhotos();
+      const routeData = mapRef.current.getRouteData();
+      
       const mapData = {
         ...data,
         routes,
+        photos,
+        routeData
       };
 
       await mapService.createMap(mapData);

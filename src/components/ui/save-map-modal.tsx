@@ -32,6 +32,13 @@ interface SaveMapModalProps {
       bearing: number;
     };
     mapStyle: string;
+    routes: Array<{
+      id: string;
+      name: string;
+      color: string;
+      isVisible: boolean;
+      gpxData: string;
+    }>;
   }) => void;
   routes: Array<{
     id: string;
@@ -59,6 +66,8 @@ const SaveMapModal = ({ open, onClose, onSave, routes, mapRef }: SaveMapModalPro
     const pitch = map.getPitch();
     const bearing = map.getBearing();
   
+    const mapStyle = mapRef.current.getStyle();
+    
     onSave({
       name: name.trim(),
       description: description.trim(),
@@ -68,7 +77,15 @@ const SaveMapModal = ({ open, onClose, onSave, routes, mapRef }: SaveMapModalPro
         zoom,
         pitch,
         bearing,
-      }
+      },
+      mapStyle,
+      routes: routes.map(route => ({
+        id: route.id,
+        name: route.name,
+        color: route.color,
+        isVisible: route.isVisible,
+        gpxData: route.gpxData
+      }))
     });
   };
 
