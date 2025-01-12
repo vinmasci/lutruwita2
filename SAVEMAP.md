@@ -283,3 +283,72 @@ Then all this data will get saved to Mongo
 - Consider adding file type validation on server side
 - May need to add cleanup routine for temporary files
 - Consider implementing file deduplication
+
+# Photo Implementation Findings
+
+## Initial Approach (Overcomplicated)
+We initially tried to implement photo saving through DOM markers:
+1. Create markers with photo data attributes
+2. Set latitude, longitude on markers
+3. When saving map:
+   - Query all photo markers
+   - Extract data from markers
+   - Reconstruct photo objects
+   - Save to database
+
+Problems with this approach:
+- Converting database photos -> markers -> database photos
+- Lost original photo IDs in the process
+- Empty photos array in saved maps
+- Extra complexity for no benefit
+
+## The Simple Solution
+We already have the photo data from our database query:
+```typescript
+// In map-container.tsx
+const photos = await findPhotosNearPoints(points);
+```
+
+These photos already contain all needed information:
+```typescript
+{
+    _id: string,          // Original database ID
+    url: string,          // Original S3 URL
+    originalName: string, // Can be used as caption
+    latitude: number,     // Original coordinates
+    longitude: number
+}
+```
+
+To save photos with a map, we just need to:
+1. Keep track of the found photos
+2. Format them to match our SavedMap type:
+```typescript
+photos: Array<{
+    id: string,           // Use photo._id
+    url: string,          // Use photo.url
+    caption?: string,     // Use photo.originalName
+    location: {
+        lat: number,      // Use photo.latitude
+        lon: number       // Use photo.longitude
+    }
+}>
+```
+
+## Key Learnings
+1. Don't reconstruct data you already have
+2. DOM manipulation should be for display only, not data storage
+3. Keep original data intact when possible
+4. Simpler solutions are usually better
+
+## Next Steps
+1. Store photos array when they're found
+2. Format photos to match SavedMap type when saving
+3. Remove marker data attribute complexity
+4. Focus markers on display functionality only
+
+## Implementation Status
+- [x] Photo finding near points working
+- [x] Photo markers displaying correctly
+- [ ] Photo data saving with maps
+- [ ] Photo data loading with saved maps

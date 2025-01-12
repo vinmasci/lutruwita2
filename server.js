@@ -348,12 +348,14 @@ app.put('/api/profile', requiresAuth(), async (req, res) => {
 app.post('/api/maps', requiresAuth(), async (req, res) => {
   try {
     console.log('Creating new map for user:', req.oidc.user.sub);
+    console.log('Received map data:', req.body); // Add this line to log received data
     const mapData = {
       ...req.body,
       createdBy: req.oidc.user.sub,
       createdAt: new Date(),
       updatedAt: new Date()
     };
+    console.log('Final map data to save:', mapData); // Add this line to log final data
 
     await client.connect();
     const db = client.db('photoApp');

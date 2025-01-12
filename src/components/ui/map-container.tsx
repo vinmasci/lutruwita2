@@ -443,6 +443,8 @@ const clusterIndex = new Supercluster({
     el.style.position = 'relative';
     el.setAttribute('data-lat', photo.latitude.toString());
     el.setAttribute('data-lon', photo.longitude.toString());
+    el.setAttribute('data-id', photo._id);
+    el.setAttribute('data-url', photo.url);
 
     const imgContainer = document.createElement('div');
     imgContainer.style.position = 'relative';
@@ -1020,39 +1022,49 @@ try {
     bearing: map.current.getBearing()
   };
 
-  // Get all photo markers currently on the map
-  const photoMarkers = document.querySelectorAll('.photo-marker');
-  const photos = Array.from(photoMarkers)
-    .map(marker => {
-      const markerDiv = marker as HTMLDivElement;
-      const imgElement = markerDiv.querySelector('img');
-      if (!imgElement) return null;
-      
-      const photo = {
-        id: imgElement.src.split('/').pop()?.split('.')[0] || '',
-        url: imgElement.src,
-        caption: imgElement.alt || '',
-        location: {
-          lat: parseFloat(marker.getAttribute('data-lat') || '0'),
-          lon: parseFloat(marker.getAttribute('data-lon') || '0')
-        }
-      };
-  
-      if (!photo.id || !photo.url || !photo.location.lat || !photo.location.lon) {
-        return null;
-      }
-  
-      return photo;
-    })
-    .filter((p): p is {
-      id: string;
-      url: string;
-      caption: string;
+// Get all photo markers currently on the map
+const photoMarkers = document.querySelectorAll('.photo-marker');
+console.log('Found photo markers:', photoMarkers.length);
+
+const photos = Array.from(photoMarkers)
+  .map(marker => {
+    const markerDiv = marker as HTMLDivElement;
+    const imgElement = markerDiv.querySelector('img');
+    if (!imgElement) {
+      console.log('No img element found in marker');
+      return null;
+    }
+    
+    const photo = {
+      id: marker.getAttribute('data-id') || '',
+      url: marker.getAttribute('data-url') || '',
+      caption: imgElement.alt || '',
       location: {
-        lat: number;
-        lon: number;
+        lat: parseFloat(marker.getAttribute('data-lat') || '0'),
+        lon: parseFloat(marker.getAttribute('data-lon') || '0')
       }
-    } => p !== null);
+    };
+
+    console.log('Processing photo:', photo);
+  
+    if (!photo.id || !photo.url || !photo.location.lat || !photo.location.lon) {
+      console.log('Invalid photo data:', { id: photo.id, url: photo.url, location: photo.location });
+      return null;
+    }
+  
+    return photo;
+  })
+  .filter((p): p is {
+    id: string;
+    url: string;
+    caption: string;
+    location: {
+      lat: number;
+      lon: number;
+    }
+  } => p !== null);
+
+console.log('Final photos array:', photos);
 
   // Create complete map data object
   const mapData = {
