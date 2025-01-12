@@ -1264,29 +1264,32 @@ if (savedPhotos?.length) {
     _id: photo.id,
     url: photo.url,
     originalName: photo.caption || '',
-    latitude: photo.latitude,
-    longitude: photo.longitude,
+    latitude: photo.latitude || photo.location?.lat,  // Handle both structures
+    longitude: photo.longitude || photo.location?.lon, // Handle both structures
     uploadedAt: new Date().toISOString()
   })));
 
-            // Create markers for saved photos
-            const features = savedPhotos.map((photo, index) => ({
-              type: 'Feature' as const,
-              properties: {
-                id: `photo-${index}`,
-                photo: {
-                  _id: photo.id,
-                  url: photo.url,
-                  originalName: photo.caption || '',
-                  latitude: photo.location.lat,
-                  longitude: photo.location.lon
-                }
-              },
-              geometry: {
-                type: 'Point' as const,
-                coordinates: [photo.location.lon, photo.location.lat]
-              }
-            }));
+  // Create markers for saved photos
+  const features = savedPhotos.map((photo, index) => ({
+    type: 'Feature' as const,
+    properties: {
+      id: `photo-${index}`,
+      photo: {
+        _id: photo.id,
+        url: photo.url,
+        originalName: photo.caption || '',
+        latitude: photo.latitude || photo.location?.lat,  // Handle both structures
+        longitude: photo.longitude || photo.location?.lon // Handle both structures
+      }
+    },
+    geometry: {
+      type: 'Point' as const,
+      coordinates: [
+        photo.longitude || photo.location?.lon,
+        photo.latitude || photo.location?.lat
+      ]
+    }
+  }));
 
             const clusterIndex = new Supercluster({
               radius: 40,
