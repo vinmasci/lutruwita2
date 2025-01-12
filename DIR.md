@@ -6,6 +6,7 @@
 ├── package.json - Project dependencies and scripts configuration
 ├── postcss.config.js - PostCSS configuration (likely for Tailwind)
 ├── README.md - Project documentation
+├── SAVEMAP.md - Documentation for map saving functionality
 ├── server.js - Server-side application code
 ├── tailwind.config.js - Tailwind CSS configuration
 ├── tsconfig.app.json - TypeScript config for application code
@@ -39,6 +40,7 @@
     │       ├── map-note.tsx - Map note component
     │       ├── navbar.tsx - Navigation bar component
     │       ├── notes-panel.tsx - Notes panel component
+    │       ├── photo-modal.tsx - Photo modal component
     │       ├── sheet.tsx - Sheet component
     │       ├── sidebar.tsx - Sidebar component
     │       └── tabs.tsx - Tabbed interface component

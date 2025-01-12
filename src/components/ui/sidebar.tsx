@@ -687,37 +687,44 @@ const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
 
 {/* Actions */}
 <Box sx={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            gap: 2,
-            mt: 2,
-            pt: 2,
-            borderTop: 1,
-            borderColor: 'divider'
-          }}>
-<Button 
-  onClick={() => window.location.href = "http://localhost:3001/logout?returnTo=http://localhost:5173"}
-  variant="contained"
-  color="error"
-  sx={{ 
-    flex: 1,
-    height: 48,
-    borderRadius: 2,
-    fontSize: '1rem'
-  }}
->
-  SIGN OUT
-</Button>
-            <Button 
-              variant="contained"
-              color="success"
-              onClick={handleSaveProfile}
-              fullWidth
-              sx={{ height: 42 }}
-            >
-              Save
-            </Button>
-          </Box>
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
+  gap: 2,
+  mt: 2,
+  pt: 2,
+  borderTop: 1,
+  borderColor: 'divider'
+}}>
+  <Button 
+    onClick={() => window.location.href = "http://localhost:3001/logout?returnTo=http://localhost:5173"}
+    variant="contained"
+    color="error"
+    sx={{ 
+      height: 48,
+      borderRadius: 2,
+      fontSize: '1rem',
+      width: '100%'
+    }}
+  >
+    SIGN OUT
+  </Button>
+  <Button 
+    variant="contained"
+    sx={{ 
+      height: 48,
+      borderRadius: 2,
+      fontSize: '1rem',
+      width: '100%',
+      bgcolor: '#4caf50',
+      '&:hover': {
+        bgcolor: '#43a047'
+      }
+    }}
+    onClick={handleSaveProfile}
+  >
+    SAVE
+  </Button>
+</Box>
         </Box>
       </Drawer>
     </StyledDrawer>
