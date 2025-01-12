@@ -9,7 +9,6 @@ import { dirname } from 'path';
 import { auth as Auth0 } from 'express-openid-connect';
 import pkg from 'express-openid-connect';
 import fs from 'fs';
-import path from 'path';
 const { requiresAuth } = pkg;
 
 const __filename = fileURLToPath(import.meta.url);
