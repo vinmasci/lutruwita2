@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { MapRef } from './map-container';
+import { mapService } from '../../services/map-service';
 import { 
   Box, 
   Drawer, 

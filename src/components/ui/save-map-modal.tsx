@@ -43,7 +43,7 @@ interface SaveMapModalProps {
   mapRef: RefObject<MapRef>;
 }
 
-const SaveMapModal = ({ open, onClose, onSave, routes }: SaveMapModalProps) => {
+const SaveMapModal = ({ open, onClose, onSave, routes, mapRef }: SaveMapModalProps) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [isPublic, setIsPublic] = useState(false);
