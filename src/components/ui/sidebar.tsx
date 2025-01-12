@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { MapRef } from './map-container';
-import { mapService } from '../../services/map-service';
+import { mapService } from "../../services/map-service";
 import { 
   Box, 
   Drawer, 
@@ -31,8 +31,10 @@ import {
   Layers as LayersIcon,
   UploadFile as UploadFileIcon,
   AccountCircle as AccountCircleIcon,
-  Save as SaveIcon
+  Save as SaveIcon,
+  FolderOpen as FolderOpenIcon
 } from '@mui/icons-material';
+import LoadMapModal from './load-map-modal';
 
 const drawerWidth = 240;
 const closedWidth = 65;
@@ -85,13 +87,14 @@ const Sidebar = ({ mapRef }: SidebarProps) => {
   } | null>(null);
 const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
 const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
-  const [saveMapModalOpen, setSaveMapModalOpen] = useState(false);
-  const [routes, setRoutes] = useState<Array<{
-    id: string;
-    name: string;
-    color: string;
-    isVisible: boolean;
-  }>>([]);
+const [saveMapModalOpen, setSaveMapModalOpen] = useState(false);
+const [loadMapModalOpen, setLoadMapModalOpen] = useState(false);
+const [routes, setRoutes] = useState<Array<{
+  id: string;
+  name: string;
+  color: string;
+  isVisible: boolean;
+}>>([]);
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -416,29 +419,59 @@ const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
         </ListItemButton>
 
         <ListItemButton
-          disabled={!mapReady}
-          onClick={() => setSaveMapModalOpen(true)}
-          sx={{ justifyContent: open ? 'start' : 'center', minHeight: 48 }}
-        >
-          <ListItemIcon>
-            <SaveIcon />
-          </ListItemIcon>
-          <ListItemText 
-            primary="Save Map" 
-            sx={{ 
-              opacity: open ? 1 : 0,
-              display: open ? 'block' : 'none'
-            }} 
-          />
-        </ListItemButton>
+  disabled={!mapReady}
+  onClick={() => setSaveMapModalOpen(true)}
+  sx={{ justifyContent: open ? 'start' : 'center', minHeight: 48 }}
+>
+  <ListItemIcon>
+    <SaveIcon />
+  </ListItemIcon>
+  <ListItemText 
+    primary="Save Map" 
+    sx={{ 
+      opacity: open ? 1 : 0,
+      display: open ? 'block' : 'none'
+    }} 
+  />
+</ListItemButton>
+
+<ListItemButton
+  disabled={!mapReady}
+  onClick={() => setLoadMapModalOpen(true)}
+  sx={{ justifyContent: open ? 'start' : 'center', minHeight: 48 }}
+>
+  <ListItemIcon>
+    <FolderOpenIcon />
+  </ListItemIcon>
+  <ListItemText 
+    primary="Load Map" 
+    sx={{ 
+      opacity: open ? 1 : 0,
+      display: open ? 'block' : 'none'
+    }} 
+  />
+</ListItemButton>
         </List>
 
-<SaveMapModal
+        <SaveMapModal
   open={saveMapModalOpen}
   onClose={() => setSaveMapModalOpen(false)}
   mapRef={mapRef}
   onSave={handleSaveMap}
   routes={mapRef.current?.getCurrentRoutes() || []}
+/>
+
+<LoadMapModal
+  open={loadMapModalOpen}
+  onClose={() => setLoadMapModalOpen(false)}
+  mapRef={mapRef}
+  onLoadSuccess={() => {
+    setSnackbar({
+      open: true,
+      message: 'Map loaded successfully',
+      severity: 'success'
+    });
+  }}
 />
 
       <Dialog

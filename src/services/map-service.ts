@@ -1,26 +1,62 @@
 import { SavedMap } from '../types/map-types';
 
+interface CreateMapData {
+  name: string;
+  description: string;
+  isPublic: boolean;
+  viewState: {
+    center: [number, number];
+    zoom: number;
+    pitch: number;
+    bearing: number;
+  };
+  mapStyle: string;
+  routes: Array<{
+    id: string;
+    name: string;
+    color: string;
+    isVisible: boolean;
+    gpxData: string;
+  }>;
+}
+
 const API_BASE = 'http://localhost:3001/api';
 
 export const mapService = {
   // Create new map
-  async createMap(mapData: Omit<SavedMap, '_id' | 'createdAt' | 'updatedAt' | 'createdBy'>) {
-    const response = await fetch(`${API_BASE}/maps`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      body: JSON.stringify(mapData)
-    });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+  async createMap(mapData: CreateMapData) {
+    try {
+      console.log('Creating map with data:', mapData); // Debug log
+      
+      const response = await fetch(`${API_BASE}/maps`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(mapData)
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.message || `HTTP error! status: ${response.status}`);
+      }
+
+      const responseData = await response.json();
+      if (responseData.success) {
+        // Show response in console for debugging
+        console.log('Map saved successfully:', responseData);
+        return responseData;
+      } else {
+        throw new Error(responseData.error || 'Failed to save map');
+      }
+    } catch (error) {
+      console.error('Error in createMap:', error);
+      throw error;
     }
-    return response.json();
   },
 
-  // Get all maps
+  // Rest of the service methods remain the same
   async getMaps() {
     const response = await fetch(`${API_BASE}/maps`, {
       credentials: 'include'
@@ -32,7 +68,6 @@ export const mapService = {
     return response.json();
   },
 
-  // Get specific map
   async getMap(id: string) {
     const response = await fetch(`${API_BASE}/maps/${id}`, {
       credentials: 'include'
@@ -44,7 +79,6 @@ export const mapService = {
     return response.json();
   },
 
-  // Update map
   async updateMap(id: string, mapData: Partial<SavedMap>) {
     const response = await fetch(`${API_BASE}/maps/${id}`, {
       method: 'PUT',
@@ -61,7 +95,6 @@ export const mapService = {
     return response.json();
   },
 
-  // Delete map
   async deleteMap(id: string) {
     const response = await fetch(`${API_BASE}/maps/${id}`, {
       method: 'DELETE',

@@ -302,7 +302,8 @@ app.post('/api/maps', requiresAuth(), async (req, res) => {
     console.log('Map created:', result.insertedId);
     res.json({ 
       success: true,
-      mapId: result.insertedId 
+      mapId: result.insertedId,
+      map: mapData 
     });
   } catch (error) {
     console.error('Error creating map:', error);

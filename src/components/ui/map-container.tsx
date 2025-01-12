@@ -24,7 +24,7 @@ import type {
   MultiLineString,
   FeatureCollection
 } from 'geojson';
-import { mapService } from '@/services/maps';
+import { mapService } from "../../services/map-service";
 import { PhotoModal } from '@/components/ui/photo-modal';
 import DistanceMarker from './distance-marker';
 import Supercluster from 'supercluster';
@@ -34,11 +34,10 @@ import { createRoot } from 'react-dom/client';
 // Type definitions for the component
 // --------------------------------------------
 interface MapRef {
-  // Methods exposed to parent components
-  handleGpxUpload: (content: string) => Promise<void>;  // Main GPX processing function
-  isReady: () => boolean;                               // Map readiness check
-  on: (event: string, callback: (event: any) => void) => void;    // Event listener binding
-  off: (event: string, callback: (event: any) => void) => void;   // Event listener removal
+  handleGpxUpload: (content: string) => Promise<void>;  
+  isReady: () => boolean;                               
+  on: (event: string, callback: (event: any) => void) => void;    
+  off: (event: string, callback: (event: any) => void) => void;   
   getCurrentRoutes: () => Array<{
     id: string;
     name: string;
@@ -51,6 +50,20 @@ interface MapRef {
   getPitch: () => number;
   getBearing: () => number;
   getStyle: () => string;
+  setViewState: (viewState: {
+    center: [number, number];
+    zoom: number;
+    pitch: number;
+    bearing: number;
+  }) => void;
+  clearRoutes: () => void;
+  loadRoute: (route: {
+    id: string;
+    name: string;
+    color: string;
+    isVisible: boolean;
+    gpxData: string;
+  }) => Promise<void>;
 }
 
 
@@ -913,27 +926,63 @@ console.log('[handleGpxUpload] => Photo markers added');
     isPublic: boolean;
   }) => {
     if (!map.current) return;
-
+  
     try {
       // Get current route data
       const source = map.current.getSource(routeSourceId) as mapboxgl.GeoJSONSource;
       const routeData = (source as any)._data as FeatureCollection;
-
-      // Create map data object
+  
+      // Get all routes with their GPX data from the route store
+      const routes = routeStore.map(route => ({
+        id: route.id,
+        name: route.name,
+        color: route.color,
+        isVisible: route.isVisible,
+        gpxData: route.gpxData
+      }));
+  
+      // Get current map view state
+      const center = map.current.getCenter();
+      const viewState = {
+        center: [center.lng, center.lat],
+        zoom: map.current.getZoom(),
+        pitch: map.current.getPitch(),
+        bearing: map.current.getBearing()
+      };
+  
+      // Get all photo markers currently on the map
+      const photos = Array.from(document.querySelectorAll('.photo-marker'))
+        .map(marker => {
+          const photo = (marker as any).photo;
+          if (!photo) return null;
+          return {
+            id: photo.id,
+            url: photo.url,
+            caption: photo.caption,
+            longitude: photo.longitude,
+            latitude: photo.latitude
+          };
+        })
+        .filter(Boolean); // Remove any nulls
+  
+      // Create complete map data object
       const mapData = {
         ...data,
-        route: routeData,
+        routes,
+        routeData, // Keep the GeoJSON data for surface types
+        photos,
+        viewState,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
-
+  
       // Save to database
       const savedMap = await mapService.createMap(mapData);
       console.log('Map saved successfully:', savedMap);
     } catch (error) {
       console.error('Error saving map:', error);
     }
-  }, []);
+  }, [routeStore]); // Add routeStore to dependencies
 
   // ------------------------------------------------------------------
   // Expose methods to parent component
@@ -985,6 +1034,36 @@ console.log('[handleGpxUpload] => Photo markers added');
       getStyle: () => {
         if (!map.current) return 'mapbox://styles/mapbox/satellite-streets-v12';
         return map.current.getStyle().name || 'mapbox://styles/mapbox/satellite-streets-v12';
+      },
+      setViewState: (viewState) => {
+        if (!map.current) return;
+        map.current.flyTo({
+          center: viewState.center,
+          zoom: viewState.zoom,
+          pitch: viewState.pitch,
+          bearing: viewState.bearing
+        });
+      },
+      clearRoutes: () => {
+        if (!map.current) return;
+        // Remove existing route layers
+        ['route-layer-white-stroke', 'route-layer', 'route-layer-unpaved'].forEach(layerId => {
+          if (map.current?.getLayer(layerId)) {
+            map.current.removeLayer(layerId);
+          }
+        });
+        if (map.current.getSource(routeSourceId)) {
+          map.current.removeSource(routeSourceId);
+        }
+        // Clear distance markers
+        document.querySelectorAll('.mapboxgl-marker:not(.photo-marker):not(.photo-marker-container)').forEach(marker => marker.remove());
+        setRouteStore([]);
+      },
+      loadRoute: async (route) => {
+        if (!map.current || !route.gpxData) return;
+        await handleGpxUpload(route.gpxData);
+        // Add to route store
+        setRouteStore(prev => [...prev, route]);
       }
     }),
     [handleGpxUpload, isReady, routeStore]
