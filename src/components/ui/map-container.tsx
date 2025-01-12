@@ -441,6 +441,8 @@ const clusterIndex = new Supercluster({
     const el = document.createElement('div');
     el.className = 'photo-marker';
     el.style.position = 'relative';
+    el.setAttribute('data-lat', photo.latitude.toString());
+    el.setAttribute('data-lon', photo.longitude.toString());
 
     const imgContainer = document.createElement('div');
     imgContainer.style.position = 'relative';
@@ -454,7 +456,7 @@ const clusterIndex = new Supercluster({
 
     const img = document.createElement('img');
     img.src = photo.url;
-    img.alt = photo.originalName;
+    img.alt = photo.originalName || '';
     img.style.width = '32px';
     img.style.height = '32px';
     img.style.objectFit = 'cover';
@@ -1019,26 +1021,37 @@ try {
   };
 
   // Get all photo markers currently on the map
-  const photos = Array.from(document.querySelectorAll('.photo-marker'))
+  const photoMarkers = document.querySelectorAll('.photo-marker');
+  const photos = Array.from(photoMarkers)
     .map(marker => {
-      const photo = (marker as any).photo;
-      if (!photo || !photo.id || !photo.url || !photo.longitude || !photo.latitude) {
+      const markerDiv = marker as HTMLDivElement;
+      const imgElement = markerDiv.querySelector('img');
+      if (!imgElement) return null;
+      
+      const photo = {
+        id: imgElement.src.split('/').pop()?.split('.')[0] || '',
+        url: imgElement.src,
+        caption: imgElement.alt || '',
+        location: {
+          lat: parseFloat(marker.getAttribute('data-lat') || '0'),
+          lon: parseFloat(marker.getAttribute('data-lon') || '0')
+        }
+      };
+  
+      if (!photo.id || !photo.url || !photo.location.lat || !photo.location.lon) {
         return null;
       }
-      return {
-        id: photo.id.toString(),
-        url: photo.url.toString(),
-        caption: photo.caption?.toString() || '',
-        longitude: parseFloat(photo.longitude),
-        latitude: parseFloat(photo.latitude)
-      };
+  
+      return photo;
     })
     .filter((p): p is {
       id: string;
       url: string;
       caption: string;
-      longitude: number;
-      latitude: number;
+      location: {
+        lat: number;
+        lon: number;
+      }
     } => p !== null);
 
   // Create complete map data object
