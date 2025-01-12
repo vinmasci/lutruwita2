@@ -762,6 +762,7 @@ for (const road of vantageRoads.features) {
         geometry: road.geometry,
         properties: road.properties
       };
+      
       // Ensure coordinates are properly typed as number[][]
       const lineCoords = road.geometry.type === 'LineString' 
         ? road.geometry.coordinates as number[][]
