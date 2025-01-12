@@ -59,6 +59,7 @@ interface MapRef {
   getPitch: () => number;
   getBearing: () => number;
   getStyle: () => string;
+  getMap: () => mapboxgl.Map | null;  // Add this line
   setViewState: (viewState: {
     center: [number, number];
     zoom: number;
@@ -491,13 +492,31 @@ const updateMarkers = useCallback((clusterIndex: Supercluster) => {
       document.body.appendChild(modalContainer);
       const modalRoot = createRoot(modalContainer);
 
-      el.addEventListener('click', (e) => {
-        e.stopPropagation();
-        map.current?.flyTo({
-          center: coordinates,
-          zoom: zoom + 2
-        });
-      });
+// Remove the existing flyTo on the click handler - let clustering handle zoom naturally
+el.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const coordinates = routeData.features.reduce((coords: number[][], feature) => {
+    if (feature.geometry.type === 'LineString') {
+      return [...coords, ...feature.geometry.coordinates];
+    }
+    return coords;
+  }, []);
+
+  if (coordinates.length > 0) {
+    const bounds = coordinates.reduce((bounds, coord) => {
+      return [
+        [Math.min(bounds[0][0], coord[0]), Math.min(bounds[0][1], coord[1])],
+        [Math.max(bounds[1][0], coord[0]), Math.max(bounds[1][1], coord[1])]
+      ];
+    }, [[coordinates[0][0], coordinates[0][1]], [coordinates[0][0], coordinates[0][1]]]);
+
+    map.current?.fitBounds(bounds, {
+      padding: 50,
+      duration: 1000
+    });
+  }
+});
+
     } else {
       const photo = cluster.properties.photo;
       const el = createMarkerElement(photo);
@@ -1168,11 +1187,34 @@ React.useImperativeHandle(
             map.current.removeSource(routeSourceId);
           }
 
-          // Add source with saved route data
-          map.current.addSource(routeSourceId, {
-            type: 'geojson',
-            data: routeData
-          });
+// Add source with saved route data
+map.current.addSource(routeSourceId, {
+  type: 'geojson',
+  data: routeData
+});
+
+// Calculate bounds from all coordinates in the route
+const coordinates = routeData.features.reduce((coords: number[][], feature) => {
+  if (feature.geometry.type === 'LineString') {
+    return [...coords, ...feature.geometry.coordinates];
+  }
+  return coords;
+}, []);
+
+// Fit the map to show the entire route with some padding
+if (coordinates.length > 0) {
+  const bounds = coordinates.reduce((bounds, coord) => {
+    return [
+      [Math.min(bounds[0][0], coord[0]), Math.min(bounds[0][1], coord[1])],
+      [Math.max(bounds[1][0], coord[0]), Math.max(bounds[1][1], coord[1])]
+    ];
+  }, [[coordinates[0][0], coordinates[0][1]], [coordinates[0][0], coordinates[0][1]]]);
+
+  map.current.fitBounds(bounds, {
+    padding: 50,
+    duration: 1000
+  });
+}
 
           // Add route layers
           map.current.addLayer({
@@ -1291,20 +1333,24 @@ if (savedPhotos?.length) {
     }
   }));
 
-            const clusterIndex = new Supercluster({
-              radius: 40,
-              maxZoom: 16,
-              minPoints: 2
-            });
-
-            clusterIndex.load(features);
-            const bounds = map.current.getBounds();
-            const zoom = Math.floor(map.current.getZoom());
-
-            const clusters = clusterIndex.getClusters(
-              [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
-              zoom
-            );
+  const clusterIndex = new Supercluster({
+    radius: 40,
+    maxZoom: 16,
+    minPoints: 2
+  });
+  
+  clusterIndex.load(features);
+  const bounds = map.current.getBounds();
+  const zoom = Math.floor(map.current.getZoom());
+  
+  // Add the event listeners here while keeping existing code
+  map.current?.on('moveend', () => updateMarkers(clusterIndex));
+  map.current?.on('zoomend', () => updateMarkers(clusterIndex));
+  
+  const clusters = clusterIndex.getClusters(
+    [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
+    zoom
+  );
 
             clusters.forEach(cluster => {
               const coordinates = cluster.geometry.coordinates as [number, number];

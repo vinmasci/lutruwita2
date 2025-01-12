@@ -115,8 +115,34 @@ const LoadMapModal = ({ open, onClose, mapRef, onLoadSuccess }: LoadMapModalProp
         await mapRef.current.loadRoute(route, map.routeData, map.photos);
       }
   
-      // Load the map's view state after routes are loaded
-      mapRef.current.setViewState(map.viewState);
+      // Add a small delay to ensure routes are fully processed
+      await new Promise(resolve => setTimeout(resolve, 100));
+  
+      // Calculate bounds from routeData
+      const coordinates = map.routeData.features.reduce((coords: number[][], feature) => {
+        if (feature.geometry.type === 'LineString') {
+          return [...coords, ...feature.geometry.coordinates];
+        }
+        return coords;
+      }, []);
+  
+      if (coordinates.length > 0) {
+        // Calculate bounds
+        const bounds = coordinates.reduce((bounds, coord) => {
+          return [
+            [Math.min(bounds[0][0], coord[0]), Math.min(bounds[0][1], coord[1])],
+            [Math.max(bounds[1][0], coord[0]), Math.max(bounds[1][1], coord[1])]
+          ];
+        }, [[coordinates[0][0], coordinates[0][1]], [coordinates[0][0], coordinates[0][1]]]);
+  
+        // Use fitBounds instead of setViewState
+        if (mapRef.current) {
+          mapRef.current.getMap()?.fitBounds(bounds, {
+            padding: 50,
+            duration: 1000
+          });
+        }
+      }
   
       onLoadSuccess();
       onClose();
@@ -127,7 +153,6 @@ const LoadMapModal = ({ open, onClose, mapRef, onLoadSuccess }: LoadMapModalProp
       setLoading(false);
     }
   };
-
   const handleDeleteMap = async (mapId: string, event: React.MouseEvent) => {
     event.stopPropagation();
     if (!confirm('Are you sure you want to delete this map?')) return;
