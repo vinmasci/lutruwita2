@@ -1570,8 +1570,6 @@ useEffect(() => {
     window.removeEventListener('keydown', handleKeyDown);
   };
 }, [handleMapClick, handleKeyDown]);
-        }
-      };
 
       const handleEscapeKey = (e: KeyboardEvent) => {
         if (e.key === 'Escape' && isPlacingPOI) {
