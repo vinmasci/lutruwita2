@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Modal, Box, Typography } from '@mui/material';
 import { POIIcons } from '@/types/note-types';
+import { useFloatingIcon } from '../../contexts/floating-icon-context';
 
 interface POIModalProps {
   open: boolean;
@@ -15,11 +16,13 @@ interface POIModalProps {
 export function POIModal({ open, onClose, onAdd }: POIModalProps) {
   const [selectedIcon, setSelectedIcon] = useState<string | null>(null);
   const [isPlacing, setIsPlacing] = useState(false);
+  const { showFloatingIcon, hideFloatingIcon } = useFloatingIcon();
 
   // Reset state when modal closes
   const handleClose = () => {
     setSelectedIcon(null);
     setIsPlacing(false);
+    hideFloatingIcon();
     onClose();
   };
 
@@ -27,12 +30,13 @@ export function POIModal({ open, onClose, onAdd }: POIModalProps) {
   const handleIconSelect = (iconType: string) => {
     setSelectedIcon(iconType);
     setIsPlacing(true);
-    document.body.style.cursor = 'crosshair';
+    showFloatingIcon(POIIcons[iconType]);
+    onClose(); // Close the modal when icon is selected
   };
 
   return (
     <Modal
-      open={open}
+      open={open && !isPlacing} // Close modal when placing
       onClose={handleClose}
       aria-labelledby="poi-modal-title"
     >
