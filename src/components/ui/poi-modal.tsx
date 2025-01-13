@@ -34,6 +34,7 @@ export function POIModal({ open, onClose, onAdd }: POIModalProps) {
   const handleIconSelect = (iconType: string) => {
     setSelectedIcon(iconType);
     showFloatingIcon(POIIcons[iconType]);
+    setMode('details'); // Set to details mode for after placement
     onClose(); // Close modal during placement
   };
 

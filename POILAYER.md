@@ -1,91 +1,105 @@
-# POI (Points of Interest) Implementation Status
+# POI Layer Implementation Status
 
-## Overview & Goals
-We're implementing a Points of Interest (POI) system that allows users to add markers to the map. The goal is to create an intuitive user interface where users can:
-1. Click a POI button in the sidebar
-2. See a modal with available POI icons
-3. Select an icon, which then follows their cursor
-4. Click anywhere on the map to place the POI
-5. Enter a name and description for the POI
+## Current Implementation ✅
+1. **Visual Structure**
+   - Material Icons integration for POI symbols
+   - Tooltip-style marker design with dark background and arrow pointer
+   - Icon follows cursor during placement phase
+   - Icons categorized into:
+     - Infrastructure (Water Point, Toilets, etc.)
+     - Services (Cafe, Restaurant, etc.)
+     - Accommodation (Campground, Hotels, etc.)
+     - Natural Features (Lookout, Beach, etc.)
+     - Information (Visitor Center, Trail Head, etc.)
 
-## Current Progress
+2. **User Interface**
+   - Grid layout for icon selection
+   - Modal-based interface for POI selection
+   - Floating icon preview while placing
+   - Name and description input fields
 
-### Completed ✅
-1. Created POI type definitions in `note-types.ts`
-2. Added Material Icons CDN for icon display
-3. Created initial POI modal with icon grid display
-4. Basic modal layout with icon selection implemented
+## Current Issues 🔄
+1. **Placement Workflow**
+   - Icon selection works but placement is problematic
+   - Escape key handling not functioning
+   - Modal state management needs improvement
+   - Cannot currently place POIs on map effectively
 
-### Current Issues 🔄
-1. The screen went blank when trying to implement the floating icon directly in the modal
-2. Need to properly integrate the floating icon functionality
-3. Modal structure needs to be simplified to prevent Material UI errors
+2. **Event Handling**
+   - Click events not properly cleaned up
+   - Event listener cleanup causing errors
+   - Modal state and placement state not properly synchronized
 
-### Not Yet Implemented ❌
-1. Floating icon context and provider system
-2. POI placement on map click
-3. Name/description input after placement
-4. POI saving functionality
-5. POI marker rendering on the map
-6. Integration with the map's save/load system
+## Next Steps 📋
 
-## Next Steps
+### Immediate Fixes Needed
+1. **Event Handler Cleanup**
+   - Properly implement click event handlers
+   - Add proper cleanup for event listeners
+   - Fix event propagation issues
 
-### 1. Implement Floating Icon System
-- Need to implement the floating icon context code provided
-- Update POI modal to use the floating icon context
-- Test icon selection and cursor following behavior
+2. **State Management**
+   - Better coordinate modal state with placement state
+   - Improve state transitions between selection and placement
+   - Handle cancel/escape actions properly
 
-### 2. Implement Map Click Handler
-- Add functionality to detect map clicks when in POI placing mode
-- Show name/description input after successful placement
-- Create visual marker at clicked location
+3. **Position Handling**
+   - Fix position tracking during placement
+   - Ensure POIs are placed at correct coordinates
+   - Implement proper coordinate transformation
 
-### 3. Save & Load System Integration
-- Add POIs to the SavedMap interface
-- Implement POI saving functionality
-- Add POI loading and rendering on map load
+### Future Enhancements
+1. **Interaction Features**
+   - Add POI editing capability
+   - Implement POI deletion
+   - Add POI click interactions
+   - Consider POI information display on hover
 
-## Help Needed
-1. Assistance implementing the floating icon context integration:
-   ```typescript
-   import { useFloatingIcon } from '../../contexts/floating-icon-context';
-   // Need help implementing the handleIconSelect and handleClose functions
-   ```
-2. Guidance on proper modal state management
-3. Help with map click event handling for POI placement
+2. **Data Persistence**
+   - Implement save/load functionality for POIs
+   - Add POI data to map save format
+   - Consider POI categories in saved data
 
-## Questions for Next Session
-1. Should POIs be clustered at certain zoom levels?
-2. How should we handle POI editing/deletion?
-3. Should we add categories/filtering for POIs?
+3. **UI Improvements**
+   - Add POI filtering by category
+   - Implement POI search functionality
+   - Consider POI list view
+   - Add category color coding
 
-## Technical Considerations
-- Need to ensure POI markers don't interfere with existing photo markers
-- Consider performance with multiple POIs on the map
-- Need to handle modal/floating icon state properly to prevent UI glitches
+## Code Changes Required
+1. Update event handler implementation in map-container.tsx
+2. Fix state management in POIModal component
+3. Improve position handling in handleAddPOI function
+4. Add proper cleanup logic for event listeners
+5. Implement Escape key handling
+6. Fix modal state transitions
 
+## Technical Notes
+- Currently using Material Icons for POI symbols
+- POIs are rendered using mapbox-gl markers
+- State management handled through React useState
+- Event handling through mapbox-gl events
+- Position data stored in lat/lon format
 
-I got stuck here:
-// In poi-modal.tsx, update the handleIconSelect function:
-import { useFloatingIcon } from '../../contexts/floating-icon-context';
+## Known Bugs
+1. POI placement not registering correctly
+2. Escape key not canceling placement
+3. Modal state sometimes out of sync
+4. Event listeners not properly cleaned up
+5. Position data sometimes incorrect
 
-export function POIModal({ open, onClose, onAdd }: POIModalProps) {
-  const { showFloatingIcon, hideFloatingIcon } = useFloatingIcon();
-  
-  const handleIconSelect = (iconType: string) => {
-    setSelectedIcon(iconType);
-    setIsPlacing(true);
-    showFloatingIcon(POIIcons[iconType]);
-    onClose(); // Close the modal when icon is selected
-  };
+## Testing Required
+1. Test POI placement workflow
+2. Verify escape key functionality
+3. Test modal state transitions
+4. Verify position accuracy
+5. Test event cleanup
+6. Verify POI save/load functionality
 
-  const handleClose = () => {
-    setSelectedIcon(null);
-    setIsPlacing(false);
-    hideFloatingIcon();
-    onClose();
-  };
+## Dependencies
+- Material Icons
+- Mapbox GL JS
+- React
+- Material-UI components
 
-  // ... rest of your modal code
-}
+Would you like me to help implement any of these fixes or explain any part in more detail?

@@ -1011,9 +1011,7 @@ const [routeStore, setRouteStore] = useState<Route[]>([]);
 
 // POI handler
 const handleAddPOI = useCallback(async (poiData: Omit<POI, 'id' | 'createdAt' | 'updatedAt'>) => {
-  if (!map.current) return;
-
-  const center = map.current.getCenter();
+  if (!map.current || !isPlacingPOI?.position) return;
   
   const newPOI: POI = {
     ...poiData,
@@ -1021,8 +1019,8 @@ const handleAddPOI = useCallback(async (poiData: Omit<POI, 'id' | 'createdAt' | 
     createdAt: new Date(),
     updatedAt: new Date(),
     location: {
-      lat: center.lat,
-      lon: center.lng
+      lat: isPlacingPOI.position.lat,
+      lon: isPlacingPOI.position.lon
     }
   };
 
@@ -1033,7 +1031,7 @@ const handleAddPOI = useCallback(async (poiData: Omit<POI, 'id' | 'createdAt' | 
   addPOIMarkerToMap(newPOI);
 
   return newPOI;
-}, [map, addPOIMarkerToMap]);
+}, [map, addPOIMarkerToMap, isPlacingPOI]);
 
 // Save map handler
 const handleSaveMap = useCallback(async (data: {
@@ -1534,13 +1532,50 @@ if (savedPhotos?.length) {
 
       map.current = newMap;
 
-      // Add POI click handler and escape key handler
-      const handleMapClick = (e: mapboxgl.MapMouseEvent) => {
-        if (isPlacingPOI?.iconType) {
-          const position = {
-            lat: e.lngLat.lat,
-            lon: e.lngLat.lng
-          };
+// Add POI click handler and escape key handler
+const handleMapClick = useCallback((e: mapboxgl.MapMouseEvent) => {
+  if (isPlacingPOI?.iconType) {
+    e.preventDefault();
+    const position = {
+      lat: e.lngLat.lat,
+      lon: e.lngLat.lng
+    };
+    
+    setPoiModalOpen(true);
+    setIsPlacingPOI({
+      ...isPlacingPOI,
+      position
+    });
+    
+    // Reset cursor and hide floating icon
+    document.body.style.cursor = 'default';
+    hideFloatingIcon?.();
+  }
+}, [isPlacingPOI, hideFloatingIcon]);
+
+const handleKeyDown = useCallback((e: KeyboardEvent) => {
+  if (e.key === 'Escape' && isPlacingPOI) {
+    e.preventDefault();
+    setIsPlacingPOI(null);
+    hideFloatingIcon?.();
+    document.body.style.cursor = 'default';
+  }
+}, [isPlacingPOI, hideFloatingIcon]);
+
+// Add cleanup for events
+useEffect(() => {
+  if (!map.current) return;
+
+  map.current.on('click', handleMapClick);
+  window.addEventListener('keydown', handleKeyDown);
+
+  return () => {
+    if (map.current) {
+      map.current.off('click', handleMapClick);
+    }
+    window.removeEventListener('keydown', handleKeyDown);
+  };
+}, [handleMapClick, handleKeyDown]);
           
           // Show modal for name and description
           setPoiModalOpen(true);
