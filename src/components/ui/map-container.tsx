@@ -32,7 +32,6 @@ import { POIModal } from '@/components/ui/poi-modal';
 import DistanceMarker from './distance-marker';
 import Supercluster from 'supercluster';
 import { createRoot } from 'react-dom/client';
-import { useFloatingIcon } from '@/contexts/floating-icon-context';
 
 // --------------------------------------------
 // Type definitions for the component
@@ -50,7 +49,7 @@ interface MapRef {
     gpxData: string;
     gpxFilePath?: string;
   }>;
-  getCurrentPOIs: () => POI[];  // Add this line,
+  getCurrentPOIs: () => POI[];  // Add this line
   getCurrentPhotos: () => Array<{
     id: string;
     url: string;
@@ -211,25 +210,24 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const cachedRoadsRef = useRef<FeatureCollection | null>(null);
-  const { hideFloatingIcon } = useFloatingIcon();  // Add this line
   const [routeName, setRouteName] = useState<string>("");
 
-  // State management
-  const [isMapReady, setIsMapReady] = React.useState(false);
-  const [streetsLayersLoaded, setStreetsLayersLoaded] = React.useState(false);
-  const [isUploading, setIsUploading] = React.useState(false);
-  const [currentPhotos, setCurrentPhotos] = useState<PhotoDocument[]>([]);
-  const [currentPOIs, setCurrentPOIs] = useState<POI[]>([]);
-  const [poiModalOpen, setPoiModalOpen] = useState(false);
-  const [isPlacingPOI, setIsPlacingPOI] = useState<{
-    iconType: string;
-    position: { lng: number; lat: number } | null;
-  } | null>(null);
-  const [surfaceProgress, setSurfaceProgress] = React.useState<SurfaceProgressState>({
-    isProcessing: false,
-    progress: 0,
-    total: 0
-  });
+// State management
+const [isMapReady, setIsMapReady] = React.useState(false);
+const [streetsLayersLoaded, setStreetsLayersLoaded] = React.useState(false);
+const [isUploading, setIsUploading] = React.useState(false);
+const [currentPhotos, setCurrentPhotos] = useState<PhotoDocument[]>([]);
+const [currentPOIs, setCurrentPOIs] = useState<POI[]>([]);
+const [poiModalOpen, setPoiModalOpen] = useState(false);
+const [isPlacingPOI, setIsPlacingPOI] = useState<{
+  iconType: string;
+  position: { lng: number; lat: number } | null;
+} | null>(null);
+const [surfaceProgress, setSurfaceProgress] = React.useState<SurfaceProgressState>({
+  isProcessing: false,
+  progress: 0,
+  total: 0
+});
 
   // ------------------------------------------------------------------
   // isReady => Checks if map and all layers are fully loaded
@@ -1137,8 +1135,8 @@ React.useImperativeHandle(
     handleGpxUpload,
     isReady,
     getMap: () => map.current,
-    handleAddPOI,
-    getCurrentPOIs: () => currentPOIs,
+    handleAddPOI,  // Add this line
+    getCurrentPOIs: () => currentPOIs,  // Add this line
     on: (evt: string, cb: (event: any) => void) => {
       if (map.current) {
         map.current.on(evt, cb);
@@ -1207,14 +1205,14 @@ React.useImperativeHandle(
       }
       // Clear distance markers
       document.querySelectorAll('.mapboxgl-marker:not(.photo-marker):not(.photo-marker-container)').forEach(marker => marker.remove());
-      // Clear photo markers
-      document.querySelectorAll('.photo-marker, .photo-marker-container').forEach(el => el.remove());
-      document.querySelectorAll('.photo-modal-container').forEach(el => el.remove());
-      // Clear POI markers
-      document.querySelectorAll('.poi-marker-container').forEach(el => el.remove());
-      setRouteStore([]);
-      setCurrentPhotos([]); // Clear photo state
-      setCurrentPOIs([]); // Clear POI state
+// Clear photo markers
+document.querySelectorAll('.photo-marker, .photo-marker-container').forEach(el => el.remove());
+document.querySelectorAll('.photo-modal-container').forEach(el => el.remove());
+// Clear POI markers
+document.querySelectorAll('.poi-marker-container').forEach(el => el.remove());
+setRouteStore([]);
+setCurrentPhotos([]); // Clear photo state
+setCurrentPOIs([]); // Clear POI state
     },
     loadRoute: async (route, routeData?: FeatureCollection, savedPhotos?: Array<{
       id: string;
@@ -1241,34 +1239,34 @@ React.useImperativeHandle(
             map.current.removeSource(routeSourceId);
           }
 
-          // Add source with saved route data
-          map.current.addSource(routeSourceId, {
-            type: 'geojson',
-            data: routeData
-          });
+// Add source with saved route data
+map.current.addSource(routeSourceId, {
+  type: 'geojson',
+  data: routeData
+});
 
-          // Calculate bounds from all coordinates in the route
-          const coordinates = routeData.features.reduce((coords: number[][], feature) => {
-            if (feature.geometry.type === 'LineString') {
-              return [...coords, ...feature.geometry.coordinates];
-            }
-            return coords;
-          }, []);
+// Calculate bounds from all coordinates in the route
+const coordinates = routeData.features.reduce((coords: number[][], feature) => {
+  if (feature.geometry.type === 'LineString') {
+    return [...coords, ...feature.geometry.coordinates];
+  }
+  return coords;
+}, []);
 
-          // Fit the map to show the entire route with some padding
-          if (coordinates.length > 0) {
-            const bounds = coordinates.reduce((bounds, coord) => {
-              return [
-                [Math.min(bounds[0][0], coord[0]), Math.min(bounds[0][1], coord[1])],
-                [Math.max(bounds[1][0], coord[0]), Math.max(bounds[1][1], coord[1])]
-              ];
-            }, [[coordinates[0][0], coordinates[0][1]], [coordinates[0][0], coordinates[0][1]]]);
+// Fit the map to show the entire route with some padding
+if (coordinates.length > 0) {
+  const bounds = coordinates.reduce((bounds, coord) => {
+    return [
+      [Math.min(bounds[0][0], coord[0]), Math.min(bounds[0][1], coord[1])],
+      [Math.max(bounds[1][0], coord[0]), Math.max(bounds[1][1], coord[1])]
+    ];
+  }, [[coordinates[0][0], coordinates[0][1]], [coordinates[0][0], coordinates[0][1]]]);
 
-            map.current.fitBounds(bounds, {
-              padding: 50,
-              duration: 1000
-            });
-          }
+  map.current.fitBounds(bounds, {
+    padding: 50,
+    duration: 1000
+  });
+}
 
           // Add route layers
           map.current.addLayer({
@@ -1354,56 +1352,57 @@ React.useImperativeHandle(
           });
 
           // If we have saved photos, use them directly
-          if (savedPhotos?.length) {
-            setCurrentPhotos(savedPhotos.map(photo => ({
-              _id: photo.id,
-              url: photo.url,
-              originalName: photo.caption || '',
-              latitude: photo.latitude || photo.location?.lat,  // Handle both structures
-              longitude: photo.longitude || photo.location?.lon, // Handle both structures
-              uploadedAt: new Date().toISOString()
-            })));
+// Inside loadRoute
+if (savedPhotos?.length) {
+  setCurrentPhotos(savedPhotos.map(photo => ({
+    _id: photo.id,
+    url: photo.url,
+    originalName: photo.caption || '',
+    latitude: photo.latitude || photo.location?.lat,  // Handle both structures
+    longitude: photo.longitude || photo.location?.lon, // Handle both structures
+    uploadedAt: new Date().toISOString()
+  })));
 
-            // Create markers for saved photos
-            const features = savedPhotos.map((photo, index) => ({
-              type: 'Feature' as const,
-              properties: {
-                id: `photo-${index}`,
-                photo: {
-                  _id: photo.id,
-                  url: photo.url,
-                  originalName: photo.caption || '',
-                  latitude: photo.latitude || photo.location?.lat,  // Handle both structures
-                  longitude: photo.longitude || photo.location?.lon // Handle both structures
-                }
-              },
-              geometry: {
-                type: 'Point' as const,
-                coordinates: [
-                  photo.longitude || photo.location?.lon,
-                  photo.latitude || photo.location?.lat
-                ]
-              }
-            }));
+  // Create markers for saved photos
+  const features = savedPhotos.map((photo, index) => ({
+    type: 'Feature' as const,
+    properties: {
+      id: `photo-${index}`,
+      photo: {
+        _id: photo.id,
+        url: photo.url,
+        originalName: photo.caption || '',
+        latitude: photo.latitude || photo.location?.lat,  // Handle both structures
+        longitude: photo.longitude || photo.location?.lon // Handle both structures
+      }
+    },
+    geometry: {
+      type: 'Point' as const,
+      coordinates: [
+        photo.longitude || photo.location?.lon,
+        photo.latitude || photo.location?.lat
+      ]
+    }
+  }));
 
-            const clusterIndex = new Supercluster({
-              radius: 40,
-              maxZoom: 16,
-              minPoints: 2
-            });
-            
-            clusterIndex.load(features);
-            const bounds = map.current.getBounds();
-            const zoom = Math.floor(map.current.getZoom());
-            
-            // Add the event listeners here while keeping existing code
-            map.current?.on('moveend', () => updateMarkers(clusterIndex));
-            map.current?.on('zoomend', () => updateMarkers(clusterIndex));
-            
-            const clusters = clusterIndex.getClusters(
-              [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
-              zoom
-            );
+  const clusterIndex = new Supercluster({
+    radius: 40,
+    maxZoom: 16,
+    minPoints: 2
+  });
+  
+  clusterIndex.load(features);
+  const bounds = map.current.getBounds();
+  const zoom = Math.floor(map.current.getZoom());
+  
+  // Add the event listeners here while keeping existing code
+  map.current?.on('moveend', () => updateMarkers(clusterIndex));
+  map.current?.on('zoomend', () => updateMarkers(clusterIndex));
+  
+  const clusters = clusterIndex.getClusters(
+    [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
+    zoom
+  );
 
             clusters.forEach(cluster => {
               const coordinates = cluster.geometry.coordinates as [number, number];
@@ -1492,7 +1491,7 @@ React.useImperativeHandle(
         }
 
         setRouteStore(prev => [...prev, route]);
-        setRouteName(route.name);
+        setRouteName(route.name);  // Add this line here
 
       } catch (error) {
         console.error('Error loading route:', error);
@@ -1518,7 +1517,7 @@ React.useImperativeHandle(
     }
     try {
       mapboxgl.accessToken = mapboxToken;
-    
+
       // Create new map instance
       const newMap = new mapboxgl.Map({
         container: mapContainer.current,
@@ -1530,47 +1529,28 @@ React.useImperativeHandle(
           bearing: 0
         }
       } as any);
-    
+
       map.current = newMap;
-    } catch (err) {
-      console.error('[MapContainer] Error creating map:', err);
-    }
 
-// Add POI click handler and escape key handler
-const handleMapClick = useCallback((e: mapboxgl.MapMouseEvent) => {
-  if (isPlacingPOI?.iconType) {
-    e.preventDefault();
-    const position = {
-      lat: e.lngLat.lat,
-      lon: e.lngLat.lng
-    };
-    
-    setPoiModalOpen(true);
-    setIsPlacingPOI({
-      ...isPlacingPOI,
-      position
-    });
-    
-    // Reset cursor and hide floating icon
-    document.body.style.cursor = 'default';
-    hideFloatingIcon?.();
-  }
-}, [isPlacingPOI, hideFloatingIcon]); // Add dependencies and semicolon
-
-// Add cleanup for events
-useEffect(() => {
-  if (!map.current) return;
-
-  map.current.on('click', handleMapClick);
-  window.addEventListener('keydown', handleKeyDown);
-
-  return () => {
-    if (map.current) {
-      map.current.off('click', handleMapClick);
-    }
-    window.removeEventListener('keydown', handleKeyDown);
-  };
-}, [handleMapClick, handleKeyDown]);
+      // Add POI click handler and escape key handler
+      const handleMapClick = (e: mapboxgl.MapMouseEvent) => {
+        if (isPlacingPOI?.iconType) {
+          const position = {
+            lat: e.lngLat.lat,
+            lon: e.lngLat.lng
+          };
+          
+          // Show modal for name and description
+          setPoiModalOpen(true);
+          setIsPlacingPOI({
+            ...isPlacingPOI,
+            position
+          });
+          
+          // Reset cursor
+          document.body.style.cursor = 'default';
+        }
+      };
 
       const handleEscapeKey = (e: KeyboardEvent) => {
         if (e.key === 'Escape' && isPlacingPOI) {
@@ -1716,7 +1696,13 @@ distanceMarkers.forEach(marker => marker.remove());
         .addTo(newMap);
     });
   }
+
+
 });
+
+} catch (err) {
+console.error('[MapContainer] Error creating map:', err);
+}
 
     // Cleanup on unmount
     return () => {
