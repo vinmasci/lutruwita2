@@ -1534,26 +1534,43 @@ if (savedPhotos?.length) {
 
       map.current = newMap;
 
-// Add POI click handler
-newMap.on('click', (e) => {
-  if (isPlacingPOI?.iconType) {
-    const position = {
-      lat: e.lngLat.lat,
-      lon: e.lngLat.lng
-    };
-    
-    // Show modal for name and description
-    setPoiModalOpen(true);
-    setIsPlacingPOI({
-      ...isPlacingPOI,
-      position
-    });
-    
-    // Reset cursor and hide floating icon
-    document.body.style.cursor = 'default';
-    hideFloatingIcon?.();
-  }
-});
+      // Add POI click handler and escape key handler
+      const handleMapClick = (e: mapboxgl.MapMouseEvent) => {
+        if (isPlacingPOI?.iconType) {
+          const position = {
+            lat: e.lngLat.lat,
+            lon: e.lngLat.lng
+          };
+          
+          // Show modal for name and description
+          setPoiModalOpen(true);
+          setIsPlacingPOI({
+            ...isPlacingPOI,
+            position
+          });
+          
+          // Reset cursor
+          document.body.style.cursor = 'default';
+        }
+      };
+
+      const handleEscapeKey = (e: KeyboardEvent) => {
+        if (e.key === 'Escape' && isPlacingPOI) {
+          // Cancel POI placement
+          setIsPlacingPOI(null);
+          document.body.style.cursor = 'default';
+        }
+      };
+
+      newMap.on('click', handleMapClick);
+      window.addEventListener('keydown', handleEscapeKey);
+
+      // Store the original remove function
+      const originalRemove = map.current.remove.bind(map.current);
+      map.current.remove = () => {
+        window.removeEventListener('keydown', handleEscapeKey);
+        originalRemove();
+      };
 
       newMap.on('load', () => {
         // Add terrain source and layer
@@ -1710,7 +1727,11 @@ console.error('[MapContainer] Error creating map:', err);
         open={poiModalOpen}
         onClose={() => {
           setPoiModalOpen(false);
-          setIsPlacingPOI(null);
+          // Only clear placement state if we haven't selected a position yet
+          if (!isPlacingPOI?.position) {
+            setIsPlacingPOI(null);
+            document.body.style.cursor = 'default';
+          }
         }}
         onAdd={(poiData) => {
           if (isPlacingPOI?.position) {
