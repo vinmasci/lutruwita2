@@ -32,6 +32,7 @@ import { POIModal } from '@/components/ui/poi-modal';
 import DistanceMarker from './distance-marker';
 import Supercluster from 'supercluster';
 import { createRoot } from 'react-dom/client';
+import { useFloatingIcon } from '@/contexts/floating-icon-context';
 
 // --------------------------------------------
 // Type definitions for the component
@@ -49,7 +50,7 @@ interface MapRef {
     gpxData: string;
     gpxFilePath?: string;
   }>;
-  getCurrentPOIs: () => POI[];  // Add this line
+  getCurrentPOIs: () => POI[];  // Add this line,
   getCurrentPhotos: () => Array<{
     id: string;
     url: string;
@@ -228,6 +229,9 @@ const [surfaceProgress, setSurfaceProgress] = React.useState<SurfaceProgressStat
   progress: 0,
   total: 0
 });
+
+  // Add this line here
+  const { hideFloatingIcon } = useFloatingIcon();
 
   // ------------------------------------------------------------------
   // isReady => Checks if map and all layers are fully loaded
@@ -1135,8 +1139,8 @@ React.useImperativeHandle(
     handleGpxUpload,
     isReady,
     getMap: () => map.current,
-    handleAddPOI,  // Add this line
-    getCurrentPOIs: () => currentPOIs,  // Add this line
+    handleAddPOI,
+    getCurrentPOIs: () => currentPOIs,
     on: (evt: string, cb: (event: any) => void) => {
       if (map.current) {
         map.current.on(evt, cb);
@@ -1205,14 +1209,14 @@ React.useImperativeHandle(
       }
       // Clear distance markers
       document.querySelectorAll('.mapboxgl-marker:not(.photo-marker):not(.photo-marker-container)').forEach(marker => marker.remove());
-// Clear photo markers
-document.querySelectorAll('.photo-marker, .photo-marker-container').forEach(el => el.remove());
-document.querySelectorAll('.photo-modal-container').forEach(el => el.remove());
-// Clear POI markers
-document.querySelectorAll('.poi-marker-container').forEach(el => el.remove());
-setRouteStore([]);
-setCurrentPhotos([]); // Clear photo state
-setCurrentPOIs([]); // Clear POI state
+      // Clear photo markers
+      document.querySelectorAll('.photo-marker, .photo-marker-container').forEach(el => el.remove());
+      document.querySelectorAll('.photo-modal-container').forEach(el => el.remove());
+      // Clear POI markers
+      document.querySelectorAll('.poi-marker-container').forEach(el => el.remove());
+      setRouteStore([]);
+      setCurrentPhotos([]); // Clear photo state
+      setCurrentPOIs([]); // Clear POI state
     },
     loadRoute: async (route, routeData?: FeatureCollection, savedPhotos?: Array<{
       id: string;
@@ -1239,34 +1243,34 @@ setCurrentPOIs([]); // Clear POI state
             map.current.removeSource(routeSourceId);
           }
 
-// Add source with saved route data
-map.current.addSource(routeSourceId, {
-  type: 'geojson',
-  data: routeData
-});
+          // Add source with saved route data
+          map.current.addSource(routeSourceId, {
+            type: 'geojson',
+            data: routeData
+          });
 
-// Calculate bounds from all coordinates in the route
-const coordinates = routeData.features.reduce((coords: number[][], feature) => {
-  if (feature.geometry.type === 'LineString') {
-    return [...coords, ...feature.geometry.coordinates];
-  }
-  return coords;
-}, []);
+          // Calculate bounds from all coordinates in the route
+          const coordinates = routeData.features.reduce((coords: number[][], feature) => {
+            if (feature.geometry.type === 'LineString') {
+              return [...coords, ...feature.geometry.coordinates];
+            }
+            return coords;
+          }, []);
 
-// Fit the map to show the entire route with some padding
-if (coordinates.length > 0) {
-  const bounds = coordinates.reduce((bounds, coord) => {
-    return [
-      [Math.min(bounds[0][0], coord[0]), Math.min(bounds[0][1], coord[1])],
-      [Math.max(bounds[1][0], coord[0]), Math.max(bounds[1][1], coord[1])]
-    ];
-  }, [[coordinates[0][0], coordinates[0][1]], [coordinates[0][0], coordinates[0][1]]]);
+          // Fit the map to show the entire route with some padding
+          if (coordinates.length > 0) {
+            const bounds = coordinates.reduce((bounds, coord) => {
+              return [
+                [Math.min(bounds[0][0], coord[0]), Math.min(bounds[0][1], coord[1])],
+                [Math.max(bounds[1][0], coord[0]), Math.max(bounds[1][1], coord[1])]
+              ];
+            }, [[coordinates[0][0], coordinates[0][1]], [coordinates[0][0], coordinates[0][1]]]);
 
-  map.current.fitBounds(bounds, {
-    padding: 50,
-    duration: 1000
-  });
-}
+            map.current.fitBounds(bounds, {
+              padding: 50,
+              duration: 1000
+            });
+          }
 
           // Add route layers
           map.current.addLayer({
@@ -1352,57 +1356,56 @@ if (coordinates.length > 0) {
           });
 
           // If we have saved photos, use them directly
-// Inside loadRoute
-if (savedPhotos?.length) {
-  setCurrentPhotos(savedPhotos.map(photo => ({
-    _id: photo.id,
-    url: photo.url,
-    originalName: photo.caption || '',
-    latitude: photo.latitude || photo.location?.lat,  // Handle both structures
-    longitude: photo.longitude || photo.location?.lon, // Handle both structures
-    uploadedAt: new Date().toISOString()
-  })));
+          if (savedPhotos?.length) {
+            setCurrentPhotos(savedPhotos.map(photo => ({
+              _id: photo.id,
+              url: photo.url,
+              originalName: photo.caption || '',
+              latitude: photo.latitude || photo.location?.lat,  // Handle both structures
+              longitude: photo.longitude || photo.location?.lon, // Handle both structures
+              uploadedAt: new Date().toISOString()
+            })));
 
-  // Create markers for saved photos
-  const features = savedPhotos.map((photo, index) => ({
-    type: 'Feature' as const,
-    properties: {
-      id: `photo-${index}`,
-      photo: {
-        _id: photo.id,
-        url: photo.url,
-        originalName: photo.caption || '',
-        latitude: photo.latitude || photo.location?.lat,  // Handle both structures
-        longitude: photo.longitude || photo.location?.lon // Handle both structures
-      }
-    },
-    geometry: {
-      type: 'Point' as const,
-      coordinates: [
-        photo.longitude || photo.location?.lon,
-        photo.latitude || photo.location?.lat
-      ]
-    }
-  }));
+            // Create markers for saved photos
+            const features = savedPhotos.map((photo, index) => ({
+              type: 'Feature' as const,
+              properties: {
+                id: `photo-${index}`,
+                photo: {
+                  _id: photo.id,
+                  url: photo.url,
+                  originalName: photo.caption || '',
+                  latitude: photo.latitude || photo.location?.lat,  // Handle both structures
+                  longitude: photo.longitude || photo.location?.lon // Handle both structures
+                }
+              },
+              geometry: {
+                type: 'Point' as const,
+                coordinates: [
+                  photo.longitude || photo.location?.lon,
+                  photo.latitude || photo.location?.lat
+                ]
+              }
+            }));
 
-  const clusterIndex = new Supercluster({
-    radius: 40,
-    maxZoom: 16,
-    minPoints: 2
-  });
-  
-  clusterIndex.load(features);
-  const bounds = map.current.getBounds();
-  const zoom = Math.floor(map.current.getZoom());
-  
-  // Add the event listeners here while keeping existing code
-  map.current?.on('moveend', () => updateMarkers(clusterIndex));
-  map.current?.on('zoomend', () => updateMarkers(clusterIndex));
-  
-  const clusters = clusterIndex.getClusters(
-    [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
-    zoom
-  );
+            const clusterIndex = new Supercluster({
+              radius: 40,
+              maxZoom: 16,
+              minPoints: 2
+            });
+            
+            clusterIndex.load(features);
+            const bounds = map.current.getBounds();
+            const zoom = Math.floor(map.current.getZoom());
+            
+            // Add the event listeners here while keeping existing code
+            map.current?.on('moveend', () => updateMarkers(clusterIndex));
+            map.current?.on('zoomend', () => updateMarkers(clusterIndex));
+            
+            const clusters = clusterIndex.getClusters(
+              [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
+              zoom
+            );
 
             clusters.forEach(cluster => {
               const coordinates = cluster.geometry.coordinates as [number, number];
@@ -1491,7 +1494,7 @@ if (savedPhotos?.length) {
         }
 
         setRouteStore(prev => [...prev, route]);
-        setRouteName(route.name);  // Add this line here
+        setRouteName(route.name);
 
       } catch (error) {
         console.error('Error loading route:', error);
@@ -1715,13 +1718,7 @@ distanceMarkers.forEach(marker => marker.remove());
         .addTo(newMap);
     });
   }
-
-
 });
-
-} catch (err) {
-console.error('[MapContainer] Error creating map:', err);
-}
 
     // Cleanup on unmount
     return () => {
