@@ -211,27 +211,25 @@ const MapContainer = forwardRef<MapRef>((props, ref) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const cachedRoadsRef = useRef<FeatureCollection | null>(null);
+  const { hideFloatingIcon } = useFloatingIcon();  // Add this line
   const [routeName, setRouteName] = useState<string>("");
 
-// State management
-const [isMapReady, setIsMapReady] = React.useState(false);
-const [streetsLayersLoaded, setStreetsLayersLoaded] = React.useState(false);
-const [isUploading, setIsUploading] = React.useState(false);
-const [currentPhotos, setCurrentPhotos] = useState<PhotoDocument[]>([]);
-const [currentPOIs, setCurrentPOIs] = useState<POI[]>([]);
-const [poiModalOpen, setPoiModalOpen] = useState(false);
-const [isPlacingPOI, setIsPlacingPOI] = useState<{
-  iconType: string;
-  position: { lng: number; lat: number } | null;
-} | null>(null);
-const [surfaceProgress, setSurfaceProgress] = React.useState<SurfaceProgressState>({
-  isProcessing: false,
-  progress: 0,
-  total: 0
-});
-
-  // Add this line here
-  const { hideFloatingIcon } = useFloatingIcon();
+  // State management
+  const [isMapReady, setIsMapReady] = React.useState(false);
+  const [streetsLayersLoaded, setStreetsLayersLoaded] = React.useState(false);
+  const [isUploading, setIsUploading] = React.useState(false);
+  const [currentPhotos, setCurrentPhotos] = useState<PhotoDocument[]>([]);
+  const [currentPOIs, setCurrentPOIs] = useState<POI[]>([]);
+  const [poiModalOpen, setPoiModalOpen] = useState(false);
+  const [isPlacingPOI, setIsPlacingPOI] = useState<{
+    iconType: string;
+    position: { lng: number; lat: number } | null;
+  } | null>(null);
+  const [surfaceProgress, setSurfaceProgress] = React.useState<SurfaceProgressState>({
+    isProcessing: false,
+    progress: 0,
+    total: 0
+  });
 
   // ------------------------------------------------------------------
   // isReady => Checks if map and all layers are fully loaded
