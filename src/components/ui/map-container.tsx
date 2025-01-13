@@ -1533,32 +1533,63 @@ if (savedPhotos?.length) {
       map.current = newMap;
 
       // Add POI click handler and escape key handler
-      const handleMapClick = (e: mapboxgl.MapMouseEvent) => {
+      const handleMapClick = (e: mapboxgl.MapMouseEvent & { lngLat: mapboxgl.LngLat }) => {
         if (isPlacingPOI?.iconType) {
           const position = {
             lat: e.lngLat.lat,
-            lon: e.lngLat.lng
+            lng: e.lngLat.lng  // Fix: use lng instead of lon for consistency
           };
           
           // Show modal for name and description
-          setPoiModalOpen(true);
           setIsPlacingPOI({
             ...isPlacingPOI,
             position
           });
+          setPoiModalOpen(true);
+          
+          // Prevent further map clicks until modal is handled
+          e.preventDefault();
+          e.stopPropagation();
           
           // Reset cursor
-          document.body.style.cursor = 'default';
+          if (map.current) {
+            map.current.getCanvas().style.cursor = 'default';
+          }
         }
       };
 
-      const handleEscapeKey = (e: KeyboardEvent) => {
+      const handleEscapeKey = useCallback((e: KeyboardEvent) => {
         if (e.key === 'Escape' && isPlacingPOI) {
           // Cancel POI placement
           setIsPlacingPOI(null);
-          document.body.style.cursor = 'default';
+          setPoiModalOpen(false);
+          
+          // Reset cursor properly using the map instance
+          if (map.current) {
+            map.current.getCanvas().style.cursor = 'default';
+          }
+          
+          // Remove any temporary markers if they exist
+          document.querySelectorAll('.temp-poi-marker').forEach(el => el.remove());
         }
-      };
+      }, [isPlacingPOI]);
+      
+      // Update useEffect to properly clean up event listeners
+      useEffect(() => {
+        if (!map.current) return;
+        
+        // Add the event listeners
+        map.current.on('click', handleMapClick);
+        window.addEventListener('keydown', handleEscapeKey);
+        
+        // Cleanup function
+        return () => {
+          if (map.current) {
+            map.current.off('click', handleMapClick);
+          }
+          window.removeEventListener('keydown', handleEscapeKey);
+        };
+      }, [handleMapClick, handleEscapeKey]);
 
       newMap.on('click', handleMapClick);
       window.addEventListener('keydown', handleEscapeKey);
