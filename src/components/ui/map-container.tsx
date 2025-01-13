@@ -1554,7 +1554,7 @@ const handleMapClick = useCallback((e: mapboxgl.MapMouseEvent) => {
     document.body.style.cursor = 'default';
     hideFloatingIcon?.();
   }
-}); // Add closing parenthesis
+}, [isPlacingPOI, hideFloatingIcon]); // Add dependencies and semicolon
 
 // Add cleanup for events
 useEffect(() => {
@@ -1570,16 +1570,6 @@ useEffect(() => {
     window.removeEventListener('keydown', handleKeyDown);
   };
 }, [handleMapClick, handleKeyDown]);
-          
-          // Show modal for name and description
-          setPoiModalOpen(true);
-          setIsPlacingPOI({
-            ...isPlacingPOI,
-            position
-          });
-          
-          // Reset cursor
-          document.body.style.cursor = 'default';
         }
       };
 
