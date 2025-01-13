@@ -1517,7 +1517,7 @@ if (savedPhotos?.length) {
     }
     try {
       mapboxgl.accessToken = mapboxToken;
-
+    
       // Create new map instance
       const newMap = new mapboxgl.Map({
         container: mapContainer.current,
@@ -1529,8 +1529,11 @@ if (savedPhotos?.length) {
           bearing: 0
         }
       } as any);
-
+    
       map.current = newMap;
+    } catch (err) {
+      console.error('[MapContainer] Error creating map:', err);
+    }
 
 // Add POI click handler and escape key handler
 const handleMapClick = useCallback((e: mapboxgl.MapMouseEvent) => {
@@ -1551,16 +1554,7 @@ const handleMapClick = useCallback((e: mapboxgl.MapMouseEvent) => {
     document.body.style.cursor = 'default';
     hideFloatingIcon?.();
   }
-}, [isPlacingPOI, hideFloatingIcon]);
-
-const handleKeyDown = useCallback((e: KeyboardEvent) => {
-  if (e.key === 'Escape' && isPlacingPOI) {
-    e.preventDefault();
-    setIsPlacingPOI(null);
-    hideFloatingIcon?.();
-    document.body.style.cursor = 'default';
-  }
-}, [isPlacingPOI, hideFloatingIcon]);
+}); // Add closing parenthesis
 
 // Add cleanup for events
 useEffect(() => {
