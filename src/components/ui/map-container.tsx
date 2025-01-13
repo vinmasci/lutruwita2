@@ -1502,7 +1502,7 @@ if (savedPhotos?.length) {
   [handleGpxUpload, isReady, routeStore, addRouteToMap, addPhotoMarkersToMap, assignSurfacesViaNearest, createMarkerElement]
 );
 
-  // ------------------------------------------------------------------
+// ------------------------------------------------------------------
   // Map initialization
   // Sets up the map and loads necessary layers
   // Called once when component mounts
@@ -1515,6 +1515,7 @@ if (savedPhotos?.length) {
       console.error('[MapContainer] Mapbox token not found');
       return;
     }
+
     try {
       mapboxgl.accessToken = mapboxToken;
 
@@ -1532,65 +1533,36 @@ if (savedPhotos?.length) {
 
       map.current = newMap;
 
-      // Add POI click handler and escape key handler
       const handleMapClick = (e: mapboxgl.MapMouseEvent & { lngLat: mapboxgl.LngLat }) => {
-        if (isPlacingPOI?.iconType) {
-          const position = {
-            lat: e.lngLat.lat,
-            lng: e.lngLat.lng  // Fix: use lng instead of lon for consistency
-          };
+        if (!map.current || !isPlacingPOI?.iconType) return;
+
+        const position = {
+          lat: e.lngLat.lat,
+          lon: e.lngLat.lng  // Using lon to match POI interface
+        };
+        
+        setIsPlacingPOI(prev => ({
+          ...prev!,
+          position
+        }));
+        setPoiModalOpen(true);
+        
+        // Reset cursor using map instance
+        map.current.getCanvas().style.cursor = 'default';
+      };
+
+      const handleEscapeKey = (e: KeyboardEvent) => {
+        if (e.key === 'Escape' && isPlacingPOI) {
+          setIsPlacingPOI(null);
+          setPoiModalOpen(false);
           
-          // Show modal for name and description
-          setIsPlacingPOI({
-            ...isPlacingPOI,
-            position
-          });
-          setPoiModalOpen(true);
-          
-          // Prevent further map clicks until modal is handled
-          e.preventDefault();
-          e.stopPropagation();
-          
-          // Reset cursor
           if (map.current) {
             map.current.getCanvas().style.cursor = 'default';
           }
         }
       };
 
-      const handleEscapeKey = useCallback((e: KeyboardEvent) => {
-        if (e.key === 'Escape' && isPlacingPOI) {
-          // Cancel POI placement
-          setIsPlacingPOI(null);
-          setPoiModalOpen(false);
-          
-          // Reset cursor properly using the map instance
-          if (map.current) {
-            map.current.getCanvas().style.cursor = 'default';
-          }
-          
-          // Remove any temporary markers if they exist
-          document.querySelectorAll('.temp-poi-marker').forEach(el => el.remove());
-        }
-      }, [isPlacingPOI]);
-      
-      // Update useEffect to properly clean up event listeners
-      useEffect(() => {
-        if (!map.current) return;
-        
-        // Add the event listeners
-        map.current.on('click', handleMapClick);
-        window.addEventListener('keydown', handleEscapeKey);
-        
-        // Cleanup function
-        return () => {
-          if (map.current) {
-            map.current.off('click', handleMapClick);
-          }
-          window.removeEventListener('keydown', handleEscapeKey);
-        };
-      }, [handleMapClick, handleEscapeKey]);
-
+      // Add event listeners
       newMap.on('click', handleMapClick);
       window.addEventListener('keydown', handleEscapeKey);
 
@@ -1598,6 +1570,7 @@ if (savedPhotos?.length) {
       const originalRemove = map.current.remove.bind(map.current);
       map.current.remove = () => {
         window.removeEventListener('keydown', handleEscapeKey);
+        newMap.off('click', handleMapClick);
         originalRemove();
       };
 
@@ -1613,6 +1586,7 @@ if (savedPhotos?.length) {
         // Add terrain layer
         newMap.setTerrain({ 'source': 'mapbox-dem', 'exaggeration': 1.5 });
         console.log('[MapContainer] Base map loaded');
+
         try {
           // Add MapTiler vector tile source containing road data
           const tileUrl =
@@ -1666,74 +1640,73 @@ if (savedPhotos?.length) {
         }
       });
 
-// Add standard map controls
-newMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
-newMap.addControl(new mapboxgl.FullscreenControl(), 'top-right');
+      // Add standard map controls
+      newMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
+      newMap.addControl(new mapboxgl.FullscreenControl(), 'top-right');
 
-// Add control margin for navbar
-const controlContainer = document.querySelector('.mapboxgl-control-container');
-if (controlContainer) {
-  (controlContainer as HTMLElement).style.marginTop = '64px';
-}
+      // Add control margin for navbar
+      const controlContainer = document.querySelector('.mapboxgl-control-container');
+      if (controlContainer) {
+        (controlContainer as HTMLElement).style.marginTop = '64px';
+      }
 
-// Track current interval
-let currentInterval = 25;
+      // Track current interval
+      let currentInterval = 25;
 
-// Add zoom change handler to update distance markers
-newMap.on('zoom', () => {
-  const zoom = newMap.getZoom();
-  // Calculate new interval based on zoom
-  let newInterval = 25; // Default
-  if (zoom >= 14) newInterval = 5;        // Very close zoom
-  else if (zoom >= 12) newInterval = 10;  // Medium zoom
-  else if (zoom >= 10) newInterval = 15;  // Medium-far zoom
+      // Add zoom change handler to update distance markers
+      newMap.on('zoom', () => {
+        const zoom = newMap.getZoom();
+        // Calculate new interval based on zoom
+        let newInterval = 25; // Default
+        if (zoom >= 14) newInterval = 5;        // Very close zoom
+        else if (zoom >= 12) newInterval = 10;  // Medium zoom
+        else if (zoom >= 10) newInterval = 15;  // Medium-far zoom
 
-  // Only update if interval changed
-  if (newInterval !== currentInterval && newMap.getSource(routeSourceId)) {
-    currentInterval = newInterval;
-// Remove only distance markers, explicitly excluding photo markers
-const distanceMarkers = document.querySelectorAll('.mapboxgl-marker:not(.photo-marker):not(.photo-marker-container)');
-distanceMarkers.forEach(marker => marker.remove());
-    
-    // Get current route data
-    const source = newMap.getSource(routeSourceId) as mapboxgl.GeoJSONSource;
-    const data = (source as any)._data as FeatureCollection;
-    
-    // Rebuild combined line
-    const combinedLine = turf.lineString(
-      data.features.reduce((coords: number[][], feature) => {
-        if (feature.geometry.type === 'LineString') {
-          return [...coords, ...feature.geometry.coordinates];
+        // Only update if interval changed
+        if (newInterval !== currentInterval && newMap.getSource(routeSourceId)) {
+          currentInterval = newInterval;
+          
+          // Remove only distance markers, explicitly excluding photo markers
+          const distanceMarkers = document.querySelectorAll('.mapboxgl-marker:not(.photo-marker):not(.photo-marker-container)');
+          distanceMarkers.forEach(marker => marker.remove());
+          
+          // Get current route data
+          const source = newMap.getSource(routeSourceId) as mapboxgl.GeoJSONSource;
+          const data = (source as any)._data as FeatureCollection;
+          
+          // Rebuild combined line
+          const combinedLine = turf.lineString(
+            data.features.reduce((coords: number[][], feature) => {
+              if (feature.geometry.type === 'LineString') {
+                return [...coords, ...feature.geometry.coordinates];
+              }
+              return coords;
+            }, [])
+          );
+
+          // Calculate length and add new markers
+          const totalLength = turf.length(combinedLine, { units: 'kilometers' });
+          const distancePoints = getDistancePoints(newMap, combinedLine, totalLength);
+          
+          distancePoints.forEach(({ point, distance }) => {
+            const el = document.createElement('div');
+            const root = createRoot(el);
+            root.render(<DistanceMarker distance={distance} />);
+
+            new mapboxgl.Marker({
+              element: el,
+              anchor: 'center',
+              scale: 0.25
+            })
+              .setLngLat(point.geometry.coordinates)
+              .addTo(newMap);
+          });
         }
-        return coords;
-      }, [])
-    );
+      });
 
-    // Calculate length and add new markers
-    const totalLength = turf.length(combinedLine, { units: 'kilometers' });
-    const distancePoints = getDistancePoints(newMap, combinedLine, totalLength);
-    
-    distancePoints.forEach(({ point, distance }) => {
-      const el = document.createElement('div');
-      const root = createRoot(el);
-      root.render(<DistanceMarker distance={distance} />);
-
-      new mapboxgl.Marker({
-        element: el,
-        anchor: 'center',
-        scale: 0.25
-      })
-        .setLngLat(point.geometry.coordinates)
-        .addTo(newMap);
-    });
-  }
-
-
-});
-
-} catch (err) {
-console.error('[MapContainer] Error creating map:', err);
-}
+    } catch (err) {
+      console.error('[MapContainer] Error creating map:', err);
+    }
 
     // Cleanup on unmount
     return () => {
@@ -1742,7 +1715,7 @@ console.error('[MapContainer] Error creating map:', err);
         map.current = null;
       }
     };
-  }, []);
+  }, [isPlacingPOI]); // Added isPlacingPOI to dependencies
 
   // ------------------------------------------------------------------
   // Render the map component with loading overlay when processing
