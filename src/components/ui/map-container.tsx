@@ -219,6 +219,10 @@ const [isUploading, setIsUploading] = React.useState(false);
 const [currentPhotos, setCurrentPhotos] = useState<PhotoDocument[]>([]);
 const [currentPOIs, setCurrentPOIs] = useState<POI[]>([]);
 const [poiModalOpen, setPoiModalOpen] = useState(false);
+const [isPlacingPOI, setIsPlacingPOI] = useState<{
+  iconType: string;
+  position: { lng: number; lat: number } | null;
+} | null>(null);
 const [surfaceProgress, setSurfaceProgress] = React.useState<SurfaceProgressState>({
   isProcessing: false,
   progress: 0,
@@ -1530,6 +1534,27 @@ if (savedPhotos?.length) {
 
       map.current = newMap;
 
+// Add POI click handler
+newMap.on('click', (e) => {
+  if (isPlacingPOI?.iconType) {
+    const position = {
+      lat: e.lngLat.lat,
+      lon: e.lngLat.lng
+    };
+    
+    // Show modal for name and description
+    setPoiModalOpen(true);
+    setIsPlacingPOI({
+      ...isPlacingPOI,
+      position
+    });
+    
+    // Reset cursor and hide floating icon
+    document.body.style.cursor = 'default';
+    hideFloatingIcon?.();
+  }
+});
+
       newMap.on('load', () => {
         // Add terrain source and layer
         newMap.addSource('mapbox-dem', {
@@ -1683,9 +1708,20 @@ console.error('[MapContainer] Error creating map:', err);
       </div>
       <POIModal 
         open={poiModalOpen}
-        onClose={() => setPoiModalOpen(false)}
+        onClose={() => {
+          setPoiModalOpen(false);
+          setIsPlacingPOI(null);
+        }}
         onAdd={(poiData) => {
-          handleAddPOI(poiData);
+          if (isPlacingPOI?.position) {
+            const fullPOIData = {
+              ...poiData,
+              location: isPlacingPOI.position,
+              iconType: isPlacingPOI.iconType
+            };
+            handleAddPOI(fullPOIData);
+            setIsPlacingPOI(null);
+          }
           setPoiModalOpen(false);
         }}
       />
