@@ -219,9 +219,10 @@ const [isUploading, setIsUploading] = React.useState(false);
 const [currentPhotos, setCurrentPhotos] = useState<PhotoDocument[]>([]);
 const [currentPOIs, setCurrentPOIs] = useState<POI[]>([]);
 const [poiModalOpen, setPoiModalOpen] = useState(false);
+const [tempMarker, setTempMarker] = useState<mapboxgl.Marker | null>(null);
 interface PlacingPOIState {
-  iconType: string;
-  position: { lat: number; lon: number } | null;
+  type: POIType;  // Changed from iconType to align with POI types
+  position: { lat: number; lon: number; } | null;
 }
 
 const [isPlacingPOI, setIsPlacingPOI] = useState<PlacingPOIState | null>(null);
@@ -1565,13 +1566,40 @@ if (savedPhotos?.length) {
           return;
         }
       
+        // Remove any existing temporary marker
+        if (tempMarker) {
+          tempMarker.remove();
+        }
+      
         const position = {
           lat: e.lngLat.lat,
           lon: e.lngLat.lng
         };
         
         console.log("Setting POI position:", position);
+      
+        // Create new temporary marker
+        const marker = new mapboxgl.Marker({
+          color: '#e17055',
+          draggable: true
+        })
+          .setLngLat([position.lon, position.lat])
+          .addTo(map.current);
+      
+        // Track marker drag events
+        marker.on('dragend', () => {
+          const newPos = marker.getLngLat();
+          setIsPlacingPOI(prev => ({
+            ...prev!,
+            position: {
+              lat: newPos.lat,
+              lon: newPos.lng
+            }
+          }));
+        });
         
+        // Update states
+        setTempMarker(marker);
         setIsPlacingPOI(prev => ({
           ...prev!,
           position
@@ -1581,27 +1609,36 @@ if (savedPhotos?.length) {
         // Reset cursor after placement
         map.current.getCanvas().style.cursor = 'default';
       };
-
+      
       const handleEscapeKey = (e: KeyboardEvent) => {
         if (e.key === 'Escape' && isPlacingPOI) {
           setIsPlacingPOI(null);
           setPoiModalOpen(false);
+          
+          // Remove temp marker if it exists
+          if (tempMarker) {
+            tempMarker.remove();
+            setTempMarker(null);
+          }
           
           if (map.current) {
             map.current.getCanvas().style.cursor = 'default';
           }
         }
       };
-
+      
       // Add event listeners
       newMap.on('click', handleMapClick);
       window.addEventListener('keydown', handleEscapeKey);
-
+      
       // Store the original remove function
       const originalRemove = map.current.remove.bind(map.current);
       map.current.remove = () => {
         window.removeEventListener('keydown', handleEscapeKey);
         newMap.off('click', handleMapClick);
+        if (tempMarker) {
+          tempMarker.remove();
+        }
         originalRemove();
       };
 
@@ -1760,6 +1797,11 @@ if (savedPhotos?.length) {
   open={poiModalOpen}
   onClose={() => {
     setPoiModalOpen(false);
+    // Clean up temporary marker if it exists
+    if (tempMarker) {
+      tempMarker.remove();
+      setTempMarker(null);
+    }
     if (!isPlacingPOI?.position) {
       setIsPlacingPOI(null);
       if (map.current) {
@@ -1767,19 +1809,30 @@ if (savedPhotos?.length) {
       }
     }
   }}
-
   onAdd={(poiData) => {
-    
     if (isPlacingPOI?.position) {
+      // Get final position from marker (in case it was dragged)
+      const finalPosition = tempMarker?.getLngLat() || {
+        lat: isPlacingPOI.position.lat,
+        lng: isPlacingPOI.position.lon
+      };
+
       const fullPOIData = {
         ...poiData,
         category: poiData.category || 'Infrastructure',
         type: isPlacingPOI.iconType,
         location: {
-          lat: isPlacingPOI.position.lat,
-          lon: isPlacingPOI.position.lon
+          lat: finalPosition.lat,
+          lon: finalPosition.lng
         }
       };
+
+      // Clean up temporary marker if it exists
+      if (tempMarker) {
+        tempMarker.remove();
+        setTempMarker(null);
+      }
+
       handleAddPOI(fullPOIData);
       setIsPlacingPOI(null);
       if (map.current) {
