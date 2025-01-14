@@ -82,3 +82,12 @@
 .poi-marker * {
   pointer-events: auto !important;
 }
+
+.poi-marker {
+  position: relative;
+  z-index: 999 !important;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
