@@ -1,7 +1,6 @@
 import React, { useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
-import { usePOI } from '../../utils/poi/poi-state.tsx';
-import { handleMapClick, handleEscapeKey } from '../../utils/poi/poi-events';
+import { usePOI } from '../../utils/poi/poi-state';
 import { POIModal } from './POIModal';
 import { addPOIMarkerToMap, removeAllPOIMarkers } from '../../utils/poi/poi-markers';
 
@@ -25,7 +24,63 @@ export const POIManager: React.FC<POIManagerProps> = ({ map }) => {
     if (!map) return;
 
     const handleClick = (e: mapboxgl.MapMouseEvent & { lngLat: mapboxgl.LngLat }) => {
-      handleMapClick(e, map);
+      console.log("Map click event:", {
+        hasMap: !!map,
+        isPlacingPOI,
+        clickLocation: e.lngLat,
+        tempMarker: !!tempMarker
+      });
+
+      if (!map || !isPlacingPOI?.type) {
+        console.log('Early return: no map or not in POI placement mode');
+        return;
+      }
+
+      // Clean up any existing temporary marker
+      if (tempMarker) {
+        console.log('Removing existing temp marker');
+        tempMarker.remove();
+        setTempMarker(null);
+      }
+
+      const position = {
+        lat: e.lngLat.lat,
+        lon: e.lngLat.lng
+      };
+
+      // Create new temporary marker
+      const el = document.createElement('div');
+      el.className = 'temp-poi-marker';
+      el.innerHTML = `<span class="material-icons" style="color: #e17055; font-size: 24px;">place</span>`;
+
+      const marker = new mapboxgl.Marker({
+        element: el,
+        draggable: true,
+        anchor: 'bottom'
+      })
+        .setLngLat([position.lon, position.lat])
+        .addTo(map);
+
+      // Update position state when marker is dragged
+      marker.on('dragend', () => {
+        const newPos = marker.getLngLat();
+        setIsPlacingPOI(prev => prev ? {
+          ...prev,
+          position: {
+            lat: newPos.lat,
+            lon: newPos.lng
+          }
+        } : null);
+      });
+
+      // Update states
+      setTempMarker(marker);
+      setIsPlacingPOI(prev => prev ? {
+        ...prev,
+        position
+      } : null);
+
+      setPoiModalOpen(true);
     };
 
     map.on('click', handleClick);
@@ -33,14 +88,26 @@ export const POIManager: React.FC<POIManagerProps> = ({ map }) => {
     return () => {
       map.off('click', handleClick);
     };
-  }, [map]);
+  }, [map, isPlacingPOI, tempMarker, setIsPlacingPOI, setPoiModalOpen, setTempMarker]);
 
   // Set up escape key handler
   useEffect(() => {
     if (!map) return;
 
     const handleEscape = (e: KeyboardEvent) => {
-      handleEscapeKey(e, map);
+      if (e.key === 'Escape' && isPlacingPOI) {
+        setIsPlacingPOI(null);
+        setPoiModalOpen(false);
+        
+        if (tempMarker) {
+          tempMarker.remove();
+          setTempMarker(null);
+        }
+        
+        if (map) {
+          map.getCanvas().style.cursor = 'default';
+        }
+      }
     };
 
     window.addEventListener('keydown', handleEscape);
@@ -48,7 +115,7 @@ export const POIManager: React.FC<POIManagerProps> = ({ map }) => {
     return () => {
       window.removeEventListener('keydown', handleEscape);
     };
-  }, [map]);
+  }, [map, isPlacingPOI, tempMarker, setIsPlacingPOI, setPoiModalOpen, setTempMarker]);
 
   // Update markers when POIs change
   useEffect(() => {

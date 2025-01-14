@@ -3,8 +3,11 @@ import { POI, POICategory } from '@/types/note-types';
 import { createPOIMarker } from './poi-markers';
 import { usePOI } from './poi-state.tsx';
 
-export const handleMapClick = (e: mapboxgl.MapMouseEvent & { lngLat: mapboxgl.LngLat }, map: mapboxgl.Map) => {
-  const context = usePOI();
+export const handleMapClick = (
+  e: mapboxgl.MapMouseEvent & { lngLat: mapboxgl.LngLat }, 
+  map: mapboxgl.Map,
+  context: ReturnType<typeof usePOI>
+) => {
   const { isPlacingPOI, tempMarker, setTempMarker, setIsPlacingPOI, setPoiModalOpen } = context;
 
   console.log("Map click event:", {
