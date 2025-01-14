@@ -16,7 +16,7 @@ import {
   InfrastructurePOIType,
   POIIcons
 } from '@/types/note-types';
-import { usePOI } from '../../utils/poi/poi-state';
+import { usePOI } from '../../utils/poi/poi-state.tsx';
 import { handleAddPOI } from '../../utils/poi/poi-events';
 
 interface POIModalProps {

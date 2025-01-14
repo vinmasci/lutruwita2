@@ -1,7 +1,7 @@
 import mapboxgl from 'mapbox-gl';
 import { POI, POICategory } from '@/types/note-types';
 import { createPOIMarker } from './poi-markers';
-import { usePOI } from './poi-state';
+import { usePOI } from './poi-state.tsx';
 
 export const handleMapClick = (e: mapboxgl.MapMouseEvent & { lngLat: mapboxgl.LngLat }, map: mapboxgl.Map) => {
   const context = usePOI();

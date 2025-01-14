@@ -12,6 +12,7 @@
 ├── postcss.config.js - PostCSS configuration (likely for Tailwind)
 ├── README.md - Project documentation
 ├── SAVEMAP.md - Documentation for map saving functionality
+├── POILAYER.md - Documentation for POI layer functionality
 ├── server.js - Server-side application code
 ├── tailwind.config.js - Tailwind CSS configuration
 ├── tsconfig.app.json - TypeScript config for application code
@@ -21,7 +22,7 @@
 ├── vite.config.ts - Vite build tool configuration
 ├── public/
 │   └── vite.svg - Vite logo asset
-├── uploads/ - Directory for uploaded files
+├── uploads/ - Directory for uploaded GPX files
 └── src/
     ├── App.css - Main application styles
     ├── App.tsx - Root React component
@@ -38,17 +39,35 @@
     │       ├── button.tsx - Button component
     │       ├── distance-marker.tsx - Distance marker component
     │       ├── elevation-profile.tsx - Elevation profile UI component
+    │       ├── floating-icon.tsx - Floating icon component
     │       ├── gpx-uploader.tsx - GPX file upload component
+    │       ├── load-map-modal.tsx - Map loading modal
     │       ├── map-container.css - Map container styles
     │       ├── map-container.tsx - Map container component
     │       ├── map-controls.tsx - Map controls UI
     │       ├── map-note.tsx - Map note component
-    │       ├── navbar.tsx - Navigation bar component
     │       ├── notes-panel.tsx - Notes panel component
     │       ├── photo-modal.tsx - Photo modal component
+    │       ├── poi-marker.tsx - POI marker component
+    │       ├── poi-modal.tsx - POI modal component
+    │       ├── save-map-modal.tsx - Map saving modal
     │       ├── sheet.tsx - Sheet component
     │       ├── sidebar.tsx - Sidebar component
-    │       └── tabs.tsx - Tabbed interface component
+    │       ├── tabs.tsx - Tabbed interface component
+    │       └── map/
+    │           ├── components/
+    │           │   └── poi/
+    │           │       ├── POIManager.tsx - POI management component
+    │           │       ├── POIMarker.tsx - POI marker implementation
+    │           │       ├── POIModal.tsx - POI modal implementation
+    │           │       └── POIToolbar.tsx - POI toolbar controls
+    │           └── utils/
+    │               └── poi/
+    │                   ├── poi-events.ts - POI event handlers
+    │                   ├── poi-markers.ts - POI marker utilities
+    │                   └── poi-state.ts - POI state management
+    ├── contexts/
+    │   └── floating-icon-context.tsx - Context for floating icon state
     ├── lib/
     │   ├── db.ts - Database utilities
     │   └── utils.ts - Utility functions
@@ -56,6 +75,8 @@
     │   ├── create.tsx - Create page component
     │   ├── explore.tsx - Explore page component
     │   └── home.tsx - Home page component
+    ├── services/
+    │   └── map-service.ts - Map-related service functions
     └── types/
         ├── map-types.ts - Type definitions for mapping functionality
         └── note-types.ts - Type definitions for notes functionality
@@ -67,15 +88,18 @@
 - **MapContainer**: Main map visualization component
   - Manages map state and interactions
   - Integrates with MapControls and NotesPanel
-  - Handles route drawing and surface type visualization
+  - Handles POI management through POIManager
+  - Coordinates with POI-related utilities
 
-- **Sidebar**: Primary navigation and controls
-  - Contains map controls, route tools, and user settings
-  - Integrates with BottomTabs for mobile view
+- **POIManager**: Manages Points of Interest
+  - Handles POI creation, editing, and deletion
+  - Integrates with POIMarker, POIModal, and POIToolbar
+  - Uses poi-state for state management
+  - Coordinates with poi-markers for marker rendering
 
-- **SaveMapModal**: Map saving interface
-  - Collects map metadata and configuration
-  - Coordinates with MapService for data persistence
+- **FloatingIcon**: Context-managed floating UI element
+  - Provides context for floating icon state
+  - Used across multiple components for consistent UI
 
 ### Data Flow
 1. **User Interaction** → UI Components → Services
@@ -86,35 +110,25 @@
 ## Development Workflow
 
 ### Component Development
-1. Create new component in `src/components/ui/`
-2. Add TypeScript interfaces in `src/types/`
-3. Implement required services in `src/services/`
-4. Add storybook stories for component testing
-5. Write unit tests using Jest
+1. Create new component in appropriate directory
+2. Add TypeScript interfaces in src/types/
+3. Implement required services in src/services/
+4. Write unit tests using Jest
 
 ### API Integration
-1. Define API endpoints in `src/services/`
-2. Create corresponding types in `src/types/`
+1. Define API endpoints in src/services/
+2. Create corresponding types in src/types/
 3. Implement data fetching logic
 4. Handle loading/error states
 5. Update UI components with new data
 
-## Map Saving Process
+## POI Management Process
 
-1. User initiates save from UI
-2. SaveMapModal (src/components/ui/save-map-modal.tsx) collects:
-   - Map name (required)
-   - Description (optional)
-   - Public/private status
-   - Included routes
-3. Parent component calls mapService.createMap() (src/services/maps.ts)
-4. API request sent to backend with SavedMap data (src/types/map-types.ts):
-   - Map metadata (name, description, visibility)
-   - Current map view state
-   - Included routes with GPX data
-   - Associated photos
-   - Map style configuration
-5. Backend persists map data and returns saved map object
+1. User interacts with POIToolbar to create/edit POIs
+2. POIManager coordinates state changes through poi-state
+3. POIMarker handles visual representation on map
+4. POIModal provides editing interface
+5. Changes are persisted through map-service
 
 ## Testing Strategy
 

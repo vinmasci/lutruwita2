@@ -16,7 +16,7 @@ import {
   POIIcons,
   POIType
 } from '@/types/note-types';
-import { usePOI } from '../../utils/poi/poi-state';
+import { usePOI } from '../../utils/poi/poi-state.tsx';
 
 interface POIToolbarProps {
   map: mapboxgl.Map | null;

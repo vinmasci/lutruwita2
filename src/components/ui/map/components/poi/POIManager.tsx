@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
-import { usePOI } from '../../utils/poi/poi-state';
+import { usePOI } from '../../utils/poi/poi-state.tsx';
 import { handleMapClick, handleEscapeKey } from '../../utils/poi/poi-events';
 import { POIModal } from './POIModal';
 import { addPOIMarkerToMap, removeAllPOIMarkers } from '../../utils/poi/poi-markers';
