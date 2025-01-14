@@ -87,9 +87,10 @@ export const handleEscapeKey = (e: KeyboardEvent, map: mapboxgl.Map) => {
 
 export const handleAddPOI = async (
   poiData: Omit<POI, 'id' | 'createdAt' | 'updatedAt'> & { createdBy: string }, 
-  map: mapboxgl.Map
+  map: mapboxgl.Map,
+  context: ReturnType<typeof usePOI>
 ): Promise<POI> => {
-  const { addPOI } = usePOI();
+  const { addPOI } = context;
 
   console.log("handleAddPOI called with:", {
     poiData,

@@ -36,6 +36,7 @@ import { POIManager } from './map/components/poi/POIManager';
 import { addPOIMarkerToMap } from './map/utils/poi/poi-markers';
 import { POI, POICategory, InfrastructurePOIType } from '@/types/note-types';
 import type { Map as MapboxMap, Marker } from 'mapbox-gl';
+import { usePOI } from './map/utils/poi/poi-state';
 
 
 // --------------------------------------------
@@ -202,7 +203,7 @@ interface Route {
   color: string;
   isVisible: boolean;
   gpxData: string;
-  gpxFilePath?: string;  // Add this line
+  gpxFilePath?: string;
 }
 
 interface PlacingPOIState {
@@ -212,11 +213,11 @@ interface PlacingPOIState {
 }
 
 interface MapContainerProps {
-  isPlacingPOI: PlacingPOIState | null;
-  setIsPlacingPOI: (state: PlacingPOIState | null) => void;
+  children?: React.ReactNode;
 }
 
 const MapContainer = forwardRef<MapRef, MapContainerProps>((props, ref) => {
+  const { isPlacingPOI, setIsPlacingPOI } = usePOI();
   const routeSourceId = 'route';
   const routeLayerId = 'route-layer';
   
@@ -1695,9 +1696,8 @@ if (savedPhotos?.length) {
       <div className="absolute top-0 left-[160px] right-0 right-[40px] z-10 bg-black/0 p-4">
         <h1 className="text-white text-2xl font-fraunces font-bold pl-4 drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">{routeName}</h1>
       </div>
-      <POIProvider>
-        <POIManager map={map.current} />
-      </POIProvider>
+      <POIManager map={map.current} />
+
       <div ref={mapContainer} className="w-full h-full" />
       {surfaceProgress.isProcessing && (
         <LoadingOverlay
