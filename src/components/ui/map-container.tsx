@@ -221,7 +221,7 @@ const [currentPOIs, setCurrentPOIs] = useState<POI[]>([]);
 const [poiModalOpen, setPoiModalOpen] = useState(false);
 const [isPlacingPOI, setIsPlacingPOI] = useState<{
   iconType: string;
-  position: { lng: number; lat: number } | null;
+  position: { lat: number; lon: number } | null;
 } | null>(null);
 const [surfaceProgress, setSurfaceProgress] = React.useState<SurfaceProgressState>({
   isProcessing: false,
@@ -1011,24 +1011,39 @@ const [routeStore, setRouteStore] = useState<Route[]>([]);
 
 // POI handler
 const handleAddPOI = useCallback(async (poiData: Omit<POI, 'id' | 'createdAt' | 'updatedAt'>) => {
+  console.log("handleAddPOI called with:", {
+    poiData,
+    hasMap: !!map.current,
+    placingPOIState: isPlacingPOI
+  });
   if (!map.current || !isPlacingPOI?.position) return;
+  console.log("Early return from handleAddPOI:", {
+    hasMap: !!map.current,
+    hasPosition: !!isPlacingPOI?.position
+  });
   
   const newPOI: POI = {
     ...poiData,
-    id: `poi-${Date.now()}`,  // Generate temporary ID (replace with DB ID later)
+    id: `poi-${Date.now()}`,
     createdAt: new Date(),
     updatedAt: new Date(),
+    category: poiData.category || 'Infrastructure', // Add default category
+    type: poiData.iconType,  // Ensure type is set from iconType
     location: {
       lat: isPlacingPOI.position.lat,
       lon: isPlacingPOI.position.lon
     }
   };
 
+  console.log("Created new POI:", newPOI);
+
   // Add to state
   setCurrentPOIs(prev => [...prev, newPOI]);
+  console.log("Added POI to state");
 
   // Add marker to map
-  addPOIMarkerToMap(newPOI);
+  await addPOIMarkerToMap(newPOI);
+  console.log("Added POI marker to map");
 
   return newPOI;
 }, [map, addPOIMarkerToMap, isPlacingPOI]);
@@ -1534,6 +1549,41 @@ if (savedPhotos?.length) {
       map.current = newMap;
 
       const handleMapClick = (e: mapboxgl.MapMouseEvent & { lngLat: mapboxgl.LngLat }) => {
+        const handleMapClick = (e: mapboxgl.MapMouseEvent & { lngLat: mapboxgl.LngLat }) => {
+          console.log("Map Click detected:", {
+            isPlacingPOI,
+            lngLat: e.lngLat,
+            hasMap: !!map.current
+          });
+        
+          if (!map.current || !isPlacingPOI?.iconType) {
+            console.log("Early return from click:", { 
+              hasMap: !!map.current, 
+              iconType: isPlacingPOI?.iconType 
+            });
+            return;
+          }
+        
+          const position = {
+            lat: e.lngLat.lat,
+            lon: e.lngLat.lng
+          };
+          
+          console.log("Setting POI position:", position);
+          
+          setIsPlacingPOI(prev => {
+            console.log("Previous POI state:", prev);
+            return {
+              ...prev!,
+              position
+            };
+          });
+          setPoiModalOpen(true);
+          
+          if (map.current) {
+            map.current.getCanvas().style.cursor = 'default';
+          }
+        };
         if (!map.current || !isPlacingPOI?.iconType) return;
 
         const position = {
@@ -1726,28 +1776,38 @@ if (savedPhotos?.length) {
         <h1 className="text-white text-2xl font-fraunces font-bold pl-4 drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">{routeName}</h1>
       </div>
       <POIModal 
-        open={poiModalOpen}
-        onClose={() => {
-          setPoiModalOpen(false);
-          // Only clear placement state if we haven't selected a position yet
-          if (!isPlacingPOI?.position) {
-            setIsPlacingPOI(null);
-            document.body.style.cursor = 'default';
-          }
-        }}
-        onAdd={(poiData) => {
-          if (isPlacingPOI?.position) {
-            const fullPOIData = {
-              ...poiData,
-              location: isPlacingPOI.position,
-              iconType: isPlacingPOI.iconType
-            };
-            handleAddPOI(fullPOIData);
-            setIsPlacingPOI(null);
-          }
-          setPoiModalOpen(false);
-        }}
-      />
+  open={poiModalOpen}
+  onClose={() => {
+    setPoiModalOpen(false);
+    if (!isPlacingPOI?.position) {
+      setIsPlacingPOI(null);
+      if (map.current) {
+        map.current.getCanvas().style.cursor = 'default';
+      }
+    }
+  }}
+
+  onAdd={(poiData) => {
+    
+    if (isPlacingPOI?.position) {
+      const fullPOIData = {
+        ...poiData,
+        category: poiData.category || 'Infrastructure',
+        type: isPlacingPOI.iconType,
+        location: {
+          lat: isPlacingPOI.position.lat,
+          lon: isPlacingPOI.position.lon
+        }
+      };
+      handleAddPOI(fullPOIData);
+      setIsPlacingPOI(null);
+      if (map.current) {
+        map.current.getCanvas().style.cursor = 'default';
+      }
+    }
+    setPoiModalOpen(false);
+  }}
+/>
       <div ref={mapContainer} className="w-full h-full" />
       {surfaceProgress.isProcessing && (
         <LoadingOverlay

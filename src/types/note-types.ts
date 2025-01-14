@@ -104,7 +104,7 @@ export enum POICategory {
       [InformationPOIType.Warning]: 'report_problem'
   };
   
-  export interface POI {
+export interface POI {
     id: string;
     category: POICategory;
     type: POIType;
@@ -117,4 +117,5 @@ export enum POICategory {
     createdAt: Date;
     updatedAt: Date;
     createdBy: string;
+    warning?: boolean;
   }

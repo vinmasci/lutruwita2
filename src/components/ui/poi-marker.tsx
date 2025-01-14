@@ -1,6 +1,8 @@
 import React from 'react';
 import { POI } from '@/types/note-types';
 
+import { POIIcons } from '@/types/note-types';
+
 export const createPOIMarkerElement = (poi: POI) => {
   const el = document.createElement('div');
   el.className = 'poi-marker';
@@ -19,13 +21,6 @@ export const createPOIMarkerElement = (poi: POI) => {
   iconContainer.style.display = 'inline-block';
   iconContainer.style.cursor = 'pointer';
 
-  // Create Material Icon
-  const icon = document.createElement('span');
-  icon.className = 'material-icons';
-  icon.style.color = '#ffffff';
-  icon.style.fontSize = '24px';
-  icon.textContent = poi.warning ? 'report_problem' : POIIcons[poi.type];
-
   // Arrow pointer
   const arrow = document.createElement('div');
   arrow.style.position = 'absolute';
@@ -37,6 +32,21 @@ export const createPOIMarkerElement = (poi: POI) => {
   arrow.style.borderLeft = '6px solid transparent';
   arrow.style.borderRight = '6px solid transparent';
   arrow.style.borderTop = '6px solid #1f2937';
+
+  // Create Material Icon
+  const icon = document.createElement('span');
+  icon.className = 'material-icons';
+  icon.style.color = '#ffffff';
+  icon.style.fontSize = '24px';
+  // Set icon based on warning state or type
+  const iconName = poi.warning ? 'report_problem' : POIIcons[poi.type];
+  icon.textContent = iconName;
+  
+  // Add warning class if needed
+  if (poi.warning) {
+    iconContainer.style.backgroundColor = '#dc2626';
+    arrow.style.borderTopColor = '#dc2626';
+  }
 
   // Category badge
   const badge = document.createElement('div');
