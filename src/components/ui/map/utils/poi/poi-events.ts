@@ -90,7 +90,20 @@ export const handleAddPOI = async (
   map: mapboxgl.Map,
   context: ReturnType<typeof usePOI>
 ): Promise<POI> => {
-  const { addPOI } = context;
+  console.log("handleAddPOI - Received context:", context); // Debug log
+
+  if (!context) {
+    console.error("Context is undefined or null"); // More detailed error
+    throw new Error('Context is missing');
+  }
+
+  // Direct assignment instead of destructuring
+  const addPOI = context.addPOI;
+  console.log("handleAddPOI - addPOI function:", addPOI); // Debug log
+
+  if (!addPOI) {
+    throw new Error('addPOI function is missing from context');
+  }
 
   console.log("handleAddPOI called with:", {
     poiData,

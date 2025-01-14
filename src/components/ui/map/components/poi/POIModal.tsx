@@ -62,7 +62,9 @@ export const POIModal: React.FC<POIModalProps> = ({
     };
 
     try {
-      await handleAddPOI(poiData, map);
+      // Add a debug log to see the context value
+      console.log('Context before handleAddPOI:', context);
+      await handleAddPOI(poiData, map, { addPOI, isPlacingPOI, setIsPlacingPOI });  // Pass all required context functions
       setName('');
       setDescription('');
       setIsPlacingPOI(null);
