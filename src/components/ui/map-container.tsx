@@ -15,9 +15,6 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { findPhotosNearPoints, type PhotoDocument } from '@/lib/db';
 import * as turf from '@turf/turf';
 import nearestPointOnLine from '@turf/nearest-point-on-line';
-import { POI } from '@/types/note-types';
-import { createPOIMarkerElement } from './poi-marker';
-import { POICategory, InfrastructurePOIType } from '@/types/note-types';
 import type { 
   Feature,
   Point as TurfPoint,
@@ -29,10 +26,14 @@ import type {
 } from 'geojson';
 import { mapService } from "../../services/map-service";
 import { PhotoModal } from '@/components/ui/photo-modal';
-import { POIModal } from '@/components/ui/poi-modal';
 import DistanceMarker from './distance-marker';
 import Supercluster from 'supercluster';
 import { createRoot } from 'react-dom/client';
+
+// New POI imports
+import { POIProvider } from './map/utils/poi/poi-state';
+import { POIManager } from './map/components/poi/POIManager';
+import type { POI, POICategory, InfrastructurePOIType } from '@/types/note-types';
 
 // --------------------------------------------
 // Type definitions for the component
@@ -50,7 +51,6 @@ interface MapRef {
     gpxData: string;
     gpxFilePath?: string;
   }>;
-  getCurrentPOIs: () => POI[];
   getCurrentPhotos: () => Array<{
     id: string;
     url: string;
@@ -79,10 +79,7 @@ interface MapRef {
     isVisible: boolean;
     gpxData: string;
   }) => Promise<void>;
-  startPOIPlacement: () => void;
-  handleAddPOI: (poiData: Omit<POI, 'id' | 'createdAt' | 'updatedAt'> & { createdBy: string }) => Promise<POI>;
 }
-
 
 interface Point {
   // Definition of a geographic point with surface type
@@ -96,6 +93,10 @@ interface SurfaceProgressState {
   isProcessing: boolean;
   progress: number;
   total: number;
+}
+
+interface MapContainerProps {
+  children?: React.ReactNode;
 }
 
 // --------------------------------------------
@@ -226,34 +227,16 @@ const MapContainer = forwardRef<MapRef, MapContainerProps>((props, ref) => {
   const cachedRoadsRef = useRef<FeatureCollection | null>(null);
   const [routeName, setRouteName] = useState<string>("");
 
-// State management
-const [isMapReady, setIsMapReady] = React.useState(false);
-const [streetsLayersLoaded, setStreetsLayersLoaded] = React.useState(false);
-const [isUploading, setIsUploading] = React.useState(false);
-const [currentPhotos, setCurrentPhotos] = useState<PhotoDocument[]>([]);
-const [currentPOIs, setCurrentPOIs] = useState<POI[]>([]);
-const [poiModalOpen, setPoiModalOpen] = useState(false);
-const [tempMarker, setTempMarker] = useState<mapboxgl.Marker | null>(null);
-interface PlacingPOIState {
-  type: InfrastructurePOIType;
-  position: { lat: number; lon: number; } | null;
-  iconType?: InfrastructurePOIType;
-}
-
-// Get isPlacingPOI from props instead of local state
-const { isPlacingPOI, setIsPlacingPOI } = props;
-const [surfaceProgress, setSurfaceProgress] = React.useState<SurfaceProgressState>({
-  isProcessing: false,
-  progress: 0,
-  total: 0
-});
-
-// Add the useEffect right here
-useEffect(() => {
-  console.log("MapContainer props changed:", {
-    isPlacingPOI: props.isPlacingPOI
+  // State management
+  const [isMapReady, setIsMapReady] = React.useState(false);
+  const [streetsLayersLoaded, setStreetsLayersLoaded] = React.useState(false);
+  const [isUploading, setIsUploading] = React.useState(false);
+  const [currentPhotos, setCurrentPhotos] = useState<PhotoDocument[]>([]);
+  const [surfaceProgress, setSurfaceProgress] = React.useState<SurfaceProgressState>({
+    isProcessing: false,
+    progress: 0,
+    total: 0
   });
-}, [props.isPlacingPOI]);
 
   // ------------------------------------------------------------------
   // isReady => Checks if map and all layers are fully loaded
@@ -496,32 +479,6 @@ const createMarkerElement = useCallback((photo: any, count?: number) => {
   return el;
 }, []);
 
-const addPOIMarkerToMap = useCallback((poi: POI) => {
-  if (!map.current) return;
-  
-  // Remove existing marker with same ID if it exists
-  const existingMarker = document.querySelector(`[data-poi-id="${poi.id}"]`);
-  if (existingMarker) {
-    existingMarker.remove();
-  }
-
-  const el = createPOIMarkerElement(poi);
-  const markerEl = document.createElement('div');
-  markerEl.className = 'mapboxgl-marker poi-marker-container';
-  markerEl.setAttribute('data-poi-id', poi.id);
-  markerEl.appendChild(el);
-
-  new mapboxgl.Marker({
-    element: markerEl,
-    anchor: 'bottom',
-    offset: [0, 8],
-    clickTolerance: 3
-  })
-    .setLngLat([poi.location.lon, poi.location.lat])
-    .addTo(map.current);
-
-}, [map]);
-
 const updateMarkers = useCallback((clusterIndex: Supercluster) => {
   if (!map.current) return;
 
@@ -554,15 +511,14 @@ const updateMarkers = useCallback((clusterIndex: Supercluster) => {
       document.body.appendChild(modalContainer);
       const modalRoot = createRoot(modalContainer);
 
-// Remove the existing flyTo on the click handler - let clustering handle zoom naturally
-el.addEventListener('click', (e) => {
-  e.stopPropagation();
-  map.current?.flyTo({
-    center: coordinates,
-    zoom: (map.current.getZoom() || 0) + 2,
-    duration: 1000
-  });
-});
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        map.current?.flyTo({
+          center: coordinates,
+          zoom: (map.current.getZoom() || 0) + 2,
+          duration: 1000
+        });
+      });
 
     } else {
       const photo = cluster.properties.photo;
@@ -1667,17 +1623,6 @@ if (savedPhotos?.length) {
       // Add event listeners
       newMap.on('click', handleMapClick);
       window.addEventListener('keydown', handleEscapeKey);
-      
-      // Store the original remove function
-      const originalRemove = map.current.remove.bind(map.current);
-      map.current.remove = () => {
-        window.removeEventListener('keydown', handleEscapeKey);
-        newMap.off('click', handleMapClick);
-        if (tempMarker) {
-          tempMarker.remove();
-        }
-        originalRemove();
-      };
 
       newMap.on('load', () => {
         // Add terrain source and layer
@@ -1830,57 +1775,9 @@ if (savedPhotos?.length) {
       <div className="absolute top-0 left-[160px] right-0 right-[40px] z-10 bg-black/0 p-4">
         <h1 className="text-white text-2xl font-fraunces font-bold pl-4 drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">{routeName}</h1>
       </div>
-      <POIModal 
-  open={poiModalOpen}
-  selectedType={isPlacingPOI?.type || InfrastructurePOIType.WaterPoint}
-  tempMarker={tempMarker}
-  onClose={() => {
-    setPoiModalOpen(false);
-    // Clean up temporary marker if it exists
-    if (tempMarker) {
-      tempMarker.remove();
-      setTempMarker(null);
-    }
-    if (!isPlacingPOI?.position) {
-      setIsPlacingPOI(null);
-      if (map.current) {
-        map.current.getCanvas().style.cursor = 'default';
-      }
-    }
-  }}
-  onAdd={(poiData) => {
-    if (isPlacingPOI?.position) {
-      // Get final position from marker (in case it was dragged)
-      const finalPosition = tempMarker?.getLngLat() || {
-        lat: isPlacingPOI.position.lat,
-        lng: isPlacingPOI.position.lon
-      };
-
-      const fullPOIData = {
-        ...poiData,
-        category: poiData.category || POICategory.Infrastructure,
-        type: isPlacingPOI.iconType,
-        location: {
-          lat: finalPosition.lat,
-          lon: finalPosition.lng
-        }
-      };
-
-      // Clean up temporary marker if it exists
-      if (tempMarker) {
-        tempMarker.remove();
-        setTempMarker(null);
-      }
-
-      handleAddPOI(fullPOIData);
-      setIsPlacingPOI(null);
-      if (map.current) {
-        map.current.getCanvas().style.cursor = 'default';
-      }
-    }
-    setPoiModalOpen(false);
-  }}
-/>
+      <POIProvider>
+        <POIManager map={map.current} />
+      </POIProvider>
       <div ref={mapContainer} className="w-full h-full" />
       {surfaceProgress.isProcessing && (
         <LoadingOverlay
