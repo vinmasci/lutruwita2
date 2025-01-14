@@ -49,7 +49,7 @@ interface MapRef {
     gpxData: string;
     gpxFilePath?: string;
   }>;
-  getCurrentPOIs: () => POI[];  // Add this line
+  getCurrentPOIs: () => POI[];
   getCurrentPhotos: () => Array<{
     id: string;
     url: string;
@@ -63,7 +63,7 @@ interface MapRef {
   getPitch: () => number;
   getBearing: () => number;
   getStyle: () => string;
-  getMap: () => mapboxgl.Map | null;  // Add this line
+  getMap: () => mapboxgl.Map | null;
   setViewState: (viewState: {
     center: [number, number];
     zoom: number;
@@ -78,6 +78,7 @@ interface MapRef {
     isVisible: boolean;
     gpxData: string;
   }) => Promise<void>;
+  startPOIPlacement: () => void;  // Added this line
 }
 
 
@@ -1514,6 +1515,12 @@ if (savedPhotos?.length) {
       } catch (error) {
         console.error('Error loading route:', error);
         throw new Error('Failed to load route');
+      }
+    },
+    startPOIPlacement: () => {
+      if (map.current) {
+        map.current.getCanvas().style.cursor = 'crosshair';
+        setIsPlacingPOI({ iconType: 'default' });
       }
     }
   }),

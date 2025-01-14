@@ -171,3 +171,116 @@ Would you like me to help implement any of these fixes or explain any part in mo
    - Marker DOM element creation
 
 Follow-up required to verify POI placement functionality after implementing debugging logs.
+
+## NEW APPROACH
+Let me suggest a simpler alternative approach:
+
+Instead of having a floating POI that follows the cursor:
+
+When user clicks an icon in the sidebar, enter a "placement mode"
+Change the cursor to a crosshair to indicate placement mode
+Store the selected POI type in state
+Wait for a map click
+Place the POI directly at the clicked location
+
+
+
+This approach would:
+
+Eliminate the need to track cursor position
+Reduce the number of event listeners needed
+Simplify the state management
+Make the placement workflow more straightforward for users
+
+Would you like me to help you implement this simpler approach instead? It would be more reliable and easier to maintain while still providing a good user experience.
+The key difference is that instead of dragging/floating the icon, the user would:
+
+Click POI icon in sidebar
+See cursor change to indicate "placement mode"
+Click anywhere on map to place the POI
+
+This is similar to how many GIS and mapping applications handle point placement.
+
+# POI Layer Implementation Status - Updated (2025-01-14)
+
+## Implementation Pivot 🔄
+We have pivoted from the original floating icon approach to a simpler, more reliable implementation:
+
+### Previous Approach (Discontinued)
+- Used a floating icon that followed cursor
+- Required complex state management between modal and map
+- Needed multiple event listeners and cleanup
+- Had issues with position tracking and event handling
+- Modal opened before placement
+
+### New Approach ✨
+- User clicks POI icon in sidebar to enter "placement mode"
+- Cursor changes to crosshair to indicate placement mode
+- User clicks anywhere on map to place POI
+- Temporary draggable marker appears at clicked location
+- Modal opens to collect POI details
+- On save, temporary marker is replaced with permanent POI marker
+
+## Current Implementation Status ✅
+1. Map container updates
+   - Added startPOIPlacement method
+   - Map ready for placement mode handling
+   - Cursor state management implemented
+
+## Next Steps 📋
+
+### High Priority
+1. **Map Click Handler**
+   - [x] Update cursor on entering placement mode
+   - [ ] Add temporary marker creation
+   - [ ] Make temporary marker draggable
+   - [ ] Handle drag events for position updates
+
+2. **POI Modal Integration**
+   - [ ] Update to open after placement
+   - [ ] Pass temporary marker reference
+   - [ ] Handle position updates from marker drag
+   - [ ] Clean up temporary marker on cancel/save
+
+3. **Marker Management**
+   - [ ] Add temporary to permanent marker conversion
+   - [ ] Implement marker cleanup
+   - [ ] Handle draggable state
+
+### Future Enhancements
+1. **Edit Mode**
+   - [ ] Allow repositioning of existing POIs
+   - [ ] Edit POI details
+   - [ ] Delete POI functionality
+
+2. **UI Improvements**
+   - [ ] Add visual feedback during placement mode
+   - [ ] Improve marker styling
+   - [ ] Add category-based icons
+   - [ ] Add tooltip during placement
+
+3. **Data Management**
+   - [ ] Save POI positions with map data
+   - [ ] Load saved POIs
+   - [ ] Handle POI clustering for dense areas
+
+## Technical Notes 🔧
+- Temporary markers use mapboxgl.Marker with draggable: true
+- Position updates tracked through marker.getLngLat()
+- Modal state simplified to open only after placement
+- Event cleanup handled through marker.remove()
+
+## Testing Required 🧪
+1. Test placement mode entry/exit
+2. Verify temporary marker drag functionality
+3. Test position updates during drag
+4. Verify cleanup on cancel/save
+5. Test marker conversion process
+6. Verify modal state management
+
+## Dependencies
+- Mapbox GL JS (for markers)
+- Material UI (for modal and icons)
+- React (state management)
+
+This new approach simplifies the implementation while providing a better user experience. The removal of the floating icon reduces complexity and potential issues with event handling.

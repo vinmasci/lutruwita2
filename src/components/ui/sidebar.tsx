@@ -405,7 +405,15 @@ const [routes, setRoutes] = useState<Array<{
 </ListItemButton>
 
 <ListItemButton
-  onClick={() => setPoiModalOpen(true)}
+  onClick={() => {
+    if (mapRef.current) {
+      const map = mapRef.current.getMap();
+      if (map) {
+        map.getCanvas().style.cursor = 'crosshair';
+        setIsPlacingPOI({ iconType: 'default' });
+      }
+    }
+  }}
   sx={{ justifyContent: open ? 'start' : 'center', minHeight: 48 }}
 >
   <ListItemIcon>
