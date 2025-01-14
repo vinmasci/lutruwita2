@@ -8,11 +8,13 @@ export const createPOIMarker = (
   poiType: POIType,
   isDraggable: boolean = false
 ): mapboxgl.Marker => {
+  // Create main container
   const el = document.createElement('div');
-  el.className = isDraggable ? 'temp-poi-marker' : 'poi-marker';
+  el.className = isDraggable ? 'temp-poi-marker' : 'poi-marker mapboxgl-marker';
 
   // Create marker container with styling
   const markerContainer = document.createElement('div');
+  markerContainer.className = 'poi-marker-container';
   markerContainer.style.position = 'relative';
   markerContainer.style.backgroundColor = '#1f2937';
   markerContainer.style.padding = '4px 8px';
@@ -22,14 +24,25 @@ export const createPOIMarker = (
   markerContainer.style.alignItems = 'center';
   markerContainer.style.gap = '4px';
   markerContainer.style.cursor = isDraggable ? 'move' : 'pointer';
+  markerContainer.style.zIndex = '1';
 
-  // Add icon
+  // Add icon and text container
+  const contentContainer = document.createElement('div');
+  contentContainer.style.display = 'flex';
+  contentContainer.style.alignItems = 'center';
+  contentContainer.style.gap = '4px';
+
+  // Add icon with material icons class
   const icon = document.createElement('span');
   icon.className = 'material-icons';
   icon.style.color = '#e17055';
   icon.style.fontSize = '20px';
-  icon.textContent = POIIcons[poiType] || 'place';
-  markerContainer.appendChild(icon);
+  icon.style.lineHeight = '1';
+  icon.style.display = 'block';
+  icon.innerHTML = POIIcons[poiType] || '&#xe55f;'; // Default to 'place' icon
+  contentContainer.appendChild(icon);
+
+  markerContainer.appendChild(contentContainer);
 
   // Add arrow pointer
   const arrow = document.createElement('div');
@@ -51,11 +64,17 @@ export const createPOIMarker = (
     element: el,
     draggable: isDraggable,
     anchor: 'bottom',
-    offset: [0, 8],
-    clickTolerance: 3
+    offset: [0, 8]
   })
     .setLngLat([position.lon, position.lat])
     .addTo(map);
+
+  console.log('Created marker:', {
+    position,
+    poiType,
+    isDraggable,
+    element: el.outerHTML
+  });
 
   return marker;
 };
@@ -66,9 +85,12 @@ export const addPOIMarkerToMap = (
 ): mapboxgl.Marker | null => {
   if (!map) return null;
   
+  console.log('Adding POI marker:', poi);
+
   // Remove existing marker with same ID if it exists
   const existingMarker = document.querySelector(`[data-poi-id="${poi.id}"]`);
   if (existingMarker) {
+    console.log('Removing existing marker:', poi.id);
     existingMarker.remove();
   }
 
@@ -80,9 +102,16 @@ export const addPOIMarkerToMap = (
     false // not draggable for existing POIs
   );
 
-  // Add POI identifier
+  // Add POI identifier and classes
   const el = marker.getElement();
   el.setAttribute('data-poi-id', poi.id);
+  el.classList.add('mapboxgl-marker');
+  el.classList.add('mapboxgl-marker-anchor-bottom');
+
+  console.log('Added marker to map:', {
+    id: poi.id,
+    element: el.outerHTML
+  });
 
   return marker;
 };
@@ -95,5 +124,5 @@ export const removePOIMarker = (poiId: string): void => {
 };
 
 export const removeAllPOIMarkers = (): void => {
-  document.querySelectorAll('.poi-marker-container').forEach(el => el.remove());
+  document.querySelectorAll('.poi-marker').forEach(el => el.remove());
 };
