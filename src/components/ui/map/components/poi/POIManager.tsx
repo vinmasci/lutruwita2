@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { usePOI } from '../../utils/poi/poi-state';
 import { POIModal } from './POIModal';
@@ -18,6 +18,9 @@ export const POIManager: React.FC<POIManagerProps> = ({ map }) => {
     setPoiModalOpen,
     setTempMarker
   } = usePOI();
+
+  // Keep track of active markers
+  const markersRef = useRef<{ [key: string]: mapboxgl.Marker }>({});
 
   // Set up map click handler
   useEffect(() => {
@@ -121,16 +124,41 @@ export const POIManager: React.FC<POIManagerProps> = ({ map }) => {
   useEffect(() => {
     if (!map) return;
 
-    removeAllPOIMarkers();
-    currentPOIs.forEach(poi => {
-      addPOIMarkerToMap(map, poi);
+    // Clean up any markers not in currentPOIs
+    Object.entries(markersRef.current).forEach(([id, marker]) => {
+      if (!currentPOIs.find(poi => poi.id === id)) {
+        marker.remove();
+        delete markersRef.current[id];
+      }
     });
+
+    // Add or update markers for each POI
+    currentPOIs.forEach(poi => {
+      // Remove existing marker if it exists
+      if (markersRef.current[poi.id]) {
+        markersRef.current[poi.id].remove();
+      }
+
+      // Create new marker
+      const marker = addPOIMarkerToMap(map, poi);
+      if (marker) {
+        markersRef.current[poi.id] = marker;
+        console.log(`Added/Updated marker for POI ${poi.id}`, marker);
+      }
+    });
+
+    return () => {
+      // Cleanup only unmounted markers
+      Object.values(markersRef.current).forEach(marker => marker.remove());
+      markersRef.current = {};
+    };
   }, [map, currentPOIs]);
 
   // Clean up on unmount
   useEffect(() => {
     return () => {
-      removeAllPOIMarkers();
+      Object.values(markersRef.current).forEach(marker => marker.remove());
+      markersRef.current = {};
     };
   }, []);
 
