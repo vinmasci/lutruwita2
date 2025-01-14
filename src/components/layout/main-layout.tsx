@@ -6,11 +6,12 @@ import MapContainer from '../ui/map-container';
 import Sidebar from '../ui/sidebar';
 import BottomTabs from '../ui/bottom-tabs';
 import { FloatingIconProvider } from '../../contexts/floating-icon-context';
-import { POIType, InfrastructurePOIType } from '@/types/note-types';
+import { InfrastructurePOIType } from '@/types/note-types';
 
 interface PlacingPOIState {
-  type: POIType;
-  position?: { lat: number; lon: number; };
+  type: InfrastructurePOIType;
+  position: { lat: number; lon: number; } | null;
+  iconType?: InfrastructurePOIType;
 }
 
 const MainLayout = () => {
@@ -24,10 +25,14 @@ const MainLayout = () => {
       if (map) {
         map.getCanvas().style.cursor = 'crosshair';
         setIsPlacingPOI({ 
-          type: InfrastructurePOIType.WaterPoint 
+          type: InfrastructurePOIType.WaterPoint,
+          position: null,
+          iconType: InfrastructurePOIType.WaterPoint
         });
         console.log("Set isPlacingPOI state:", {
-          type: InfrastructurePOIType.WaterPoint
+          type: InfrastructurePOIType.WaterPoint,
+          position: null,
+          iconType: InfrastructurePOIType.WaterPoint
         });
       }
     }
