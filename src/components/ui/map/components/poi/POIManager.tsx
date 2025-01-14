@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { usePOI } from '../../utils/poi/poi-state';
 import { POIModal } from './POIModal';
-import { createPOIMarker, removeAllPOIMarkers } from '../../utils/poi/poi-markers';
+import { createPOIMarker } from '../../utils/poi/poi-markers';
 
 interface POIManagerProps {
   map: mapboxgl.Map | null;
