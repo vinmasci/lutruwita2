@@ -98,10 +98,6 @@ interface SurfaceProgressState {
   total: number;
 }
 
-interface MapContainerProps {
-  children?: React.ReactNode;
-}
-
 // --------------------------------------------
 // Loading Overlay UI Component
 // Shows progress during GPX processing
@@ -240,6 +236,9 @@ const MapContainer = forwardRef<MapRef, MapContainerProps>((props, ref) => {
     progress: 0,
     total: 0
   });
+  const [tempMarker, setTempMarker] = useState<mapboxgl.Marker | null>(null);
+  const [poiModalOpen, setPoiModalOpen] = useState(false);
+  const [currentPOIs, setCurrentPOIs] = useState<POI[]>([]);
 
   // ------------------------------------------------------------------
   // isReady => Checks if map and all layers are fully loaded
@@ -1031,7 +1030,7 @@ const handleAddPOI = useCallback(async (poiData: Omit<POI, 'id' | 'createdAt' | 
   console.log("Added POI marker to map");
 
   return newPOI;
-}, [map, isPlacingPOI]);
+}, [map, props.isPlacingPOI]);
 
 // Save map handler
 const handleSaveMap = useCallback(async (data: {
@@ -1613,8 +1612,8 @@ if (savedPhotos?.length) {
       };
       
       const handleEscapeKey = (e: KeyboardEvent) => {
-        if (e.key === 'Escape' && isPlacingPOI) {
-          setIsPlacingPOI(null);
+        if (e.key === 'Escape' && props.isPlacingPOI) {
+          props.setIsPlacingPOI(null);
           setPoiModalOpen(false);
           
           // Remove temp marker if it exists
