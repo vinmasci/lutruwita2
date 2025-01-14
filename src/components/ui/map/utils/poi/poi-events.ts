@@ -1,6 +1,6 @@
 import mapboxgl from 'mapbox-gl';
 import { POI, POICategory } from '@/types/note-types';
-import { createPOIMarker, addPOIMarkerToMap } from './poi-markers';
+import { createPOIMarker } from './poi-markers';
 import { usePOI } from './poi-state.tsx';
 
 export const handleMapClick = (
@@ -131,10 +131,12 @@ export const handleAddPOI = async (
   }
 
   // Add permanent marker to map
-  const permanentMarker = addPOIMarkerToMap(map, newPOI);
-  if (!permanentMarker) {
-    throw new Error('Failed to create permanent marker');
-  }
+  const permanentMarker = createPOIMarker(
+    map,
+    newPOI.location,
+    newPOI.type,
+    false
+  );
 
   // Add to state
   addPOI(newPOI);
