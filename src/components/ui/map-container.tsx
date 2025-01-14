@@ -33,7 +33,10 @@ import { createRoot } from 'react-dom/client';
 // New POI imports
 import { POIProvider } from './map/utils/poi/poi-state';
 import { POIManager } from './map/components/poi/POIManager';
-import type { POI, POICategory, InfrastructurePOIType } from '@/types/note-types';
+import { addPOIMarkerToMap } from './map/utils/poi/poi-markers';
+import { POI, POICategory, InfrastructurePOIType } from '@/types/note-types';
+import type { Map as MapboxMap, Marker } from 'mapbox-gl';
+
 
 // --------------------------------------------
 // Type definitions for the component
@@ -1024,11 +1027,11 @@ const handleAddPOI = useCallback(async (poiData: Omit<POI, 'id' | 'createdAt' | 
   console.log("Added POI to state");
 
   // Add marker to map
-  await addPOIMarkerToMap(newPOI);
+  await addPOIMarkerToMap(map.current, newPOI);
   console.log("Added POI marker to map");
 
   return newPOI;
-}, [map, addPOIMarkerToMap, isPlacingPOI]);
+}, [map, isPlacingPOI]);
 
 // Save map handler
 const handleSaveMap = useCallback(async (data: {
@@ -1550,8 +1553,14 @@ if (savedPhotos?.length) {
           tempMarker: !!tempMarker
         });
       
-        if (!map.current || !props.isPlacingPOI?.type) {
+        if (!map.current || !props.isPlacingPOI || !props.isPlacingPOI.type) {
           console.log('Early return: no map or not in POI placement mode');
+          return;
+        }
+
+        // Ensure we have a valid POI placement state
+        if (!props.isPlacingPOI.position) {
+          console.log('No position set in POI placement state');
           return;
         }
       

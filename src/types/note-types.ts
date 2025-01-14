@@ -4,18 +4,23 @@ export enum POICategory {
     Accommodation = 'Accommodation',
     NaturalFeatures = 'Natural Features',
     Information = 'Information'
-  }
-  
-  export enum InfrastructurePOIType {
+}
+
+export enum InfrastructurePOIType {
     WaterPoint = 'Water Point',
     PublicToilet = 'Public Toilet',
     PublicShower = 'Public Shower',
     BikeRepairStation = 'Bike Repair Station',
     BikeShop = 'Bike Shop',
-    BikeStorage = 'Bike Storage'
-  }
-  
-  export enum ServicesPOIType {
+    BikeStorage = 'Bike Storage',
+    Shelter = 'Shelter',
+    Campsite = 'Campsite',
+    Parking = 'Parking',
+    Viewpoint = 'Viewpoint',
+    Other = 'Other'
+}
+
+export enum ServicesPOIType {
     Cafe = 'Cafe',
     Restaurant = 'Restaurant',
     PubBar = 'Pub/Bar',
@@ -24,43 +29,43 @@ export enum POICategory {
     PostOffice = 'Post Office',
     MedicalCenter = 'Medical Center',
     Pharmacy = 'Pharmacy'
-  }
-  
-  export enum AccommodationPOIType {
+}
+
+export enum AccommodationPOIType {
     Campground = 'Campground',
     HotelMotel = 'Hotel/Motel',
     Hostel = 'Hostel',
     FreeCamping = 'Free Camping',
     HutShelter = 'Hut/Shelter'
-  }
-  
-  export enum NaturalFeaturesPOIType {
+}
+
+export enum NaturalFeaturesPOIType {
     Lookout = 'Lookout',
     Beach = 'Beach',
     Waterfall = 'Waterfall',
     Cave = 'Cave',
     RiverCrossing = 'River Crossing',
     HotSpring = 'Hot Spring'
-  }
-  
-  export enum InformationPOIType {
+}
+
+export enum InformationPOIType {
     VisitorCenter = 'Visitor Center',
     TrailHead = 'Trail Head',
     ParkEntry = 'Park Entry',
     WarningPoint = 'Warning Point',
     HistoricalSite = 'Historical Site',
     InformationBoard = 'Information Board',
-      Warning = 'Warning'
-  }
-  
-  export type POIType = 
+    Warning = 'Warning'
+}
+
+export type POIType = 
     | InfrastructurePOIType
     | ServicesPOIType
     | AccommodationPOIType
     | NaturalFeaturesPOIType
     | InformationPOIType;
-  
-  export const POIIcons: Record<POIType, string> = {
+
+export const POIIcons: Record<POIType, string> = {
     // Infrastructure
     [InfrastructurePOIType.WaterPoint]: 'water_drop',
     [InfrastructurePOIType.PublicToilet]: 'wc',
@@ -68,7 +73,12 @@ export enum POICategory {
     [InfrastructurePOIType.BikeRepairStation]: 'build',
     [InfrastructurePOIType.BikeShop]: 'pedal_bike',
     [InfrastructurePOIType.BikeStorage]: 'garage',
-  
+    [InfrastructurePOIType.Shelter]: 'house',
+    [InfrastructurePOIType.Campsite]: 'camping',
+    [InfrastructurePOIType.Parking]: 'local_parking',
+    [InfrastructurePOIType.Viewpoint]: 'visibility',
+    [InfrastructurePOIType.Other]: 'place',
+
     // Services
     [ServicesPOIType.Cafe]: 'coffee',
     [ServicesPOIType.Restaurant]: 'restaurant',
@@ -78,14 +88,14 @@ export enum POICategory {
     [ServicesPOIType.PostOffice]: 'local_post_office',
     [ServicesPOIType.MedicalCenter]: 'local_hospital',
     [ServicesPOIType.Pharmacy]: 'local_pharmacy',
-  
+
     // Accommodation
     [AccommodationPOIType.Campground]: 'camping',
     [AccommodationPOIType.HotelMotel]: 'hotel',
     [AccommodationPOIType.Hostel]: 'house',
     [AccommodationPOIType.FreeCamping]: 'nature',
     [AccommodationPOIType.HutShelter]: 'cabin',
-  
+
     // Natural Features
     [NaturalFeaturesPOIType.Lookout]: 'visibility',
     [NaturalFeaturesPOIType.Beach]: 'beach_access',
@@ -93,7 +103,7 @@ export enum POICategory {
     [NaturalFeaturesPOIType.Cave]: 'landscape',
     [NaturalFeaturesPOIType.RiverCrossing]: 'bridge',
     [NaturalFeaturesPOIType.HotSpring]: 'hot_tub',
-  
+
     // Information
     [InformationPOIType.VisitorCenter]: 'info',
     [InformationPOIType.TrailHead]: 'hiking',
@@ -101,9 +111,9 @@ export enum POICategory {
     [InformationPOIType.WarningPoint]: 'warning',
     [InformationPOIType.HistoricalSite]: 'museum',
     [InformationPOIType.InformationBoard]: 'info_outline',
-      [InformationPOIType.Warning]: 'report_problem'
-  };
-  
+    [InformationPOIType.Warning]: 'report_problem'
+};
+
 export interface POI {
     id: string;
     category: POICategory;
@@ -111,11 +121,11 @@ export interface POI {
     name: string;
     description?: string;
     location: {
-      lat: number;
-      lon: number;
+        lat: number;
+        lon: number;
     };
     createdAt: Date;
     updatedAt: Date;
     createdBy: string;
     warning?: boolean;
-  }
+}

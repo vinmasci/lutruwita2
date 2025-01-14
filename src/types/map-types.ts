@@ -1,6 +1,5 @@
-// Before: Empty file
+import { InfrastructurePOIType } from './note-types';
 
-// After:
 export interface SavedMap {
     _id?: string;
     name: string;                // Required: Map name
@@ -33,4 +32,10 @@ export interface SavedMap {
         pitch?: number;
         bearing?: number;
     };
+}
+
+export interface PlacingPOIState {
+  type: InfrastructurePOIType;
+  position: { lat: number; lon: number } | null;
+  iconType?: InfrastructurePOIType;
 }
