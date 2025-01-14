@@ -204,7 +204,12 @@ interface Route {
   gpxFilePath?: string;  // Add this line
 }
 
-const MapContainer = forwardRef<MapRef>((props, ref) => {
+interface MapContainerProps {
+  isPlacingPOI: PlacingPOIState | null;
+  setIsPlacingPOI: (state: PlacingPOIState | null) => void;
+}
+
+const MapContainer = forwardRef<MapRef, MapContainerProps>((props, ref) => {
   const routeSourceId = 'route';
   const routeLayerId = 'route-layer';
   
@@ -228,7 +233,8 @@ interface PlacingPOIState {
   iconType?: InfrastructurePOIType;
 }
 
-const [isPlacingPOI, setIsPlacingPOI] = useState<PlacingPOIState | null>(null);
+// Get isPlacingPOI from props instead of local state
+const { isPlacingPOI, setIsPlacingPOI } = props;
 const [surfaceProgress, setSurfaceProgress] = React.useState<SurfaceProgressState>({
   isProcessing: false,
   progress: 0,
@@ -1522,9 +1528,15 @@ if (savedPhotos?.length) {
     startPOIPlacement: () => {
       if (map.current) {
         map.current.getCanvas().style.cursor = 'crosshair';
-        setIsPlacingPOI({ type: InfrastructurePOIType.WaterPoint });
+        props.setIsPlacingPOI({
+          type: InfrastructurePOIType.WaterPoint,
+          position: null,
+          iconType: InfrastructurePOIType.WaterPoint
+        });
+        console.log("Starting POI placement from map-container");
       }
     }
+  
   }),
   [handleGpxUpload, isReady, routeStore, addRouteToMap, addPhotoMarkersToMap, assignSurfacesViaNearest, createMarkerElement]
 );
@@ -1562,19 +1574,20 @@ if (savedPhotos?.length) {
 
       const handleMapClick = (e: mapboxgl.MapMouseEvent & { lngLat: mapboxgl.LngLat }) => {
         // Get current state values at time of click
-        const currentPlacingPOI = isPlacingPOI;
-        
+        console.log('Map click props:', props); // Add this line
+        console.log('Map click props.isPlacingPOI:', props.isPlacingPOI); // Add this line
+      
         console.log('Map click event:', {
           hasMap: !!map.current,
-          isPlacingPOI: currentPlacingPOI,
+          isPlacingPOI: props.isPlacingPOI,  // Changed from isPlacingPOI to props.isPlacingPOI
           clickLocation: e.lngLat,
           tempMarker: !!tempMarker
         });
       
-        if (!map.current || !currentPlacingPOI) {
+        if (!map.current || !props.isPlacingPOI?.type) {  // Changed from isPlacingPOI to props.isPlacingPOI
           console.log('Early return because:', {
             noMap: !map.current,
-            notPlacingPOI: !currentPlacingPOI
+            notPlacingPOI: !props.isPlacingPOI?.type  // Changed from isPlacingPOI to props.isPlacingPOI
           });
           return;
         }
@@ -1800,7 +1813,7 @@ if (savedPhotos?.length) {
         map.current = null;
       }
     };
-  }, [isPlacingPOI]); // Added isPlacingPOI to dependencies
+  }, []); // Remove isPlacingPOI from dependencies
 
   // ------------------------------------------------------------------
   // Render the map component with loading overlay when processing
