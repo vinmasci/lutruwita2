@@ -223,8 +223,9 @@ const [currentPOIs, setCurrentPOIs] = useState<POI[]>([]);
 const [poiModalOpen, setPoiModalOpen] = useState(false);
 const [tempMarker, setTempMarker] = useState<mapboxgl.Marker | null>(null);
 interface PlacingPOIState {
-  type: POIType;  // Changed from iconType to align with POI types
+  type: InfrastructurePOIType;
   position: { lat: number; lon: number; } | null;
+  iconType?: InfrastructurePOIType;
 }
 
 const [isPlacingPOI, setIsPlacingPOI] = useState<PlacingPOIState | null>(null);
@@ -387,7 +388,7 @@ const combinedLine = turf.lineString(
 );
 
 // Calculate total length in kilometers
-          const totalLength = turf.length(combinedLine, { units: 'kilometers' as const });
+          const totalLength = turf.length(combinedLine, { units: 'kilometers' });
 
 // Get distance points based on zoom level
 const distancePoints = getDistancePoints(map.current, combinedLine, totalLength);
@@ -1015,7 +1016,7 @@ const handleGpxUpload = useCallback(
 const [routeStore, setRouteStore] = useState<Route[]>([]);
 
 // POI handler
-const handleAddPOI = useCallback(async (poiData: Omit<POI, 'id' | 'createdAt' | 'updatedAt'>) => {
+const handleAddPOI = useCallback(async (poiData: Omit<POI, 'id' | 'createdAt' | 'updatedAt'> & { createdBy: string }) => {
   console.log("handleAddPOI called with:", {
     poiData,
     hasMap: !!map.current,
@@ -1521,7 +1522,7 @@ if (savedPhotos?.length) {
     startPOIPlacement: () => {
       if (map.current) {
         map.current.getCanvas().style.cursor = 'crosshair';
-        setIsPlacingPOI({ iconType: 'default' });
+        setIsPlacingPOI({ type: InfrastructurePOIType.WaterPoint });
       }
     }
   }),
@@ -1560,10 +1561,27 @@ if (savedPhotos?.length) {
       map.current = newMap;
 
       const handleMapClick = (e: mapboxgl.MapMouseEvent & { lngLat: mapboxgl.LngLat }) => {
-        if (!map.current || !isPlacingPOI) return;
+        // Get current state values at time of click
+        const currentPlacingPOI = isPlacingPOI;
+        
+        console.log('Map click event:', {
+          hasMap: !!map.current,
+          isPlacingPOI: currentPlacingPOI,
+          clickLocation: e.lngLat,
+          tempMarker: !!tempMarker
+        });
+      
+        if (!map.current || !currentPlacingPOI) {
+          console.log('Early return because:', {
+            noMap: !map.current,
+            notPlacingPOI: !currentPlacingPOI
+          });
+          return;
+        }
       
         // Always clean up any existing temporary marker first
         if (tempMarker) {
+          console.log('Removing existing temp marker');
           tempMarker.remove();
           setTempMarker(null);
         }
@@ -1794,7 +1812,7 @@ if (savedPhotos?.length) {
       </div>
       <POIModal 
   open={poiModalOpen}
-  selectedType={isPlacingPOI?.iconType || InfrastructurePOIType.WaterPoint}
+  selectedType={isPlacingPOI?.type || InfrastructurePOIType.WaterPoint}
   tempMarker={tempMarker}
   onClose={() => {
     setPoiModalOpen(false);

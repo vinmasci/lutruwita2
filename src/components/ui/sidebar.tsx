@@ -73,7 +73,7 @@ interface SidebarProps {
   onStartPOIPlacement: () => void;  // Add this line
 }
 
-const Sidebar = ({ mapRef }: SidebarProps) => {
+const Sidebar = ({ mapRef, onStartPOIPlacement }: SidebarProps) => {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [mapReady, setMapReady] = useState(false);

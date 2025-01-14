@@ -18,6 +18,7 @@ const MainLayout = () => {
   const [isPlacingPOI, setIsPlacingPOI] = useState<PlacingPOIState | null>(null);
 
   const handleStartPOIPlacement = () => {
+    console.log("Starting POI placement");
     if (mapRef.current) {
       const map = mapRef.current.getMap();
       if (map) {
@@ -25,10 +26,13 @@ const MainLayout = () => {
         setIsPlacingPOI({ 
           type: InfrastructurePOIType.WaterPoint 
         });
+        console.log("Set isPlacingPOI state:", {
+          type: InfrastructurePOIType.WaterPoint
+        });
       }
     }
   };
-
+  
   return (
     <FloatingIconProvider>
       <div className="h-screen w-full flex overflow-hidden">
