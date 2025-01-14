@@ -57,3 +57,28 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* MapBox GL Marker Styles */
+.mapboxgl-marker {
+  z-index: 2 !important;
+}
+
+.poi-marker {
+  z-index: 3 !important;
+}
+
+.mapboxgl-marker.poi-marker {
+  z-index: 3 !important;
+}
+
+/* Override any Mapbox default styles */
+.mapboxgl-marker > div {
+  z-index: 3 !important;
+}
+
+/* Ensure markers are always clickable */
+.mapboxgl-marker,
+.poi-marker,
+.poi-marker * {
+  pointer-events: auto !important;
+}

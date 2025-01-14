@@ -10,61 +10,52 @@ export const createPOIMarker = (
 ): mapboxgl.Marker => {
   // Create main container
   const el = document.createElement('div');
-  el.className = isDraggable ? 'temp-poi-marker' : 'poi-marker mapboxgl-marker';
+  el.className = 'poi-marker mapboxgl-marker';
+  el.style.zIndex = '2';
 
-  // Create marker container with styling
+  // Create marker container
   const markerContainer = document.createElement('div');
-  markerContainer.className = 'poi-marker-container';
-  markerContainer.style.position = 'relative';
   markerContainer.style.backgroundColor = '#1f2937';
-  markerContainer.style.padding = '4px 8px';
+  markerContainer.style.padding = '8px';
   markerContainer.style.borderRadius = '4px';
   markerContainer.style.boxShadow = '0 2px 4px rgba(0,0,0,0.5)';
+  markerContainer.style.position = 'relative';
+  markerContainer.style.zIndex = '2';
   markerContainer.style.display = 'flex';
   markerContainer.style.alignItems = 'center';
-  markerContainer.style.gap = '4px';
   markerContainer.style.cursor = isDraggable ? 'move' : 'pointer';
-  markerContainer.style.zIndex = '1';
+  markerContainer.style.minWidth = '32px';
+  markerContainer.style.minHeight = '32px';
+  markerContainer.style.justifyContent = 'center';
 
-  // Add icon and text container
-  const contentContainer = document.createElement('div');
-  contentContainer.style.display = 'flex';
-  contentContainer.style.alignItems = 'center';
-  contentContainer.style.gap = '4px';
-
-  // Add icon with material icons class
+  // Add icon
   const icon = document.createElement('span');
   icon.className = 'material-icons';
+  icon.textContent = POIIcons[poiType];
   icon.style.color = '#e17055';
   icon.style.fontSize = '20px';
-  icon.style.lineHeight = '1';
-  icon.style.display = 'block';
-  icon.innerHTML = POIIcons[poiType] || '&#xe55f;'; // Default to 'place' icon
-  contentContainer.appendChild(icon);
+  markerContainer.appendChild(icon);
 
-  markerContainer.appendChild(contentContainer);
-
-  // Add arrow pointer
+  // Add arrow
   const arrow = document.createElement('div');
   arrow.style.position = 'absolute';
-  arrow.style.bottom = '-6px';
+  arrow.style.bottom = '-8px';
   arrow.style.left = '50%';
   arrow.style.transform = 'translateX(-50%)';
   arrow.style.width = '0';
   arrow.style.height = '0';
-  arrow.style.borderLeft = '6px solid transparent';
-  arrow.style.borderRight = '6px solid transparent';
-  arrow.style.borderTop = '6px solid #1f2937';
+  arrow.style.borderLeft = '8px solid transparent';
+  arrow.style.borderRight = '8px solid transparent';
+  arrow.style.borderTop = '8px solid #1f2937';
   markerContainer.appendChild(arrow);
 
   el.appendChild(markerContainer);
 
-  // Create and return the marker
   const marker = new mapboxgl.Marker({
     element: el,
     draggable: isDraggable,
     anchor: 'bottom',
-    offset: [0, 8]
+    offset: [0, 0]
   })
     .setLngLat([position.lon, position.lat])
     .addTo(map);
@@ -102,11 +93,9 @@ export const addPOIMarkerToMap = (
     false // not draggable for existing POIs
   );
 
-  // Add POI identifier and classes
+  // Add POI identifier
   const el = marker.getElement();
   el.setAttribute('data-poi-id', poi.id);
-  el.classList.add('mapboxgl-marker');
-  el.classList.add('mapboxgl-marker-anchor-bottom');
 
   console.log('Added marker to map:', {
     id: poi.id,
