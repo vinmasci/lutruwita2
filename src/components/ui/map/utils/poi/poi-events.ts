@@ -1,6 +1,6 @@
 import mapboxgl from 'mapbox-gl';
 import { POI, POICategory } from '@/types/note-types';
-import { createPOIMarker } from './poi-markers';
+import { createPOIMarker, addPOIMarkerToMap } from './poi-markers';
 import { usePOI } from './poi-state.tsx';
 
 export const handleMapClick = (
@@ -90,16 +90,15 @@ export const handleAddPOI = async (
   map: mapboxgl.Map,
   context: ReturnType<typeof usePOI>
 ): Promise<POI> => {
-  console.log("handleAddPOI - Received context:", context); // Debug log
+  console.log("handleAddPOI - Received context:", context);
 
   if (!context) {
-    console.error("Context is undefined or null"); // More detailed error
+    console.error("Context is undefined or null");
     throw new Error('Context is missing');
   }
 
-  // Direct assignment instead of destructuring
-  const addPOI = context.addPOI;
-  console.log("handleAddPOI - addPOI function:", addPOI); // Debug log
+  const { addPOI, tempMarker, setTempMarker } = context;
+  console.log("handleAddPOI - addPOI function:", addPOI);
 
   if (!addPOI) {
     throw new Error('addPOI function is missing from context');
@@ -110,6 +109,7 @@ export const handleAddPOI = async (
     hasMap: !!map
   });
 
+  // Create the new POI
   const newPOI: POI = {
     ...poiData,
     id: `poi-${Date.now()}`,
@@ -124,9 +124,21 @@ export const handleAddPOI = async (
 
   console.log("Created new POI:", newPOI);
 
+  // Clean up temporary marker if it exists
+  if (tempMarker) {
+    tempMarker.remove();
+    setTempMarker(null);
+  }
+
+  // Add permanent marker to map
+  const permanentMarker = addPOIMarkerToMap(map, newPOI);
+  if (!permanentMarker) {
+    throw new Error('Failed to create permanent marker');
+  }
+
   // Add to state
   addPOI(newPOI);
-  console.log("Added POI to state");
+  console.log("Added POI to state and created permanent marker");
 
   return newPOI;
 };
