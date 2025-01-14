@@ -34,7 +34,14 @@ export const POIModal: React.FC<POIModalProps> = ({
   tempMarker,
   onClose,
 }) => {
-  const { isPlacingPOI, setIsPlacingPOI } = usePOI();
+  const { 
+    isPlacingPOI, 
+    setIsPlacingPOI, 
+    addPOI, 
+    setTempMarker,
+    setPoiModalOpen 
+  } = usePOI();
+  
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
 
@@ -62,16 +69,33 @@ export const POIModal: React.FC<POIModalProps> = ({
     };
 
     try {
-      // Add a debug log to see the context value
-      console.log('Context before handleAddPOI:', context);
-      await handleAddPOI(poiData, map, { addPOI, isPlacingPOI, setIsPlacingPOI });  // Pass all required context functions
+      const contextData = {
+        isPlacingPOI,
+        setIsPlacingPOI,
+        addPOI,
+        setTempMarker,
+        setPoiModalOpen
+      };
+
+      await handleAddPOI(poiData, map, contextData);
+      
+      // Reset form and state
       setName('');
       setDescription('');
       setIsPlacingPOI(null);
+      
+      // Cleanup
+      if (tempMarker) {
+        tempMarker.remove();
+        setTempMarker(null);
+      }
+      
       if (map) {
         map.getCanvas().style.cursor = 'default';
       }
+      
       onClose();
+      setPoiModalOpen(false);
     } catch (error) {
       console.error('Error adding POI:', error);
     }
