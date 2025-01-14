@@ -1,6 +1,26 @@
 import mapboxgl from 'mapbox-gl';
-import { POI, POIType, POIIcons } from '@/types/note-types';
+import { POI, POIType, POIIcons, POICategory } from '@/types/note-types';
 import { usePOI } from './poi-state';
+
+const getCategoryColor = (poiType: POIType): string => {
+  // Check which category the POI type belongs to
+  if (Object.values(POICategory.Infrastructure).includes(poiType)) {
+    return '#00a8ff';  // Infrastructure - Blue
+  }
+  if (Object.values(POICategory.Services).includes(poiType)) {
+    return '#fd9644';  // Services - Orange
+  }
+  if (Object.values(POICategory.Accommodation).includes(poiType)) {
+    return '#e056fd';  // Accommodation - Purple
+  }
+  if (Object.values(POICategory.NaturalFeatures).includes(poiType)) {
+    return '#20bf6b';  // Natural Features - Green
+  }
+  if (Object.values(POICategory.Information).includes(poiType)) {
+    return '#eb4d4b';  // Information - Red
+  }
+  return '#1f2937';  // Default dark gray
+};
 
 export const createPOIMarker = (
   map: mapboxgl.Map,
@@ -13,40 +33,42 @@ export const createPOIMarker = (
   el.className = 'poi-marker mapboxgl-marker';
   el.style.zIndex = '2';
 
+  const backgroundColor = getCategoryColor(poiType);
+
   // Create marker container
   const markerContainer = document.createElement('div');
-  markerContainer.style.backgroundColor = '#1f2937';
-  markerContainer.style.padding = '8px';
-  markerContainer.style.borderRadius = '4px';
-  markerContainer.style.boxShadow = '0 2px 4px rgba(0,0,0,0.5)';
+  markerContainer.style.backgroundColor = backgroundColor;
+  markerContainer.style.padding = '4px';
+  markerContainer.style.borderRadius = '3px';
+  markerContainer.style.boxShadow = '0 1px 2px rgba(0,0,0,0.5)';
   markerContainer.style.position = 'relative';
   markerContainer.style.zIndex = '2';
   markerContainer.style.display = 'flex';
   markerContainer.style.alignItems = 'center';
   markerContainer.style.cursor = isDraggable ? 'move' : 'pointer';
-  markerContainer.style.minWidth = '32px';
-  markerContainer.style.minHeight = '32px';
+  markerContainer.style.minWidth = '16px';
+  markerContainer.style.minHeight = '16px';
   markerContainer.style.justifyContent = 'center';
 
   // Add icon
   const icon = document.createElement('span');
   icon.className = 'material-icons';
   icon.textContent = POIIcons[poiType];
-  icon.style.color = '#e17055';
-  icon.style.fontSize = '20px';
+  icon.style.color = '#ffffff';  // White icons
+  icon.style.fontSize = '12px';
   markerContainer.appendChild(icon);
 
   // Add arrow
   const arrow = document.createElement('div');
   arrow.style.position = 'absolute';
-  arrow.style.bottom = '-8px';
+  arrow.style.bottom = '-4px';
   arrow.style.left = '50%';
   arrow.style.transform = 'translateX(-50%)';
   arrow.style.width = '0';
   arrow.style.height = '0';
-  arrow.style.borderLeft = '8px solid transparent';
-  arrow.style.borderRight = '8px solid transparent';
-  arrow.style.borderTop = '8px solid #1f2937';
+  arrow.style.borderLeft = '4px solid transparent';
+  arrow.style.borderRight = '4px solid transparent';
+  arrow.style.borderTop = `4px solid ${backgroundColor}`;  // Arrow color matches background
   markerContainer.appendChild(arrow);
 
   el.appendChild(markerContainer);
