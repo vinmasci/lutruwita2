@@ -3,17 +3,16 @@ import { Modal, Box, Typography, TextField, Button, Select, MenuItem, FormContro
 import { POICategory, POIType, POIIcons } from '@/types/note-types';
 
 interface POIModalProps {
-  open: boolean;
-  onClose: () => void;
-  onAdd: (poiData: {
-    name: string;
-    description?: string;
-    category: POICategory;
-    type: POIType;
-  }) => void;
-  selectedType: POIType;
-  tempMarker?: mapboxgl.Marker | null;
-}
+    open: boolean;
+    onClose: () => void;
+    onAdd: (poiData: {
+      name: string;
+      description?: string;
+      category: POICategory;
+      iconType: POIType;  // Changed type to iconType to match state
+    }) => void;
+    initialCategory?: POICategory;
+  }
 
 export function POIModal({ open, onClose, onAdd, selectedType, tempMarker }: POIModalProps) {
   const [name, setName] = useState('');

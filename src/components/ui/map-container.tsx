@@ -17,6 +17,7 @@ import * as turf from '@turf/turf';
 import nearestPointOnLine from '@turf/nearest-point-on-line';
 import { POI } from '@/types/note-types';
 import { createPOIMarkerElement } from './poi-marker';
+import { POICategory, InfrastructurePOIType } from '@/types/note-types';
 import type { 
   Feature,
   Point as TurfPoint,
@@ -1559,62 +1560,53 @@ if (savedPhotos?.length) {
       map.current = newMap;
 
       const handleMapClick = (e: mapboxgl.MapMouseEvent & { lngLat: mapboxgl.LngLat }) => {
-        console.log("Map Click detected:", {
-          isPlacingPOI,
-          lngLat: e.lngLat,
-          hasMap: !!map.current
-        });
+        if (!map.current || !isPlacingPOI) return;
       
-        if (!map.current || !isPlacingPOI?.iconType) {
-          console.log("Early return from click:", { 
-            hasMap: !!map.current, 
-            iconType: isPlacingPOI?.iconType 
-          });
-          return;
-        }
-      
-        // Remove any existing temporary marker
+        // Always clean up any existing temporary marker first
         if (tempMarker) {
           tempMarker.remove();
+          setTempMarker(null);
         }
       
         const position = {
           lat: e.lngLat.lat,
           lon: e.lngLat.lng
         };
-        
-        console.log("Setting POI position:", position);
       
-        // Create new temporary marker
+        // Create new temporary marker with the POI icon
+        const el = document.createElement('div');
+        el.className = 'temp-poi-marker';
+        el.innerHTML = `<span class="material-icons" style="color: #e17055; font-size: 24px;">place</span>`;
+      
         const marker = new mapboxgl.Marker({
-          color: '#e17055',
-          draggable: true
+          element: el,
+          draggable: true,
+          anchor: 'bottom'
         })
           .setLngLat([position.lon, position.lat])
           .addTo(map.current);
       
-        // Track marker drag events
+        // Update position state when marker is dragged
         marker.on('dragend', () => {
           const newPos = marker.getLngLat();
-          setIsPlacingPOI(prev => ({
-            ...prev!,
+          setIsPlacingPOI(prev => prev ? {
+            ...prev,
             position: {
               lat: newPos.lat,
               lon: newPos.lng
             }
-          }));
+          } : null);
         });
-        
+      
         // Update states
         setTempMarker(marker);
-        setIsPlacingPOI(prev => ({
-          ...prev!,
+        setIsPlacingPOI(prev => prev ? {
+          ...prev,
           position
-        }));
-        setPoiModalOpen(true);
+        } : null);
         
-        // Reset cursor after placement
-        map.current.getCanvas().style.cursor = 'default';
+        // Open modal for data entry
+        setPoiModalOpen(true);
       };
       
       const handleEscapeKey = (e: KeyboardEvent) => {
@@ -1802,6 +1794,8 @@ if (savedPhotos?.length) {
       </div>
       <POIModal 
   open={poiModalOpen}
+  selectedType={isPlacingPOI?.iconType || InfrastructurePOIType.WaterPoint}
+  tempMarker={tempMarker}
   onClose={() => {
     setPoiModalOpen(false);
     // Clean up temporary marker if it exists
@@ -1826,7 +1820,7 @@ if (savedPhotos?.length) {
 
       const fullPOIData = {
         ...poiData,
-        category: poiData.category || 'Infrastructure',
+        category: poiData.category || POICategory.Infrastructure,
         type: isPlacingPOI.iconType,
         location: {
           lat: finalPosition.lat,

@@ -70,6 +70,7 @@ const StyledDrawer = styled(Drawer)(({ theme }) => ({
 
 interface SidebarProps {
   mapRef: React.RefObject<MapRef>;
+  onStartPOIPlacement: () => void;  // Add this line
 }
 
 const Sidebar = ({ mapRef }: SidebarProps) => {
@@ -406,12 +407,8 @@ const [routes, setRoutes] = useState<Array<{
 
 <ListItemButton
   onClick={() => {
-    if (mapRef.current) {
-      const map = mapRef.current.getMap();
-      if (map) {
-        map.getCanvas().style.cursor = 'crosshair';
-        setIsPlacingPOI({ iconType: 'default' });
-      }
+    if (mapRef.current && onStartPOIPlacement) {
+      onStartPOIPlacement();
     }
   }}
   sx={{ justifyContent: open ? 'start' : 'center', minHeight: 48 }}
