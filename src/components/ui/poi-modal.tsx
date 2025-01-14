@@ -9,10 +9,11 @@ interface POIModalProps {
       name: string;
       description?: string;
       category: POICategory;
-      iconType: POIType;  // Changed type to iconType to match state
+      iconType: POIType;
     }) => void;
-    initialCategory?: POICategory;
-  }
+    selectedType: POIType;
+    tempMarker: mapboxgl.Marker | null;
+}
 
 export function POIModal({ open, onClose, onAdd, selectedType, tempMarker }: POIModalProps) {
   const [name, setName] = useState('');
@@ -37,7 +38,7 @@ export function POIModal({ open, onClose, onAdd, selectedType, tempMarker }: POI
       name,
       description,
       category,
-      type: selectedType
+      iconType: selectedType
     });
     
     setName('');

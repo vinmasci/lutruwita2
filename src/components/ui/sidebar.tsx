@@ -68,9 +68,11 @@ const StyledDrawer = styled(Drawer)(({ theme }) => ({
   },
 }));
 
+import { InfrastructurePOIType } from '@/types/note-types';
+
 interface SidebarProps {
   mapRef: React.RefObject<MapRef>;
-  onStartPOIPlacement: () => void;  // Add this line
+  onStartPOIPlacement: (type: InfrastructurePOIType) => void;
 }
 
 const Sidebar = ({ mapRef, onStartPOIPlacement }: SidebarProps) => {
@@ -408,7 +410,7 @@ const [routes, setRoutes] = useState<Array<{
 <ListItemButton
   onClick={() => {
     if (mapRef.current && onStartPOIPlacement) {
-      onStartPOIPlacement();
+      onStartPOIPlacement(InfrastructurePOIType.WaterPoint);
     }
   }}
   sx={{ justifyContent: open ? 'start' : 'center', minHeight: 48 }}

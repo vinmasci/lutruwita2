@@ -79,7 +79,8 @@ interface MapRef {
     isVisible: boolean;
     gpxData: string;
   }) => Promise<void>;
-  startPOIPlacement: () => void;  // Added this line
+  startPOIPlacement: () => void;
+  handleAddPOI: (poiData: Omit<POI, 'id' | 'createdAt' | 'updatedAt'> & { createdBy: string }) => Promise<POI>;
 }
 
 
@@ -204,6 +205,12 @@ interface Route {
   gpxFilePath?: string;  // Add this line
 }
 
+interface PlacingPOIState {
+  type: InfrastructurePOIType;
+  position: { lat: number; lon: number } | null;
+  iconType?: InfrastructurePOIType;
+}
+
 interface MapContainerProps {
   isPlacingPOI: PlacingPOIState | null;
   setIsPlacingPOI: (state: PlacingPOIState | null) => void;
@@ -240,6 +247,13 @@ const [surfaceProgress, setSurfaceProgress] = React.useState<SurfaceProgressStat
   progress: 0,
   total: 0
 });
+
+// Add the useEffect right here
+useEffect(() => {
+  console.log("MapContainer props changed:", {
+    isPlacingPOI: props.isPlacingPOI
+  });
+}, [props.isPlacingPOI]);
 
   // ------------------------------------------------------------------
   // isReady => Checks if map and all layers are fully loaded
@@ -1573,22 +1587,15 @@ if (savedPhotos?.length) {
       map.current = newMap;
 
       const handleMapClick = (e: mapboxgl.MapMouseEvent & { lngLat: mapboxgl.LngLat }) => {
-        // Get current state values at time of click
-        console.log('Map click event:', {
+        console.log("Map click event:", {
           hasMap: !!map.current,
-          isPlacingPOI: isPlacingPOI,
+          isPlacingPOI: props.isPlacingPOI,
           clickLocation: e.lngLat,
           tempMarker: !!tempMarker
         });
       
-        if (!map.current) {
-          console.log('Early return because no map');
-          return;
-        }
-        
-        // Only proceed if we're in POI placement mode
-        if (!isPlacingPOI) {
-          console.log('Not in POI placement mode');
+        if (!map.current || !props.isPlacingPOI?.type) {
+          console.log('Early return: no map or not in POI placement mode');
           return;
         }
       

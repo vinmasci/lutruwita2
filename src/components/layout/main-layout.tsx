@@ -8,32 +8,26 @@ import BottomTabs from '../ui/bottom-tabs';
 import { FloatingIconProvider } from '../../contexts/floating-icon-context';
 import { InfrastructurePOIType } from '@/types/note-types';
 
-interface PlacingPOIState {
-  type: InfrastructurePOIType;
-  position: { lat: number; lon: number; } | null;
-  iconType?: InfrastructurePOIType;
-}
-
 const MainLayout = () => {
   const mapRef = useRef<MapRef>(null);
-  const [isPlacingPOI, setIsPlacingPOI] = useState<PlacingPOIState | null>(null);
+  const [isPlacingPOI, setIsPlacingPOI] = useState<{
+    type: InfrastructurePOIType;
+    position: { lat: number; lon: number } | null;
+    iconType?: InfrastructurePOIType;
+  } | null>(null);
 
-  const handleStartPOIPlacement = () => {
-    console.log("Starting POI placement");
+  const handleStartPOIPlacement = (type: InfrastructurePOIType) => {
+    console.log("Starting POI placement for type:", type);
     if (mapRef.current) {
       const map = mapRef.current.getMap();
       if (map) {
         map.getCanvas().style.cursor = 'crosshair';
-        setIsPlacingPOI({ 
-          type: InfrastructurePOIType.WaterPoint,
+        setIsPlacingPOI({
+          type,
           position: null,
-          iconType: InfrastructurePOIType.WaterPoint
+          iconType: type
         });
-        console.log("Set isPlacingPOI state:", {
-          type: InfrastructurePOIType.WaterPoint,
-          position: null,
-          iconType: InfrastructurePOIType.WaterPoint
-        });
+        console.log("Entered POI placement mode");
       }
     }
   };
