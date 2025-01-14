@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { usePOI } from '../../utils/poi/poi-state';
 import { POIModal } from './POIModal';
-import { addPOIMarkerToMap, removeAllPOIMarkers } from '../../utils/poi/poi-markers';
+import { createPOIMarker, removeAllPOIMarkers } from '../../utils/poi/poi-markers';
 
 interface POIManagerProps {
   map: mapboxgl.Map | null;
@@ -27,13 +27,6 @@ export const POIManager: React.FC<POIManagerProps> = ({ map }) => {
     if (!map) return;
 
     const handleClick = (e: mapboxgl.MapMouseEvent & { lngLat: mapboxgl.LngLat }) => {
-      console.log("Map click event:", {
-        hasMap: !!map,
-        isPlacingPOI,
-        clickLocation: e.lngLat,
-        tempMarker: !!tempMarker
-      });
-
       if (!map || !isPlacingPOI?.type) {
         console.log('Early return: no map or not in POI placement mode');
         return;
@@ -52,17 +45,12 @@ export const POIManager: React.FC<POIManagerProps> = ({ map }) => {
       };
 
       // Create new temporary marker
-      const el = document.createElement('div');
-      el.className = 'temp-poi-marker';
-      el.innerHTML = `<span class="material-icons" style="color: #e17055; font-size: 24px;">place</span>`;
-
-      const marker = new mapboxgl.Marker({
-        element: el,
-        draggable: true,
-        anchor: 'bottom'
-      })
-        .setLngLat([position.lon, position.lat])
-        .addTo(map);
+      const marker = createPOIMarker(
+        map,
+        position,
+        isPlacingPOI.type,
+        true // isDraggable
+      );
 
       // Update position state when marker is dragged
       marker.on('dragend', () => {
@@ -124,34 +112,28 @@ export const POIManager: React.FC<POIManagerProps> = ({ map }) => {
   useEffect(() => {
     if (!map) return;
 
-    // Clean up any markers not in currentPOIs
-    Object.entries(markersRef.current).forEach(([id, marker]) => {
-      if (!currentPOIs.find(poi => poi.id === id)) {
-        marker.remove();
-        delete markersRef.current[id];
-      }
+    // Remove all existing markers first
+    Object.values(markersRef.current).forEach(marker => {
+      marker.remove();
     });
+    markersRef.current = {};
 
-    // Add or update markers for each POI
+    // Add markers for currentPOIs
     currentPOIs.forEach(poi => {
-      // Remove existing marker if it exists
-      if (markersRef.current[poi.id]) {
-        markersRef.current[poi.id].remove();
-      }
+      const marker = createPOIMarker(
+        map,
+        poi.location,
+        poi.type,
+        false // not draggable
+      );
 
-      // Create new marker
-      const marker = addPOIMarkerToMap(map, poi);
-      if (marker) {
-        markersRef.current[poi.id] = marker;
-        console.log(`Added/Updated marker for POI ${poi.id}`, marker);
-      }
+      const el = marker.getElement();
+      el.setAttribute('data-poi-id', poi.id);
+
+      markersRef.current[poi.id] = marker;
+      console.log(`Created permanent marker for POI ${poi.id}`, marker);
     });
 
-    return () => {
-      // Cleanup only unmounted markers
-      Object.values(markersRef.current).forEach(marker => marker.remove());
-      markersRef.current = {};
-    };
   }, [map, currentPOIs]);
 
   // Clean up on unmount

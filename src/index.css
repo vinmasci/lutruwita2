@@ -60,11 +60,12 @@
 
 /* MapBox GL Marker Styles */
 .mapboxgl-marker {
-  z-index: 2 !important;
+  z-index: 999 !important;
+  cursor: pointer;
 }
 
-.poi-marker {
-  z-index: 3 !important;
+.mapboxgl-marker > * {
+  pointer-events: auto !important;
 }
 
 .mapboxgl-marker.poi-marker {
