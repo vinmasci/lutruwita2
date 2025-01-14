@@ -219,10 +219,12 @@ const [isUploading, setIsUploading] = React.useState(false);
 const [currentPhotos, setCurrentPhotos] = useState<PhotoDocument[]>([]);
 const [currentPOIs, setCurrentPOIs] = useState<POI[]>([]);
 const [poiModalOpen, setPoiModalOpen] = useState(false);
-const [isPlacingPOI, setIsPlacingPOI] = useState<{
+interface PlacingPOIState {
   iconType: string;
   position: { lat: number; lon: number } | null;
-} | null>(null);
+}
+
+const [isPlacingPOI, setIsPlacingPOI] = useState<PlacingPOIState | null>(null);
 const [surfaceProgress, setSurfaceProgress] = React.useState<SurfaceProgressState>({
   isProcessing: false,
   progress: 0,
@@ -382,7 +384,7 @@ const combinedLine = turf.lineString(
 );
 
 // Calculate total length in kilometers
-const totalLength = turf.length(combinedLine, { units: 'kilometers' });
+          const totalLength = turf.length(combinedLine, { units: 'kilometers' as const });
 
 // Get distance points based on zoom level
 const distancePoints = getDistancePoints(map.current, combinedLine, totalLength);
@@ -1549,47 +1551,26 @@ if (savedPhotos?.length) {
       map.current = newMap;
 
       const handleMapClick = (e: mapboxgl.MapMouseEvent & { lngLat: mapboxgl.LngLat }) => {
-        const handleMapClick = (e: mapboxgl.MapMouseEvent & { lngLat: mapboxgl.LngLat }) => {
-          console.log("Map Click detected:", {
-            isPlacingPOI,
-            lngLat: e.lngLat,
-            hasMap: !!map.current
+        console.log("Map Click detected:", {
+          isPlacingPOI,
+          lngLat: e.lngLat,
+          hasMap: !!map.current
+        });
+      
+        if (!map.current || !isPlacingPOI?.iconType) {
+          console.log("Early return from click:", { 
+            hasMap: !!map.current, 
+            iconType: isPlacingPOI?.iconType 
           });
-        
-          if (!map.current || !isPlacingPOI?.iconType) {
-            console.log("Early return from click:", { 
-              hasMap: !!map.current, 
-              iconType: isPlacingPOI?.iconType 
-            });
-            return;
-          }
-        
-          const position = {
-            lat: e.lngLat.lat,
-            lon: e.lngLat.lng
-          };
-          
-          console.log("Setting POI position:", position);
-          
-          setIsPlacingPOI(prev => {
-            console.log("Previous POI state:", prev);
-            return {
-              ...prev!,
-              position
-            };
-          });
-          setPoiModalOpen(true);
-          
-          if (map.current) {
-            map.current.getCanvas().style.cursor = 'default';
-          }
-        };
-        if (!map.current || !isPlacingPOI?.iconType) return;
-
+          return;
+        }
+      
         const position = {
           lat: e.lngLat.lat,
-          lon: e.lngLat.lng  // Using lon to match POI interface
+          lon: e.lngLat.lng
         };
+        
+        console.log("Setting POI position:", position);
         
         setIsPlacingPOI(prev => ({
           ...prev!,
@@ -1597,7 +1578,7 @@ if (savedPhotos?.length) {
         }));
         setPoiModalOpen(true);
         
-        // Reset cursor using map instance
+        // Reset cursor after placement
         map.current.getCanvas().style.cursor = 'default';
       };
 
