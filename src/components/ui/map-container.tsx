@@ -1574,21 +1574,21 @@ if (savedPhotos?.length) {
 
       const handleMapClick = (e: mapboxgl.MapMouseEvent & { lngLat: mapboxgl.LngLat }) => {
         // Get current state values at time of click
-        console.log('Map click props:', props); // Add this line
-        console.log('Map click props.isPlacingPOI:', props.isPlacingPOI); // Add this line
-      
         console.log('Map click event:', {
           hasMap: !!map.current,
-          isPlacingPOI: props.isPlacingPOI,  // Changed from isPlacingPOI to props.isPlacingPOI
+          isPlacingPOI: isPlacingPOI,
           clickLocation: e.lngLat,
           tempMarker: !!tempMarker
         });
       
-        if (!map.current || !props.isPlacingPOI?.type) {  // Changed from isPlacingPOI to props.isPlacingPOI
-          console.log('Early return because:', {
-            noMap: !map.current,
-            notPlacingPOI: !props.isPlacingPOI?.type  // Changed from isPlacingPOI to props.isPlacingPOI
-          });
+        if (!map.current) {
+          console.log('Early return because no map');
+          return;
+        }
+        
+        // Only proceed if we're in POI placement mode
+        if (!isPlacingPOI) {
+          console.log('Not in POI placement mode');
           return;
         }
       
