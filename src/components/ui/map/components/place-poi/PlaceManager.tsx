@@ -3,7 +3,7 @@ import mapboxgl, { MapMouseEvent } from 'mapbox-gl';
 import PlaceHighlight from './PlaceHighlight';
 import PlacePOIModal from './PlacePOIModal';
 import { POICategory } from '@/types/note-types';
-import { createPOIMarker } from '@/components/ui/map/utils/poi/poi-markers';
+import { POIIcons } from '@/types/note-types';
 
 export interface PlaceLabel {
   id: string;
@@ -184,16 +184,65 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
     });
 
     pois.forEach((poi, index) => {
-      const offset = 0.002;
-      const angle = (Math.PI * (index + 1)) / (pois.length + 1);
+      const totalWidth = pois.length * 0.001; // total width of all POIs
+      const startX = selectedPlace.coordinates[0] - (totalWidth / 2);
+      const verticalOffset = 0.001; // Adjust this for distance below place name
       
       const poiLocation = {
-        lat: selectedPlace.coordinates[1] - offset,
-        lon: selectedPlace.coordinates[0] + Math.cos(angle) * offset
+        lat: selectedPlace.coordinates[1] - verticalOffset,
+        lon: startX + (0.001 * (index + 0.5)) // Evenly space POIs
       };
 
-      const marker = createPOIMarker(map, poiLocation, poi.type, false);
-      const el = marker.getElement();
+      // Create the marker element
+      const el = document.createElement('div');
+      el.className = 'place-poi-marker mapboxgl-marker';
+
+      // Create marker container with custom styling
+      const markerContainer = document.createElement('div');
+      markerContainer.style.backgroundColor = '#FFFFFF';
+      markerContainer.style.padding = '3px'; // Reduced from 6px
+      markerContainer.style.borderRadius = '3px'; // Reduced from 4px
+      markerContainer.style.border = '1px solid #000000'; // Reduced from 2px
+      markerContainer.style.position = 'relative';
+      markerContainer.style.display = 'flex';
+      markerContainer.style.alignItems = 'center';
+      markerContainer.style.minWidth = '12px'; // Reduced from 24px
+      markerContainer.style.minHeight = '12px'; // Reduced from 24px
+      markerContainer.style.justifyContent = 'center';
+      markerContainer.style.boxShadow = '0 1px 2px rgba(0,0,0,0.2)'; // Reduced shadow
+
+      // Add icon with custom styling
+      const icon = document.createElement('span');
+      icon.className = 'material-icons';
+      icon.textContent = POIIcons[poi.type];
+      icon.style.color = '#000000';
+      icon.style.fontSize = '10px'; // Reduced from 16px
+      markerContainer.appendChild(icon);
+
+      // Add arrow
+      const arrow = document.createElement('div');
+      arrow.style.position = 'absolute';
+      arrow.style.bottom = '-4px'; // Reduced from -6px
+      arrow.style.left = '50%';
+      arrow.style.transform = 'translateX(-50%)';
+      arrow.style.width = '0';
+      arrow.style.height = '0';
+      arrow.style.borderLeft = '3px solid transparent'; // Reduced from 6px
+      arrow.style.borderRight = '3px solid transparent'; // Reduced from 6px
+      arrow.style.borderTop = '3px solid #000000'; // Reduced from 6px
+
+      el.appendChild(markerContainer);
+
+      const marker = new mapboxgl.Marker({
+        element: el,
+        anchor: 'bottom'
+      })
+      .setLngLat([poiLocation.lon, poiLocation.lat])
+      .addTo(map);
+
+      // Store marker reference
+      el.__marker = marker;
+
       el.setAttribute('data-poi-id', `place-${placeId}-poi-${Date.now()}-${index}`);
       el.setAttribute('data-place-id', placeId);
       
@@ -299,5 +348,7 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
     </>
   );
 };
+
+
 
 export default PlaceManager;
