@@ -70,233 +70,224 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
 // Event Handlers
 // ======================
 const determinePlaceType = (layerId: string): PlaceLabel['type'] => {
-    if (layerId.includes('settlement-major-label')) return 'city';
-    if (layerId.includes('settlement-minor-label')) return 'town';
-    if (layerId.includes('settlement-subdivision-label')) return 'suburb';
-    return 'town'; // default fallback for unknown labels
-  };
+  if (layerId.includes('settlement-major-label')) return 'city';
+  if (layerId.includes('settlement-minor-label')) return 'town';
+  if (layerId.includes('settlement-subdivision-label')) return 'suburb';
+  return 'town'; // default fallback for unknown labels
+};
 
-  const getRelevantLayers = () => {
-    if (!map) return [];
-    const style = map.getStyle();
-    if (!style || !style.layers) return [];
-    return style.layers
-      .filter(layer => 
-        PLACE_LAYER_PATTERNS.some(pattern => layer.id.includes(pattern))
-      )
-      .map(layer => layer.id);
-  };
+const getRelevantLayers = () => {
+  if (!map) return [];
+  const style = map.getStyle();
+  if (!style || !style.layers) return [];
+  return style.layers
+    .filter(layer => 
+      PLACE_LAYER_PATTERNS.some(pattern => layer.id.includes(pattern))
+    )
+    .map(layer => layer.id);
+};
 
-  const calculateDistance = (point1: mapboxgl.Point, point2: mapboxgl.Point): number => {
-    return Math.sqrt(
-      Math.pow(point2.x - point1.x, 2) + 
-      Math.pow(point2.y - point1.y, 2)
-    );
-  };
+const calculateDistance = (point1: mapboxgl.Point, point2: mapboxgl.Point): number => {
+  return Math.sqrt(
+    Math.pow(point2.x - point1.x, 2) + 
+    Math.pow(point2.y - point1.y, 2)
+  );
+};
 
-  const findNearestPlace = (clickPoint: mapboxgl.Point, bbox: [mapboxgl.Point, mapboxgl.Point]) => {
-    const layers = getRelevantLayers();
-    let nearestPlace: PlaceLabel | null = null;
-    let minDistance = Infinity;
+const findNearestPlace = (clickPoint: mapboxgl.Point, bbox: [mapboxgl.Point, mapboxgl.Point]) => {
+  const layers = getRelevantLayers();
+  let nearestPlace: PlaceLabel | null = null;
+  let minDistance = Infinity;
 
-    const features = layers.flatMap(layerId => 
-      map?.queryRenderedFeatures(bbox, { layers: [layerId] }) || []
-    );
+  const features = layers.flatMap(layerId => 
+    map?.queryRenderedFeatures(bbox, { layers: [layerId] }) || []
+  );
 
-    features.forEach(feature => {
-      if (!feature.geometry || feature.geometry.type !== 'Point') return;
+  features.forEach(feature => {
+    if (!feature.geometry || feature.geometry.type !== 'Point') return;
 
-      if (!map) return;
-      const featurePoint = map.project(feature.geometry.coordinates as [number, number]);
-      const distance = calculateDistance(clickPoint, featurePoint);
+    if (!map) return;
+    const featurePoint = map.project(feature.geometry.coordinates as [number, number]);
+    const distance = calculateDistance(clickPoint, featurePoint);
 
-      if (distance <= detectionRadius && distance < minDistance && feature.layer) {
-        minDistance = distance;
-        nearestPlace = {
-          id: feature.id as string,
-          name: feature.properties?.name || 'Unknown Place',
-          type: determinePlaceType(feature.layer.id),
-          coordinates: feature.geometry.coordinates as [number, number],
-          zoom: map.getZoom()
-        };
-      }
-    });
-
-    return nearestPlace;
-  };
-
-  const handleMapMove = (e: mapboxgl.MapMouseEvent & { point: mapboxgl.Point }) => {
-    if (!map || !e.point) {
-      console.log('Map or point is not available');
-      return;
-    }
-    
-    const point = e.point;
-    if (typeof point.x !== 'number' || typeof point.y !== 'number') {
-      console.log('Invalid point coordinates:', point);
-      return;
-    }
-
-    const bbox: [mapboxgl.Point, mapboxgl.Point] = [
-      new mapboxgl.Point(
-        Number(point.x) - Number(detectionRadius),
-        Number(point.y) - Number(detectionRadius)
-      ),
-      new mapboxgl.Point(
-        Number(point.x) + Number(detectionRadius),
-        Number(point.y) + Number(detectionRadius)
-      )
-    ];
-
-    const place = findNearestPlace(point, bbox);
-    setHoverPlace(place);
-  };
-
-  const handleMapClick = (e: mapboxgl.MapMouseEvent) => {
-    if (!map || !map.getStyle()) {
-      console.log('Map or map style is not available');
-      return;
-    }
-
-    console.log('Click coordinates:', e.lngLat);
-    console.log('Pixel coordinates:', e.point);
-    
-    const clickPoint = e.point;
-    const bbox: [mapboxgl.Point, mapboxgl.Point] = [
-      new mapboxgl.Point(
-        clickPoint.x - detectionRadius,
-        clickPoint.y - detectionRadius
-      ),
-      new mapboxgl.Point(
-        clickPoint.x + detectionRadius,
-        clickPoint.y + detectionRadius
-      )
-    ];
-  
-    // Add debug logging for layers
-    const layers = getRelevantLayers();
-    console.log('Available place layers:', layers);
-
-    // Debug log for features found
-    const features = layers.flatMap(layerId => {
-      const found = map.queryRenderedFeatures(bbox, { layers: [layerId] });
-      console.log(`Features found for layer ${layerId}:`, found);
-      return found;
-    });
-
-    console.log('Total features found:', features.length);
-  
-    const place = findNearestPlace(clickPoint, bbox);
-    
-    if (place) {
-      setSelectedPlace(place);
-      setModalOpen(true);
-    } else {
-      console.log('No place found near click point');
-    }
-    onPlaceDetected?.(place);
-  };
-
-  const handleAddPOIs = (placeId: string, pois: Array<{
-    category: POICategory;
-    type: any;
-  }>) => {
-    if (!selectedPlace || !map) {
-      console.log('No selected place or map available');
-      return;
-    }
-
-    // Get the pixel coordinates of the place label
-    const labelPoint = map.project(selectedPlace.coordinates);
-    
-    // Calculate label height based on current zoom level
-    const labelHeight = Math.max(14, map.getZoom() * 1.2); // Scale with zoom
-    
-    // Calculate base vertical offset (distance below label)
-    const baseVerticalOffset = labelHeight + 8; // 8px padding below label
-    
-    // Calculate total width needed for all POIs
-    const poiSize = Math.max(16, map.getZoom() * 1.2); // Scale POI size with zoom
-    const poiSpacing = poiSize + 4; // 4px spacing between POIs
-    const totalWidth = pois.length * poiSpacing;
-    
-    pois.forEach((poi, index) => {
-      // Calculate horizontal position (centered below label)
-      const startX = labelPoint.x - (totalWidth / 2) + (poiSpacing * index) + (poiSize / 2);
-      
-      // Calculate vertical position (stacked if needed)
-      const verticalOffset = baseVerticalOffset + (Math.floor(index / 5) * (poiSize + 4));
-      
-      // Convert back to geographic coordinates
-      const poiPoint = map.unproject([startX, labelPoint.y + verticalOffset]);
-      
-      const poiLocation = {
-        lat: poiPoint.lat,
-        lon: poiPoint.lng
+    if (distance <= detectionRadius && distance < minDistance && feature.layer) {
+      minDistance = distance;
+      nearestPlace = {
+        id: feature.id as string,
+        name: feature.properties?.name || 'Unknown Place',
+        type: determinePlaceType(feature.layer.id),
+        coordinates: feature.geometry.coordinates as [number, number],
+        zoom: map.getZoom()
       };
+    }
+  });
 
-      // Create the marker element
-      const el = document.createElement('div');
-      el.className = 'place-poi-marker mapboxgl-marker';
+  return nearestPlace;
+};
 
-      const scale = getScaledSize(map);
-      // Create marker container with custom styling
-      const markerContainer = document.createElement('div');
-      markerContainer.style.backgroundColor = '#FFFFFF';
-      markerContainer.style.padding = `${scale.padding}px`;
-      markerContainer.style.borderRadius = `${scale.padding}px`;
-      markerContainer.style.border = '1px solid #000000';
-      markerContainer.style.position = 'relative';
-      markerContainer.style.display = 'flex';
-      markerContainer.style.alignItems = 'center';
-      markerContainer.style.minWidth = `${scale.iconSize}px`;
-      markerContainer.style.minHeight = `${scale.iconSize}px`;
+const handleMapMove = (e: mapboxgl.MapMouseEvent & { point: mapboxgl.Point }) => {
+  if (!map || !e.point) {
+    console.log('Map or point is not available');
+    return;
+  }
+  
+  const point = e.point;
+  if (typeof point.x !== 'number' || typeof point.y !== 'number') {
+    console.log('Invalid point coordinates:', point);
+    return;
+  }
 
-      // Add icon with custom styling
-      const icon = document.createElement('span');
-      icon.className = 'material-icons';
-      icon.textContent = POIIcons[poi.type];
-      icon.style.color = '#000000';
-      icon.style.fontSize = '10px'; // Reduced from 16px
-      markerContainer.appendChild(icon);
+  const bbox: [mapboxgl.Point, mapboxgl.Point] = [
+    new mapboxgl.Point(
+      Number(point.x) - Number(detectionRadius),
+      Number(point.y) - Number(detectionRadius)
+    ),
+    new mapboxgl.Point(
+      Number(point.x) + Number(detectionRadius),
+      Number(point.y) + Number(detectionRadius)
+    )
+  ];
 
-      // Add arrow
-      const arrow = document.createElement('div');
-      arrow.style.position = 'absolute';
-      arrow.style.bottom = '-4px'; // Reduced from -6px
-      arrow.style.left = '50%';
-      arrow.style.transform = 'translateX(-50%)';
-      arrow.style.width = '0';
-      arrow.style.height = '0';
-      arrow.style.borderLeft = '3px solid transparent'; // Reduced from 6px
-      arrow.style.borderRight = '3px solid transparent'; // Reduced from 6px
-      arrow.style.borderTop = '3px solid #000000'; // Reduced from 6px
+  const place = findNearestPlace(point, bbox);
+  setHoverPlace(place);
+};
 
-      el.appendChild(markerContainer);
+const handleMapClick = (e: mapboxgl.MapMouseEvent) => {
+  if (!map || !map.getStyle()) {
+    console.log('Map or map style is not available');
+    return;
+  }
 
-      const marker = new mapboxgl.Marker({
-        element: el,
-        anchor: 'bottom'
-      })
-      .setLngLat([poiLocation.lon, poiLocation.lat])
-      .addTo(map);
+  console.log('Click coordinates:', e.lngLat);
+  console.log('Pixel coordinates:', e.point);
+  
+  const clickPoint = e.point;
+  const bbox: [mapboxgl.Point, mapboxgl.Point] = [
+    new mapboxgl.Point(
+      clickPoint.x - detectionRadius,
+      clickPoint.y - detectionRadius
+    ),
+    new mapboxgl.Point(
+      clickPoint.x + detectionRadius,
+      clickPoint.y + detectionRadius
+    )
+  ];
 
-      // Store marker reference
-      el.__marker = marker;
+  const layers = getRelevantLayers();
+  console.log('Available place layers:', layers);
 
-      el.setAttribute('data-poi-id', `place-${placeId}-poi-${Date.now()}-${index}`);
-      el.setAttribute('data-place-id', placeId);
-      
-      console.log('Added marker:', {
-        placeId,
-        poiType: poi.type,
-        location: poiLocation
-      });
+  const features = layers.flatMap(layerId => {
+    const found = map.queryRenderedFeatures(bbox, { layers: [layerId] });
+    console.log(`Features found for layer ${layerId}:`, found);
+    return found;
+  });
+
+  console.log('Total features found:', features.length);
+
+  const place = findNearestPlace(clickPoint, bbox);
+  
+  if (place) {
+    setSelectedPlace(place);
+    setModalOpen(true);
+  } else {
+    console.log('No place found near click point');
+  }
+  onPlaceDetected?.(place);
+};
+
+const handleAddPOIs = (placeId: string, pois: Array<{
+  category: POICategory;
+  type: any;
+}>) => {
+  if (!selectedPlace || !map) {
+    console.log('No selected place or map available');
+    return;
+  }
+
+  // Calculate base vertical offset and spacing
+  const scale = getScaledSize(map);
+  const poiSpacing = scale.iconSize + 8;
+  const labelHeight = Math.max(14, map.getZoom() * 1.2);
+  const baseVerticalOffset = labelHeight + 2;
+  const poisPerRow = 5;
+  
+  pois.forEach((poi, index) => {
+    // Calculate row and column for this POI
+    const row = Math.floor(index / poisPerRow);
+    const col = index % poisPerRow;
+
+    // Calculate the total width of POIs in this row
+    const poisInThisRow = Math.min(pois.length - (row * poisPerRow), poisPerRow);
+    const totalRowWidth = poisInThisRow * poiSpacing;
+
+    // Calculate pixel offsets from the place label
+    const xOffset = -totalRowWidth/2 + (col * poiSpacing) + (scale.iconSize / 2);
+    const yOffset = baseVerticalOffset + (row * (scale.iconSize + 4));
+
+    // Create the marker element
+    const el = document.createElement('div');
+    el.className = 'place-poi-marker mapboxgl-marker';
+
+    // Create marker container with custom styling
+    const markerContainer = document.createElement('div');
+    markerContainer.style.backgroundColor = '#FFFFFF';
+    markerContainer.style.padding = `${scale.padding}px`;
+    markerContainer.style.borderRadius = `${scale.padding}px`;
+    markerContainer.style.border = '1px solid #000000';
+    markerContainer.style.position = 'relative';
+    markerContainer.style.display = 'flex';
+    markerContainer.style.alignItems = 'center';
+    markerContainer.style.minWidth = `${scale.iconSize}px`;
+    markerContainer.style.minHeight = `${scale.iconSize}px`;
+
+    // Add icon with custom styling
+    const icon = document.createElement('span');
+    icon.className = 'material-icons';
+    icon.textContent = POIIcons[poi.type];
+    icon.style.color = '#000000';
+    icon.style.fontSize = `${scale.fontSize}px`;
+    markerContainer.appendChild(icon);
+
+    // Add arrow pointing up (since anchor is now top)
+    const arrow = document.createElement('div');
+    arrow.style.position = 'absolute';
+    arrow.style.top = '-4px';
+    arrow.style.left = '50%';
+    arrow.style.transform = 'translateX(-50%) rotate(180deg)';
+    arrow.style.width = '0';
+    arrow.style.height = '0';
+    arrow.style.borderLeft = `${scale.arrowSize}px solid transparent`;
+    arrow.style.borderRight = `${scale.arrowSize}px solid transparent`;
+    arrow.style.borderBottom = `${scale.arrowSize}px solid #000000`;
+
+    el.appendChild(markerContainer);
+    markerContainer.appendChild(arrow);
+
+    // Create and add the marker with offset
+    const marker = new mapboxgl.Marker({
+      element: el,
+      anchor: 'top',
+      offset: [xOffset, yOffset]
+    })
+    .setLngLat(selectedPlace.coordinates)
+    .addTo(map);
+
+    // Store marker reference
+    el.__marker = marker;
+
+    el.setAttribute('data-poi-id', `place-${placeId}-poi-${Date.now()}-${index}`);
+    el.setAttribute('data-place-id', placeId);
+    
+    console.log('Added marker:', {
+      placeId,
+      poiType: poi.type,
+      offset: [xOffset, yOffset]
     });
+  });
 
-    setModalOpen(false);
-    setSelectedPlace(null);
-  };
+  setModalOpen(false);
+  setSelectedPlace(null);
+};
 
 // ======================
 // Effects and Lifecycle Methods
@@ -360,7 +351,24 @@ useEffect(() => {
     if (!map) return;
   
     const updatePOIPositions = () => {
+      // Add zoom check at the start
+      const currentZoom = map.getZoom();
       const markers = document.querySelectorAll('[data-place-id]');
+      
+      // Hide all markers if zoom is outside our desired range (11-15)
+      if (currentZoom >= 17 || currentZoom < 8) {
+        markers.forEach((markerEl) => {
+          const marker = (markerEl as any).__marker;
+          markerEl.style.display = 'none';
+        });
+        return;
+      } else {
+        // Show markers if they were hidden and we're in the correct zoom range
+        markers.forEach((markerEl) => {
+          const marker = (markerEl as any).__marker;
+          markerEl.style.display = '';
+        });
+      }
       
       // Group markers by place
       const markerGroups = new Map<string, Array<{ marker: mapboxgl.Marker, el: Element }>>();
