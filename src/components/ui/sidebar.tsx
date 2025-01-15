@@ -489,8 +489,11 @@ const [routes, setRoutes] = useState<Array<{
 
 <ListItemButton
   onClick={() => {
-    console.log('Toggling placePOIMode:', !placePOIMode);
+    console.log('DEBUG -- Place POI Button Clicked -- Current mode:', placePOIMode, 'Setting to:', !placePOIMode);
     setPlacePOIMode(!placePOIMode);
+    if (mapRef.current?.map) {
+      mapRef.current.map.getCanvas().style.cursor = !placePOIMode ? 'pointer' : '';
+    }
   }}
   sx={{ justifyContent: open ? 'start' : 'center', minHeight: 48 }}
 >

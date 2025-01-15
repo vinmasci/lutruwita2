@@ -143,17 +143,26 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
       )
     ];
   
+    // Add debug logging for layers
     const layers = getRelevantLayers();
-    if (layers.length === 0) {
-      console.log('No place label layers found');
-      return;
-    }
+    console.log('Available place layers:', layers);
+
+    // Debug log for features found
+    const features = layers.flatMap(layerId => {
+      const found = map.queryRenderedFeatures(bbox, { layers: [layerId] });
+      console.log(`Features found for layer ${layerId}:`, found);
+      return found;
+    });
+
+    console.log('Total features found:', features.length);
   
     const place = findNearestPlace(clickPoint, bbox);
     
     if (place) {
       setSelectedPlace(place);
       setModalOpen(true);
+    } else {
+      console.log('No place found near click point');
     }
     onPlaceDetected?.(place);
   };
@@ -171,6 +180,8 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
 
     const setupListeners = () => {
       if (!map.getStyle()) return;
+
+      console.log('Setting up click handlers in PlaceManager'); // Add this line
 
       // Remove existing listeners first to avoid duplicates
       if (moveHandlerRef.current) {

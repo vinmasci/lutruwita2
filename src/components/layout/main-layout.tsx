@@ -26,6 +26,11 @@ const MainLayoutContent = ({ mapRef }: { mapRef: React.RefObject<MapRef> }) => {
   const { setIsPlacingPOI } = usePOI();
   const [placePOIMode, setPlacePOIMode] = useState(false)
 
+  // Add this effect
+  React.useEffect(() => {
+    console.log('DEBUG -- MainLayout -- placePOIMode changed to:', placePOIMode);
+  }, [placePOIMode]);
+
   const handleStartPOIPlacement = (type: InfrastructurePOIType) => {
     console.log("Starting POI placement for type:", type);
     if (mapRef.current) {
@@ -41,6 +46,12 @@ const MainLayoutContent = ({ mapRef }: { mapRef: React.RefObject<MapRef> }) => {
       }
     }
   };
+
+  // Just before the MapContainer return in main-layout.tsx
+console.log('DEBUG - Main Layout - About to render MapContainer:', {
+  placePOIMode,
+  hasMapRef: !!mapRef.current
+});
   
   return (
     <div className="h-screen w-full flex overflow-hidden">

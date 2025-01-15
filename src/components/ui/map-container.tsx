@@ -1709,12 +1709,13 @@ if (savedPhotos?.length) {
       {!placePOIMode && (
         <POIManager map={map.current} placePOIMode={placePOIMode} />
       )}
-{placePOIMode && map.current && isMapReady && (
-  console.log('Attempting to mount PlaceManager with:', {
+// In the render section
+{console.log('DEBUG -- MapContainer render -- Checking PlaceManager conditions:', {
     placePOIMode,
     hasMap: !!map.current,
-    isMapReady
-  }),
+    mapIsReady: isMapReady
+  })}
+{placePOIMode && map.current && isMapReady && (
   <PlaceManager 
     map={map.current} 
     onPlaceDetected={(place) => {
