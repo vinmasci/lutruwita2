@@ -24,6 +24,7 @@ const MainLayout = () => {
 
 const MainLayoutContent = ({ mapRef }: { mapRef: React.RefObject<MapRef> }) => {
   const { setIsPlacingPOI } = usePOI();
+  const [placePOIMode, setPlacePOIMode] = useState(false)
 
   const handleStartPOIPlacement = (type: InfrastructurePOIType) => {
     console.log("Starting POI placement for type:", type);
@@ -43,15 +44,19 @@ const MainLayoutContent = ({ mapRef }: { mapRef: React.RefObject<MapRef> }) => {
   
   return (
     <div className="h-screen w-full flex overflow-hidden">
-      <Sidebar 
-        mapRef={mapRef} 
-        onStartPOIPlacement={handleStartPOIPlacement}
-      />
+<Sidebar 
+  mapRef={mapRef} 
+  onStartPOIPlacement={handleStartPOIPlacement}
+  placePOIMode={placePOIMode}
+  setPlacePOIMode={setPlacePOIMode}
+/>
       <main className="flex-1 flex flex-col">
         <div className="flex-1 relative h-[calc(100vh-48px)]">
-          <MapContainer 
-            ref={mapRef}
-          />
+        <MapContainer 
+  ref={mapRef}
+  placePOIMode={placePOIMode}
+  setPlacePOIMode={setPlacePOIMode}
+/>
           <Outlet />
         </div>
         <BottomTabs />

@@ -215,9 +215,11 @@ interface PlacingPOIState {
 
 interface MapContainerProps {
   children?: React.ReactNode;
+  placePOIMode: boolean;
+  setPlacePOIMode: (mode: boolean) => void;
 }
 
-const MapContainer = forwardRef<MapRef, MapContainerProps>((props, ref) => {
+const MapContainer = forwardRef<MapRef, MapContainerProps>(({ placePOIMode, setPlacePOIMode, children }, ref) => {
   const { isPlacingPOI, setIsPlacingPOI } = usePOI();
   const routeSourceId = 'route';
   const routeLayerId = 'route-layer';
@@ -1032,7 +1034,7 @@ const handleAddPOI = useCallback(async (poiData: Omit<POI, 'id' | 'createdAt' | 
   console.log("Added POI marker to map");
 
   return newPOI;
-}, [map, props.isPlacingPOI]);
+}, [map, isPlacingPOI]);
 
 // Save map handler
 const handleSaveMap = useCallback(async (data: {
@@ -1502,7 +1504,7 @@ if (savedPhotos?.length) {
     startPOIPlacement: () => {
       if (map.current) {
         map.current.getCanvas().style.cursor = 'crosshair';
-        props.setIsPlacingPOI({
+        setIsPlacingPOI({
           type: InfrastructurePOIType.WaterPoint,
           position: null,
           iconType: InfrastructurePOIType.WaterPoint
@@ -1697,8 +1699,13 @@ if (savedPhotos?.length) {
       <div className="absolute top-0 left-[160px] right-0 right-[40px] z-10 bg-black/0 p-4">
         <h1 className="text-white text-2xl font-fraunces font-bold pl-4 drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">{routeName}</h1>
       </div>
-      {isPlacingPOI?.type === InfrastructurePOIType.Place ? (
-  <PlaceManager map={map.current} />
+      {placePOIMode ? (
+  <PlaceManager map={map.current} onPlaceDetected={(place) => {
+    if (place) {
+      setPlacePOIMode(false);
+      // We'll add POI modal opening logic here later
+    }
+  }} />
 ) : (
   <POIManager map={map.current} />
 )}
