@@ -251,7 +251,7 @@ const handleAddPOIs = (placeId: string, pois: Array<{
     // Add arrow pointing up (since anchor is now top)
     const arrow = document.createElement('div');
     arrow.style.position = 'absolute';
-    arrow.style.top = '-4px';
+    arrow.style.bottom = '-4px';
     arrow.style.left = '50%';
     arrow.style.transform = 'translateX(-50%) rotate(180deg)';
     arrow.style.width = '0';
@@ -443,8 +443,13 @@ useEffect(() => {
           const col = index % poisPerRow;
           
           // Calculate screen coordinates relative to label position
-          const x = labelPoint.x - (rowWidth / 2) + (col * poiSpacing) + (scale.iconSize / 2);
+          const groupWidth = Math.min(groupMarkers.length, poisPerRow) * poiSpacing;
+          const startX = labelPoint.x - (groupWidth / 2) + (poiSpacing / 2);
+          const x = startX + (col * poiSpacing);
           const y = labelPoint.y + baseOffset + (row * verticalSpacing);
+          
+          // And update the base offset calculation
+          const baseOffset = labelHeight + 16;  // Increased from 8 to 16 for better spacing
           
           // Convert screen coordinates back to map coordinates
           const newPos = map.unproject([x, y]);

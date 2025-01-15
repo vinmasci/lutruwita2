@@ -15,13 +15,37 @@ import {
   Divider
 } from '@mui/material';
 import {
-  WaterDrop as WaterIcon,
+  WaterDrop as WaterIcon,  // This is already imported above
   LocalCafe as CafeIcon,
   Store as ShopIcon,
   LocalParking as ParkingIcon,
+  LocalGroceryStore as SupermarketIcon,  // Changed from ShoppingCart
+  PedalBike as BikeShopIcon,
+  RvHookup as CaravanIcon,
+  Cabin as CampingIcon,
   Hotel as AccommodationIcon,
+  Wc as ToiletIcon,
+  Restaurant as RestaurantIcon,
+  Train as TrainIcon,
+  FlightTakeoff as AirportIcon,
+  DirectionsBus as BusIcon,
+  SportsBar as BreweryIcon,
+  WineBar as WineryIcon,
+  LocalHospital as HospitalIcon,
+  Info as InfoIcon,
+  LocalPostOffice as PostOfficeIcon,
+  LocalPolice as PoliceIcon,
+  LocalPharmacy as PharmacyIcon,  // Add this to existing imports
+  LocalGasStation as FuelIcon,
+
   Add as AddIcon,
-  Delete as DeleteIcon
+  Delete as DeleteIcon,
+  // Additional needed icons
+  Build as RepairIcon,
+  Garage as StorageIcon,
+  Home as ShelterIcon,
+  Place as OtherIcon,
+  Visibility as ViewpointIcon
 } from '@mui/icons-material';
 import { PlaceLabel } from './PlaceManager';
 import { POICategory, InfrastructurePOIType, ServicesPOIType } from '@/types/note-types';
@@ -43,32 +67,135 @@ interface POIOption {
   label: string;
 }
 
+interface PlacePOIModalProps {
+  open: boolean;
+  place: PlaceLabel | null;
+  onClose: () => void;
+  onAddPOIs: (placeId: string, pois: Array<{
+    category: POICategory;
+    type: InfrastructurePOIType | ServicesPOIType;
+  }>) => void;
+}
+
+interface POIOption {
+  category: POICategory;
+  type: InfrastructurePOIType | ServicesPOIType;
+  icon: React.ReactNode;
+  label: string;
+}
+
 const POI_OPTIONS: POIOption[] = [
+  // Infrastructure POIs
   { 
-    category: POICategory.Infrastructure, 
-    type: InfrastructurePOIType.WaterPoint, 
-    icon: <WaterIcon />, 
-    label: 'Water Point' 
+    category: POICategory.Infrastructure,
+    type: InfrastructurePOIType.WaterPoint,
+    icon: <WaterIcon />,
+    label: 'Water Point'
   },
-  { 
-    category: POICategory.Services, 
-    type: ServicesPOIType.Cafe, 
-    icon: <CafeIcon />, 
-    label: 'Cafe' 
+  {
+    category: POICategory.Infrastructure,
+    type: InfrastructurePOIType.PublicToilet,
+    icon: <ToiletIcon />,
+    label: 'Public Toilet'
   },
-  { 
-    category: POICategory.Services, 
-    type: ServicesPOIType.GeneralStore, 
-    icon: <ShopIcon />, 
-    label: 'Shop' 
+  {
+    category: POICategory.Infrastructure,
+    type: InfrastructurePOIType.BikeRepairStation,
+    icon: <RepairIcon />,
+    label: 'Bike Repair Station'
   },
-  { 
-    category: POICategory.Infrastructure, 
-    type: InfrastructurePOIType.Parking, 
-    icon: <ParkingIcon />, 
-    label: 'Parking' 
+  {
+    category: POICategory.Infrastructure,
+    type: InfrastructurePOIType.BikeShop,
+    icon: <BikeShopIcon />,
+    label: 'Bike Shop'
   },
-  // Add more POI types as needed
+  {
+    category: POICategory.Infrastructure,
+    type: InfrastructurePOIType.BikeStorage,
+    icon: <StorageIcon />,
+    label: 'Bike Storage'
+  },
+  {
+    category: POICategory.Infrastructure,
+    type: InfrastructurePOIType.Shelter,
+    icon: <ShelterIcon />,
+    label: 'Shelter'
+  },
+  {
+    category: POICategory.Infrastructure,
+    type: InfrastructurePOIType.Campsite,
+    icon: <CampingIcon />,
+    label: 'Campsite'
+  },
+  {
+    category: POICategory.Infrastructure,
+    type: InfrastructurePOIType.Parking,
+    icon: <ParkingIcon />,
+    label: 'Parking'
+  },
+  {
+    category: POICategory.Infrastructure,
+    type: InfrastructurePOIType.Viewpoint,
+    icon: <ViewpointIcon />,
+    label: 'Viewpoint'
+  },
+  {
+    category: POICategory.Infrastructure,
+    type: InfrastructurePOIType.Parking,  // Need to check what type to use for fuel station
+    icon: <FuelIcon />,
+    label: 'Fuel Station'
+},
+
+  // Services POIs
+  {
+    category: POICategory.Services,
+    type: ServicesPOIType.Cafe,
+    icon: <CafeIcon />,
+    label: 'Cafe'
+  },
+  {
+    category: POICategory.Services,
+    type: ServicesPOIType.Restaurant,
+    icon: <RestaurantIcon />,
+    label: 'Restaurant'
+  },
+  {
+    category: POICategory.Services,
+    type: ServicesPOIType.PubBar,
+    icon: <BreweryIcon />,
+    label: 'Pub/Bar'
+  },
+  {
+    category: POICategory.Services,
+    type: ServicesPOIType.Supermarket,
+    icon: <SupermarketIcon />,
+    label: 'Supermarket'
+  },
+  {
+    category: POICategory.Services,
+    type: ServicesPOIType.GeneralStore,
+    icon: <ShopIcon />,
+    label: 'General Store'
+  },
+  {
+    category: POICategory.Services,
+    type: ServicesPOIType.PostOffice,
+    icon: <PostOfficeIcon />,
+    label: 'Post Office'
+  },
+  {
+    category: POICategory.Services,
+    type: ServicesPOIType.MedicalCenter,
+    icon: <HospitalIcon />,
+    label: 'Medical Center'
+  },
+  {
+    category: POICategory.Services,
+    type: ServicesPOIType.Pharmacy,
+    icon: <PharmacyIcon />,
+    label: 'Pharmacy'
+  },
 ];
 
 export const PlacePOIModal: React.FC<PlacePOIModalProps> = ({
