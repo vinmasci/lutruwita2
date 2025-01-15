@@ -32,11 +32,10 @@ export const POIManager: React.FC<POIManagerProps> = ({ map, placePOIMode }) => 
 
   // Set up map click handler
   useEffect(() => {
-    if (!map) return;
-
+    if (!map || placePOIMode) return;  // Don't even add click handler if in placePOIMode
+  
     const handleClick = (e: mapboxgl.MapMouseEvent & { lngLat: mapboxgl.LngLat }) => {
-      if (!map || !isPlacingPOI?.type || placePOIMode) {
-        console.log('Early return: POI Manager inactive');
+      if (!map || !isPlacingPOI?.type) {
         return;
       }
 
