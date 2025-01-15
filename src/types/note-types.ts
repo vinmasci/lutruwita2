@@ -58,6 +58,21 @@ export enum InformationPOIType {
     Warning = 'Warning'
 }
 
+export enum InfrastructurePOIType {
+    Place = 'Place',  // Add this line
+    WaterPoint = 'Water Point',
+    PublicToilet = 'Public Toilet',
+    PublicShower = 'Public Shower',
+    BikeRepairStation = 'Bike Repair Station',
+    BikeShop = 'Bike Shop',
+    BikeStorage = 'Bike Storage',
+    Shelter = 'Shelter',
+    Campsite = 'Campsite',
+    Parking = 'Parking',
+    Viewpoint = 'Viewpoint',
+    Other = 'Other'
+}
+
 export type POIType = 
     | InfrastructurePOIType
     | ServicesPOIType
@@ -65,8 +80,10 @@ export type POIType =
     | NaturalFeaturesPOIType
     | InformationPOIType;
 
+
 export const POIIcons: Record<POIType, string> = {
     // Infrastructure
+    [InfrastructurePOIType.Place]: 'location_city', 
     [InfrastructurePOIType.WaterPoint]: 'water_drop',
     [InfrastructurePOIType.PublicToilet]: 'wc',
     [InfrastructurePOIType.PublicShower]: 'shower',
