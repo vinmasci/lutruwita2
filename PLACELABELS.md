@@ -1,3 +1,29 @@
+I am trying to implement a places POI
+Basically when the user presses the PLACES POI icon on the sidebar:
+1. We go into Places POI mode
+2. The user clicks the map and it snaps to the nearest place label (town, village, city or suburb)
+3. The PlacesModal then opens and the user can assign icons to the place
+4. The icons show on the place
+
+Currently when I select Places POI icon on the sidebar, the icon activates but absolutely nothing occurs after that.. no console logs, absolutely nothing
+
+how can we fix this?
+
+
+can you help me debug my place poi..
+When I click the Places POI icon on my sidebar I get this console log:
+[Log] Toggling placePOIMode: – true (sidebar.tsx, line 624)
+
+after that, when the user clicks the map, it is supposed to snap to the closest town, village, city or suburb place-label and then open the POIModal..
+
+but I am getting nothing on click.. can you see why please
+
+
+
+
+
+
+
 # Place POI System Implementation
 
 ## Overview

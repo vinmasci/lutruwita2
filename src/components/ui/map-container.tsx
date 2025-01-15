@@ -84,6 +84,13 @@ interface MapRef {
     isVisible: boolean;
     gpxData: string;
   }) => Promise<void>;
+  addPOI: (poiData: {
+    name: string;
+    description?: string;
+    category: POICategory;
+    type: InfrastructurePOIType;
+    coordinates: [number, number];
+  }) => Promise<POI>;
 }
 
 interface Point {

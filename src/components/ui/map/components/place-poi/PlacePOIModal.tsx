@@ -77,6 +77,9 @@ export const PlacePOIModal: React.FC<PlacePOIModalProps> = ({
   onClose,
   onAddPOIs
 }) => {
+  console.log('PlacePOIModal rendered');
+  console.log('Modal open state:', open);
+  console.log('Place data:', place);
   const [selectedPOIs, setSelectedPOIs] = useState<Array<{
     category: POICategory;
     type: InfrastructurePOIType | ServicesPOIType;
@@ -107,6 +110,7 @@ export const PlacePOIModal: React.FC<PlacePOIModalProps> = ({
       onClose={onClose}
       maxWidth="sm"
       fullWidth
+      data-testid="place-poi-modal"
     >
       <DialogTitle>
         <Typography variant="h6">
@@ -157,8 +161,14 @@ export const PlacePOIModal: React.FC<PlacePOIModalProps> = ({
           {POI_OPTIONS.map((poiOption) => (
             <ListItem
               key={poiOption.type}
-              button
+              component="button"
               onClick={() => handleAddPOI(poiOption)}
+              sx={{
+                cursor: 'pointer',
+                '&:hover': {
+                  backgroundColor: 'action.hover'
+                }
+              }}
             >
               <ListItemIcon>
                 {poiOption.icon}

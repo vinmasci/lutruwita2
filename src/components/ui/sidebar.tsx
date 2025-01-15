@@ -35,7 +35,7 @@ import {
   FolderOpen as FolderOpenIcon,
   LocationOn as LocationOnIcon
 } from '@mui/icons-material';
-import { PlaceManager } from './map/components/place-poi/PlaceManager';
+import { PlacePOIModeManager } from './map/components/place-poi/PlacePOIModeManager';
 import LoadMapModal from './load-map-modal';
 import { POIModal } from './poi-modal';
 
@@ -74,6 +74,8 @@ import { InfrastructurePOIType } from '@/types/note-types';
 interface SidebarProps {
   mapRef: React.RefObject<MapRef>;
   onStartPOIPlacement: (type: InfrastructurePOIType) => void;
+  placePOIMode: boolean;
+  setPlacePOIMode: (mode: boolean) => void;
 }
 
 const Sidebar = ({ mapRef, onStartPOIPlacement }: SidebarProps) => {
@@ -96,6 +98,7 @@ const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
 const [saveMapModalOpen, setSaveMapModalOpen] = useState(false);
 const [loadMapModalOpen, setLoadMapModalOpen] = useState(false);
 const [poiModalOpen, setPoiModalOpen] = useState(false);
+const [tempMarker, setTempMarker] = useState<mapboxgl.Marker | null>(null);
 const [placePOIMode, setPlacePOIMode] = useState(false);
 const [routes, setRoutes] = useState<Array<{
   id: string;
@@ -485,7 +488,10 @@ const [routes, setRoutes] = useState<Array<{
 </ListItemButton>
 
 <ListItemButton
-  onClick={() => setPlacePOIMode(!placePOIMode)}
+  onClick={() => {
+    console.log('Toggling placePOIMode:', !placePOIMode);
+    setPlacePOIMode(!placePOIMode);
+  }}
   sx={{ justifyContent: open ? 'start' : 'center', minHeight: 48 }}
 >
   <ListItemIcon>
@@ -533,21 +539,24 @@ const [routes, setRoutes] = useState<Array<{
   }}
 />
 
-<POIModal 
-  open={poiModalOpen}
-  onClose={() => setPoiModalOpen(false)}
-  onAdd={(poiData) => {
-    if (mapRef.current) {
-      mapRef.current.handleAddPOI(poiData);
-      setSnackbar({
-        open: true,
-        message: 'POI added successfully',
-        severity: 'success'
-      });
-    }
-    setPoiModalOpen(false);
-  }}
-/>
+{mapRef.current && (
+  <POIModal 
+    map={mapRef.current}
+    open={poiModalOpen}
+    selectedType={InfrastructurePOIType.WaterPoint}
+    tempMarker={tempMarker}
+    onClose={() => setPoiModalOpen(false)}
+    onAdd={(poiData) => {
+      if (mapRef.current) {
+        mapRef.current.addPOI({
+          ...poiData,
+          coordinates: tempMarker?.getLngLat().toArray() || [0, 0]
+        });
+        setTempMarker(null);
+      }
+    }}
+  />
+)}
 
       <Dialog
         open={uploadDialogOpen}

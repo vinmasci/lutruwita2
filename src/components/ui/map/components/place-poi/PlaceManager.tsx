@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import mapboxgl from 'mapbox-gl';
+import mapboxgl, { MapMouseEvent } from 'mapbox-gl';
 import PlaceHighlight from './PlaceHighlight';
 import PlacePOIModal from './PlacePOIModal';
 import { POICategory } from '@/types/note-types';
@@ -15,15 +15,15 @@ export interface PlaceLabel {
 interface PlaceManagerProps {
   map: mapboxgl.Map;
   onPlaceDetected?: (place: PlaceLabel | null) => void;
+  isActive?: boolean;
   detectionRadius?: number;
 }
 
+// These patterns match the satellite-streets-v12 style layer IDs
 const PLACE_LAYER_PATTERNS = [
-  'settlement-label',
-  'place-city-label',
-  'place-town-label',
-  'place-village-label',
-  'place-suburb-label'
+  'settlement-major-label',
+  'settlement-minor-label',
+  'settlement-subdivision-label'
 ];
 
 const DEFAULT_DETECTION_RADIUS = 50;
@@ -40,11 +40,10 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
   const moveHandlerRef = useRef<((e: mapboxgl.MapMouseEvent) => void) | null>(null);
 
   const determinePlaceType = (layerId: string): PlaceLabel['type'] => {
-    if (layerId.includes('city')) return 'city';
-    if (layerId.includes('town')) return 'town';
-    if (layerId.includes('village')) return 'village';
-    if (layerId.includes('suburb')) return 'suburb';
-    return 'town'; // default fallback
+    if (layerId.includes('settlement-major-label')) return 'city';
+    if (layerId.includes('settlement-minor-label')) return 'town';
+    if (layerId.includes('settlement-subdivision-label')) return 'suburb';
+    return 'town'; // default fallback for unknown labels
   };
 
   const getRelevantLayers = () => {
@@ -71,16 +70,17 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
     let minDistance = Infinity;
 
     const features = layers.flatMap(layerId => 
-      map.queryRenderedFeatures(bbox, { layers: [layerId] })
+      map?.queryRenderedFeatures(bbox, { layers: [layerId] }) || []
     );
 
     features.forEach(feature => {
       if (!feature.geometry || feature.geometry.type !== 'Point') return;
 
+      if (!map) return;
       const featurePoint = map.project(feature.geometry.coordinates as [number, number]);
       const distance = calculateDistance(clickPoint, featurePoint);
 
-      if (distance <= detectionRadius && distance < minDistance) {
+      if (distance <= detectionRadius && distance < minDistance && feature.layer) {
         minDistance = distance;
         nearestPlace = {
           id: feature.id as string,
@@ -95,16 +95,26 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
     return nearestPlace;
   };
 
-  const handleMapMove = (e: mapboxgl.MapMouseEvent) => {
+  const handleMapMove = (e: mapboxgl.MapMouseEvent & { point: mapboxgl.Point }) => {
+    if (!map || !e.point) {
+      console.log('Map or point is not available');
+      return;
+    }
+    
     const point = e.point;
+    if (typeof point.x !== 'number' || typeof point.y !== 'number') {
+      console.log('Invalid point coordinates:', point);
+      return;
+    }
+
     const bbox: [mapboxgl.Point, mapboxgl.Point] = [
       new mapboxgl.Point(
-        point.x - detectionRadius,
-        point.y - detectionRadius
+        Number(point.x) - Number(detectionRadius),
+        Number(point.y) - Number(detectionRadius)
       ),
       new mapboxgl.Point(
-        point.x + detectionRadius,
-        point.y + detectionRadius
+        Number(point.x) + Number(detectionRadius),
+        Number(point.y) + Number(detectionRadius)
       )
     ];
 
@@ -113,7 +123,14 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
   };
 
   const handleMapClick = (e: mapboxgl.MapMouseEvent) => {
-    console.log('Map clicked in PlaceManager');
+    if (!map || !map.getStyle()) {
+      console.log('Map or map style is not available');
+      return;
+    }
+
+    console.log('Click coordinates:', e.lngLat);
+    console.log('Pixel coordinates:', e.point);
+    
     const clickPoint = e.point;
     const bbox: [mapboxgl.Point, mapboxgl.Point] = [
       new mapboxgl.Point(
@@ -127,13 +144,14 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
     ];
   
     const layers = getRelevantLayers();
-    console.log('Found layers:', layers);
+    if (layers.length === 0) {
+      console.log('No place label layers found');
+      return;
+    }
   
     const place = findNearestPlace(clickPoint, bbox);
-    console.log('Found place:', place);
     
     if (place) {
-      console.log('Setting selected place and opening modal');
       setSelectedPlace(place);
       setModalOpen(true);
     }
@@ -149,28 +167,44 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
   };
 
   useEffect(() => {
-    if (!map || !map.getStyle()) return;
-  
+    if (!map) return;
+
     const setupListeners = () => {
+      if (!map.getStyle()) return;
+
+      // Remove existing listeners first to avoid duplicates
+      if (moveHandlerRef.current) {
+        map.off('mousemove', moveHandlerRef.current);
+      }
+      if (clickHandlerRef.current) {
+        map.off('click', clickHandlerRef.current);
+      }
+
       moveHandlerRef.current = handleMapMove;
       clickHandlerRef.current = handleMapClick;
-  
-      map.on('mousemove', moveHandlerRef.current);
-      map.on('click', clickHandlerRef.current);
-  
+
+      if (moveHandlerRef.current) {
+        map.on('mousemove', moveHandlerRef.current);
+      }
+      if (clickHandlerRef.current) {
+        map.on('click', clickHandlerRef.current);
+      }
+
       map.getCanvas().style.cursor = 'pointer';
     };
-  
+
     if (map.loaded()) {
       setupListeners();
     } else {
       map.once('load', setupListeners);
     }
 
-    map.on('mousemove', moveHandlerRef.current);
-    map.on('click', clickHandlerRef.current);
-
-    map.getCanvas().style.cursor = 'pointer';
+    map.once('styledata', () => {
+      if (getRelevantLayers().length === 0) {
+        console.log('No place label layers found in map style');
+      }
+      setupListeners();
+    });
 
     return () => {
       if (moveHandlerRef.current) {
@@ -191,15 +225,17 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
         map={map}
         coordinates={hoverPlace?.coordinates || null}
       />
-      <PlacePOIModal
-        open={modalOpen}
-        place={selectedPlace}
-        onClose={() => {
-          setModalOpen(false);
-          setSelectedPlace(null);
-        }}
-        onAddPOIs={handleAddPOIs}
-      />
+      {modalOpen && selectedPlace && (
+        <PlacePOIModal
+          open={modalOpen}
+          place={selectedPlace}
+          onClose={() => {
+            setModalOpen(false);
+            setSelectedPlace(null);
+          }}
+          onAddPOIs={handleAddPOIs}
+        />
+      )}
     </>
   );
 };

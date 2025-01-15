@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Modal, Box, Typography, TextField, Button, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
 import { POICategory, POIType, POIIcons } from '@/types/note-types';
+import type { MapRef } from './map-container';
 
 interface POIModalProps {
     open: boolean;
@@ -13,6 +14,7 @@ interface POIModalProps {
     }) => void;
     selectedType: POIType;
     tempMarker: mapboxgl.Marker | null;
+    map: MapRef;
 }
 
 export function POIModal({ open, onClose, onAdd, selectedType, tempMarker }: POIModalProps) {
