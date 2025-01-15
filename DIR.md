@@ -13,6 +13,7 @@
 ├── README.md - Project documentation
 ├── SAVEMAP.md - Documentation for map saving functionality
 ├── POILAYER.md - Documentation for POI layer functionality
+├── PLACELABELS.md - Documentation for place labeling functionality
 ├── server.js - Server-side application code
 ├── tailwind.config.js - Tailwind CSS configuration
 ├── tsconfig.app.json - TypeScript config for application code
@@ -56,8 +57,11 @@
     │       ├── tabs.tsx - Tabbed interface component
     │       └── map/
     │           ├── components/
+    │           │   ├── place-poi/
+    │           │   │   └── PlaceManager.tsx - Manages place-based POIs
     │           │   └── poi/
     │           │       ├── POIManager.tsx - POI management component
+    │           │       ├── POIDrawer.tsx - POI drawing interface
     │           │       ├── POIMarker.tsx - POI marker implementation
     │           │       ├── POIModal.tsx - POI modal implementation
     │           │       └── POIToolbar.tsx - POI toolbar controls
@@ -65,7 +69,7 @@
     │               └── poi/
     │                   ├── poi-events.ts - POI event handlers
     │                   ├── poi-markers.ts - POI marker utilities
-    │                   └── poi-state.ts - POI state management
+    │                   └── poi-state.tsx - POI state management
     ├── contexts/
     │   └── floating-icon-context.tsx - Context for floating icon state
     ├── lib/
@@ -96,6 +100,10 @@
   - Integrates with POIMarker, POIModal, and POIToolbar
   - Uses poi-state for state management
   - Coordinates with poi-markers for marker rendering
+
+- **PlaceManager**: Manages place-based POIs
+  - Extends POI functionality for specific places
+  - Integrates with map components and services
 
 - **FloatingIcon**: Context-managed floating UI element
   - Provides context for floating icon state
