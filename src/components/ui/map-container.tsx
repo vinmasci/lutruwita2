@@ -1707,7 +1707,7 @@ if (savedPhotos?.length) {
     }
   }} />
 ) : (
-  <POIManager map={map.current} />
+<POIManager map={map.current} placePOIMode={placePOIMode} />
 )}
 
       <div ref={mapContainer} className="w-full h-full" />

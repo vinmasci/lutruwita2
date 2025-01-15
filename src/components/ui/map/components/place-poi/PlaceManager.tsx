@@ -48,7 +48,9 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
   };
 
   const getRelevantLayers = () => {
+    if (!map) return [];
     const style = map.getStyle();
+    if (!style || !style.layers) return [];
     return style.layers
       .filter(layer => 
         PLACE_LAYER_PATTERNS.some(pattern => layer.id.includes(pattern))
@@ -140,10 +142,23 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
   };
 
   useEffect(() => {
-    if (!map) return;
-
-    moveHandlerRef.current = handleMapMove;
-    clickHandlerRef.current = handleMapClick;
+    if (!map || !map.getStyle()) return;
+  
+    const setupListeners = () => {
+      moveHandlerRef.current = handleMapMove;
+      clickHandlerRef.current = handleMapClick;
+  
+      map.on('mousemove', moveHandlerRef.current);
+      map.on('click', clickHandlerRef.current);
+  
+      map.getCanvas().style.cursor = 'pointer';
+    };
+  
+    if (map.loaded()) {
+      setupListeners();
+    } else {
+      map.once('load', setupListeners);
+    }
 
     map.on('mousemove', moveHandlerRef.current);
     map.on('click', clickHandlerRef.current);

@@ -7,9 +7,10 @@ import { createPOIMarker } from '../../utils/poi/poi-markers';
 
 interface POIManagerProps {
   map: mapboxgl.Map | null;
+  placePOIMode?: boolean;
 }
 
-export const POIManager: React.FC<POIManagerProps> = ({ map }) => {
+export const POIManager: React.FC<POIManagerProps> = ({ map, placePOIMode }) => {
   const {
     currentPOIs,
     isPlacingPOI,
@@ -34,8 +35,8 @@ export const POIManager: React.FC<POIManagerProps> = ({ map }) => {
     if (!map) return;
 
     const handleClick = (e: mapboxgl.MapMouseEvent & { lngLat: mapboxgl.LngLat }) => {
-      if (!map || !isPlacingPOI?.type) {
-        console.log('Early return: no map or not in POI placement mode');
+      if (!map || !isPlacingPOI?.type || placePOIMode) {
+        console.log('Early return: POI Manager inactive');
         return;
       }
 
