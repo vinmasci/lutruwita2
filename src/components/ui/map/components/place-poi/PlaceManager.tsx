@@ -4,6 +4,7 @@ import PlaceHighlight from './PlaceHighlight';
 import PlacePOIModal from './PlacePOIModal';
 import { POICategory } from '@/types/note-types';
 import { POIIcons } from '@/types/note-types';
+import { Alert, Snackbar } from '@mui/material';
 
 export interface PlaceLabel {
   id: string;
@@ -53,6 +54,7 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
   const [hoverPlace, setHoverPlace] = useState<PlaceLabel | null>(null);
   const [selectedPlace, setSelectedPlace] = useState<PlaceLabel | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [showSnackbar, setShowSnackbar] = useState(true);  // Add it here
   const clickHandlerRef = useRef<((e: mapboxgl.MapMouseEvent) => void) | null>(null);
   const moveHandlerRef = useRef<((e: mapboxgl.MapMouseEvent) => void) | null>(null);
 
@@ -362,14 +364,41 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
   
       // Update each group of markers
       markerGroups.forEach((groupMarkers, placeId) => {
-        const labelFeatures = map.queryRenderedFeatures(undefined, {
+        // Get initial search position from first marker in group
+        const initialPos = groupMarkers[0].marker.getLngLat();
+        const searchCenter = map.project([initialPos.lng, initialPos.lat]);
+        
+        // Create a search box around the marker's position
+        const searchBox: [mapboxgl.Point, mapboxgl.Point] = [
+          new mapboxgl.Point(searchCenter.x - 100, searchCenter.y - 100),
+          new mapboxgl.Point(searchCenter.x + 100, searchCenter.y + 100)
+        ];
+  
+        // Search for place labels near the marker
+        const labelFeatures = map.queryRenderedFeatures(searchBox, {
           layers: PLACE_LAYER_PATTERNS
         });
   
         const placeFeature = labelFeatures.find(f => f.id === placeId);
-        if (!placeFeature || !placeFeature.geometry || placeFeature.geometry.type !== 'Point') return;
+        
+        // If we can't find the place label, try searching in a larger area
+        if (!placeFeature) {
+          const largerSearchBox: [mapboxgl.Point, mapboxgl.Point] = [
+            new mapboxgl.Point(searchCenter.x - 200, searchCenter.y - 200),
+            new mapboxgl.Point(searchCenter.x + 200, searchCenter.y + 200)
+          ];
+          const moreFeatures = map.queryRenderedFeatures(largerSearchBox, {
+            layers: PLACE_LAYER_PATTERNS
+          });
+          placeFeature = moreFeatures.find(f => f.id === placeId);
+        }
   
-        // Get the screen coordinates of the place label
+        if (!placeFeature || !placeFeature.geometry || placeFeature.geometry.type !== 'Point') {
+          console.log('Could not find place label:', placeId);
+          return;
+        }
+  
+        // Get the current screen coordinates of the place label
         const labelCoords = placeFeature.geometry.coordinates as [number, number];
         const labelPoint = map.project(labelCoords);
         
@@ -379,10 +408,9 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
         // Calculate the space needed for all POIs in this group
         const poiSpacing = scale.iconSize + 4;
         const poisPerRow = 5;
-        const rowCount = Math.ceil(groupMarkers.length / poisPerRow);
         const rowWidth = Math.min(groupMarkers.length, poisPerRow) * poiSpacing;
   
-        // Get the actual rendered label height (approximate)
+        // Calculate vertical spacing
         const labelHeight = Math.max(14, map.getZoom() * 1.2);
         const verticalSpacing = scale.iconSize + 4;
         const baseOffset = labelHeight + 8;
@@ -392,14 +420,14 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
           const row = Math.floor(index / poisPerRow);
           const col = index % poisPerRow;
           
-          // Calculate screen coordinates
+          // Calculate screen coordinates relative to label position
           const x = labelPoint.x - (rowWidth / 2) + (col * poiSpacing) + (scale.iconSize / 2);
           const y = labelPoint.y + baseOffset + (row * verticalSpacing);
           
           // Convert screen coordinates back to map coordinates
           const newPos = map.unproject([x, y]);
           
-          // Update marker position
+          // Update marker position smoothly
           item.marker.setLngLat(newPos);
   
           // Update marker size and styling
@@ -418,9 +446,18 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
       });
     };
   
+    // Debounce the update function to avoid too frequent updates
+    const debouncedUpdate = () => {
+      if (window.requestAnimationFrame) {
+        window.requestAnimationFrame(updatePOIPositions);
+      } else {
+        updatePOIPositions();
+      }
+    };
+  
     // Add listeners for all update events
     UPDATE_EVENTS.forEach(eventType => {
-      map.on(eventType, updatePOIPositions);
+      map.on(eventType, debouncedUpdate);
     });
   
     // Initial update
@@ -429,29 +466,27 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
     // Cleanup
     return () => {
       UPDATE_EVENTS.forEach(eventType => {
-        map.off(eventType, updatePOIPositions);
+        map.off(eventType, debouncedUpdate);
       });
     };
   }, [map]);
 
   return (
     <>
-      <div 
-        style={{
-          position: 'absolute',
-          top: '20px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          backgroundColor: 'rgba(0,0,0,0.8)',
-          color: 'white',
-          padding: '10px 20px',
-          borderRadius: '4px',
-          zIndex: 1000,
-          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-        }}
+      <Snackbar 
+        open={showSnackbar} 
+        autoHideDuration={6000}
+        onClose={() => setShowSnackbar(false)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
       >
-        Hover over a village, suburb, town or city name
-      </div>
+        <Alert 
+          severity="info" 
+          onClose={() => setShowSnackbar(false)}
+          sx={{ width: '100%' }}
+        >
+          Hover over a village, suburb, town or city name
+        </Alert>
+      </Snackbar>
       <PlaceHighlight
         map={map}
         coordinates={hoverPlace?.coordinates || null}

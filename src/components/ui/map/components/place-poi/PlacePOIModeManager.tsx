@@ -10,7 +10,6 @@ import type { POI } from '../../../../../types/note-types';
 interface PlacePOIModeManagerProps {
   map: MapboxMap | null;
   className?: string;
-  onPlaceSelected?: (place: PlaceLabel) => void;
 }
 
 export const PlacePOIModeManager: React.FC<PlacePOIModeManagerProps> = ({
@@ -57,17 +56,9 @@ export const PlacePOIModeManager: React.FC<PlacePOIModeManagerProps> = ({
 
   // Handle icon assignment from modal
   const handleAddPOIs = useCallback((placeId: string, pois: POI[]) => {
-    if (!map || !selectedPlace) return;
-
-    // Add marker to map for each POI
-    pois.forEach(poi => {
-      new mapboxgl.Marker()
-        .setLngLat(selectedPlace.coordinates)
-        .addTo(map);
-    });
-
+    if (!selectedPlace) return;
     setSelectedPlace(null);
-  }, [map, selectedPlace]);
+  }, [selectedPlace]);
 
   return (
     <>
