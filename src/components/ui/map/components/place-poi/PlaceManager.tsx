@@ -40,6 +40,9 @@ const PLACE_LAYER_PATTERNS = [
   'settlement-subdivision-label'
 ];
 
+// Add this at the top with other constants
+const UPDATE_EVENTS = ['move', 'zoom', 'render'] as const;
+
 const DEFAULT_DETECTION_RADIUS = 50;
 
 export const PlaceManager: React.FC<PlaceManagerProps> = ({
@@ -366,23 +369,40 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
         const placeFeature = labelFeatures.find(f => f.id === placeId);
         if (!placeFeature || !placeFeature.geometry || placeFeature.geometry.type !== 'Point') return;
   
-        const labelPoint = map.project(placeFeature.geometry.coordinates as [number, number]);
-        const zoom = map.getZoom();
-        const labelHeight = Math.max(14, zoom * 1.2);
-        const baseVerticalOffset = labelHeight + 8;
+        // Get the screen coordinates of the place label
+        const labelCoords = placeFeature.geometry.coordinates as [number, number];
+        const labelPoint = map.project(labelCoords);
         
+        // Get the zoom-based scale
         const scale = getScaledSize(map);
+        
+        // Calculate the space needed for all POIs in this group
         const poiSpacing = scale.iconSize + 4;
-        const totalWidth = groupMarkers.length * poiSpacing;
+        const poisPerRow = 5;
+        const rowCount = Math.ceil(groupMarkers.length / poisPerRow);
+        const rowWidth = Math.min(groupMarkers.length, poisPerRow) * poiSpacing;
   
+        // Get the actual rendered label height (approximate)
+        const labelHeight = Math.max(14, map.getZoom() * 1.2);
+        const verticalSpacing = scale.iconSize + 4;
+        const baseOffset = labelHeight + 8;
+  
+        // Update each POI position
         groupMarkers.forEach((item, index) => {
-          const startX = labelPoint.x - (totalWidth / 2) + (poiSpacing * index) + (scale.iconSize / 2);
-          const verticalOffset = baseVerticalOffset + (Math.floor(index / 5) * (scale.iconSize + 4));
+          const row = Math.floor(index / poisPerRow);
+          const col = index % poisPerRow;
           
-          const poiPoint = map.unproject([startX, labelPoint.y + verticalOffset]);
-          item.marker.setLngLat([poiPoint.lng, poiPoint.lat]);
+          // Calculate screen coordinates
+          const x = labelPoint.x - (rowWidth / 2) + (col * poiSpacing) + (scale.iconSize / 2);
+          const y = labelPoint.y + baseOffset + (row * verticalSpacing);
+          
+          // Convert screen coordinates back to map coordinates
+          const newPos = map.unproject([x, y]);
+          
+          // Update marker position
+          item.marker.setLngLat(newPos);
   
-          // Update marker size based on zoom
+          // Update marker size and styling
           const markerContainer = item.el.querySelector('div') as HTMLElement;
           if (markerContainer) {
             markerContainer.style.minWidth = `${scale.iconSize}px`;
@@ -393,21 +413,24 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
             if (icon) {
               icon.style.fontSize = `${scale.fontSize}px`;
             }
-            
-            const arrow = markerContainer.querySelector('div[style*="border-left"]') as HTMLElement;
-            if (arrow) {
-              arrow.style.borderLeft = `${scale.arrowSize}px solid transparent`;
-              arrow.style.borderRight = `${scale.arrowSize}px solid transparent`;
-              arrow.style.borderTop = `${scale.arrowSize}px solid #000000`;
-            }
           }
         });
       });
     };
   
-    map.on('zoom', updatePOIPositions);
+    // Add listeners for all update events
+    UPDATE_EVENTS.forEach(eventType => {
+      map.on(eventType, updatePOIPositions);
+    });
+  
+    // Initial update
+    updatePOIPositions();
+  
+    // Cleanup
     return () => {
-      map.off('zoom', updatePOIPositions);
+      UPDATE_EVENTS.forEach(eventType => {
+        map.off(eventType, updatePOIPositions);
+      });
     };
   }, [map]);
 
