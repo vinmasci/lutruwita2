@@ -1,3 +1,6 @@
+// ======================
+// Imports and Type Definitions
+// ======================
 import React, { useEffect, useRef, useState } from 'react';
 import mapboxgl, { MapMouseEvent } from 'mapbox-gl';
 import PlaceHighlight from './PlaceHighlight';
@@ -21,7 +24,9 @@ interface PlaceManagerProps {
   detectionRadius?: number;
 }
 
-// Add getScaledSize function here
+// ======================
+// Constants and Utility Functions
+// ======================
 const getScaledSize = (map: mapboxgl.Map) => {
   const zoom = map.getZoom();
   // Base size is 12px, scales up with zoom but caps at 24px
@@ -46,6 +51,9 @@ const UPDATE_EVENTS = ['move', 'zoom', 'render'] as const;
 
 const DEFAULT_DETECTION_RADIUS = 50;
 
+// ======================
+// Component Props and State
+// ======================
 export const PlaceManager: React.FC<PlaceManagerProps> = ({
   map,
   onPlaceDetected,
@@ -58,7 +66,10 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
   const clickHandlerRef = useRef<((e: mapboxgl.MapMouseEvent) => void) | null>(null);
   const moveHandlerRef = useRef<((e: mapboxgl.MapMouseEvent) => void) | null>(null);
 
-  const determinePlaceType = (layerId: string): PlaceLabel['type'] => {
+// ======================
+// Event Handlers
+// ======================
+const determinePlaceType = (layerId: string): PlaceLabel['type'] => {
     if (layerId.includes('settlement-major-label')) return 'city';
     if (layerId.includes('settlement-minor-label')) return 'town';
     if (layerId.includes('settlement-subdivision-label')) return 'suburb';
@@ -287,7 +298,10 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
     setSelectedPlace(null);
   };
 
-  useEffect(() => {
+// ======================
+// Effects and Lifecycle Methods
+// ======================
+useEffect(() => {
     if (!map) return;
 
     const setupListeners = () => {
@@ -471,7 +485,10 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
     };
   }, [map]);
 
-  return (
+// ======================
+// Rendering
+// ======================
+return (
     <>
       <Snackbar 
         open={showSnackbar} 
