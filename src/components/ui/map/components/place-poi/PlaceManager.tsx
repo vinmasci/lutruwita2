@@ -20,6 +20,19 @@ interface PlaceManagerProps {
   detectionRadius?: number;
 }
 
+// Add getScaledSize function here
+const getScaledSize = (map: mapboxgl.Map) => {
+  const zoom = map.getZoom();
+  // Base size is 12px, scales up with zoom but caps at 24px
+  const size = Math.min(24, Math.max(12, Math.floor(zoom * 1.2)));
+  return {
+    iconSize: size,
+    padding: Math.max(3, Math.floor(size / 4)),
+    fontSize: Math.max(10, Math.floor(size * 0.8)),
+    arrowSize: Math.max(3, Math.floor(size / 4))
+  };
+};
+
 // These patterns match the satellite-streets-v12 style layer IDs
 const PLACE_LAYER_PATTERNS = [
   'settlement-major-label',
@@ -177,39 +190,51 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
       return;
     }
 
-    console.log('Starting to add POIs:', {
-      placeId,
-      pois,
-      selectedPlace
-    });
-
+    // Get the pixel coordinates of the place label
+    const labelPoint = map.project(selectedPlace.coordinates);
+    
+    // Calculate label height based on current zoom level
+    const labelHeight = Math.max(14, map.getZoom() * 1.2); // Scale with zoom
+    
+    // Calculate base vertical offset (distance below label)
+    const baseVerticalOffset = labelHeight + 8; // 8px padding below label
+    
+    // Calculate total width needed for all POIs
+    const poiSize = Math.max(16, map.getZoom() * 1.2); // Scale POI size with zoom
+    const poiSpacing = poiSize + 4; // 4px spacing between POIs
+    const totalWidth = pois.length * poiSpacing;
+    
     pois.forEach((poi, index) => {
-      const totalWidth = pois.length * 0.001; // total width of all POIs
-      const startX = selectedPlace.coordinates[0] - (totalWidth / 2);
-      const verticalOffset = 0.001; // Adjust this for distance below place name
+      // Calculate horizontal position (centered below label)
+      const startX = labelPoint.x - (totalWidth / 2) + (poiSpacing * index) + (poiSize / 2);
+      
+      // Calculate vertical position (stacked if needed)
+      const verticalOffset = baseVerticalOffset + (Math.floor(index / 5) * (poiSize + 4));
+      
+      // Convert back to geographic coordinates
+      const poiPoint = map.unproject([startX, labelPoint.y + verticalOffset]);
       
       const poiLocation = {
-        lat: selectedPlace.coordinates[1] - verticalOffset,
-        lon: startX + (0.001 * (index + 0.5)) // Evenly space POIs
+        lat: poiPoint.lat,
+        lon: poiPoint.lng
       };
 
       // Create the marker element
       const el = document.createElement('div');
       el.className = 'place-poi-marker mapboxgl-marker';
 
+      const scale = getScaledSize(map);
       // Create marker container with custom styling
       const markerContainer = document.createElement('div');
       markerContainer.style.backgroundColor = '#FFFFFF';
-      markerContainer.style.padding = '3px'; // Reduced from 6px
-      markerContainer.style.borderRadius = '3px'; // Reduced from 4px
-      markerContainer.style.border = '1px solid #000000'; // Reduced from 2px
+      markerContainer.style.padding = `${scale.padding}px`;
+      markerContainer.style.borderRadius = `${scale.padding}px`;
+      markerContainer.style.border = '1px solid #000000';
       markerContainer.style.position = 'relative';
       markerContainer.style.display = 'flex';
       markerContainer.style.alignItems = 'center';
-      markerContainer.style.minWidth = '12px'; // Reduced from 24px
-      markerContainer.style.minHeight = '12px'; // Reduced from 24px
-      markerContainer.style.justifyContent = 'center';
-      markerContainer.style.boxShadow = '0 1px 2px rgba(0,0,0,0.2)'; // Reduced shadow
+      markerContainer.style.minWidth = `${scale.iconSize}px`;
+      markerContainer.style.minHeight = `${scale.iconSize}px`;
 
       // Add icon with custom styling
       const icon = document.createElement('span');
@@ -309,6 +334,80 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
         clickHandlerRef.current = null;
       }
       map.getCanvas().style.cursor = '';
+    };
+  }, [map]);
+
+  useEffect(() => {
+    if (!map) return;
+  
+    const updatePOIPositions = () => {
+      const markers = document.querySelectorAll('[data-place-id]');
+      
+      // Group markers by place
+      const markerGroups = new Map<string, Array<{ marker: mapboxgl.Marker, el: Element }>>();
+      
+      markers.forEach((markerEl) => {
+        const placeId = markerEl.getAttribute('data-place-id');
+        const marker = (markerEl as any).__marker;
+        if (marker && placeId) {
+          if (!markerGroups.has(placeId)) {
+            markerGroups.set(placeId, []);
+          }
+          markerGroups.get(placeId)?.push({ marker, el: markerEl });
+        }
+      });
+  
+      // Update each group of markers
+      markerGroups.forEach((groupMarkers, placeId) => {
+        const labelFeatures = map.queryRenderedFeatures(undefined, {
+          layers: PLACE_LAYER_PATTERNS
+        });
+  
+        const placeFeature = labelFeatures.find(f => f.id === placeId);
+        if (!placeFeature || !placeFeature.geometry || placeFeature.geometry.type !== 'Point') return;
+  
+        const labelPoint = map.project(placeFeature.geometry.coordinates as [number, number]);
+        const zoom = map.getZoom();
+        const labelHeight = Math.max(14, zoom * 1.2);
+        const baseVerticalOffset = labelHeight + 8;
+        
+        const scale = getScaledSize(map);
+        const poiSpacing = scale.iconSize + 4;
+        const totalWidth = groupMarkers.length * poiSpacing;
+  
+        groupMarkers.forEach((item, index) => {
+          const startX = labelPoint.x - (totalWidth / 2) + (poiSpacing * index) + (scale.iconSize / 2);
+          const verticalOffset = baseVerticalOffset + (Math.floor(index / 5) * (scale.iconSize + 4));
+          
+          const poiPoint = map.unproject([startX, labelPoint.y + verticalOffset]);
+          item.marker.setLngLat([poiPoint.lng, poiPoint.lat]);
+  
+          // Update marker size based on zoom
+          const markerContainer = item.el.querySelector('div') as HTMLElement;
+          if (markerContainer) {
+            markerContainer.style.minWidth = `${scale.iconSize}px`;
+            markerContainer.style.minHeight = `${scale.iconSize}px`;
+            markerContainer.style.padding = `${scale.padding}px`;
+            
+            const icon = markerContainer.querySelector('.material-icons') as HTMLElement;
+            if (icon) {
+              icon.style.fontSize = `${scale.fontSize}px`;
+            }
+            
+            const arrow = markerContainer.querySelector('div[style*="border-left"]') as HTMLElement;
+            if (arrow) {
+              arrow.style.borderLeft = `${scale.arrowSize}px solid transparent`;
+              arrow.style.borderRight = `${scale.arrowSize}px solid transparent`;
+              arrow.style.borderTop = `${scale.arrowSize}px solid #000000`;
+            }
+          }
+        });
+      });
+    };
+  
+    map.on('zoom', updatePOIPositions);
+    return () => {
+      map.off('zoom', updatePOIPositions);
     };
   }, [map]);
 
