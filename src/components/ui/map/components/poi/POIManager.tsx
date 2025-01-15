@@ -16,7 +16,8 @@ export const POIManager: React.FC<POIManagerProps> = ({ map }) => {
     tempMarker,
     setIsPlacingPOI,
     setPoiModalOpen,
-    setTempMarker
+    setTempMarker,
+    updatePOIPosition  // Added this
   } = usePOI();
 
   // Keep track of active markers
@@ -124,17 +125,31 @@ export const POIManager: React.FC<POIManagerProps> = ({ map }) => {
         map,
         poi.location,
         poi.type,
-        false // not draggable
+        false
       );
 
       const el = marker.getElement();
       el.setAttribute('data-poi-id', poi.id);
 
+      // Add dragend event handler
+      marker.on('dragend', () => {
+        if (isPlacingPOI) {  // Only allow updates when in POI mode
+          const newPos = marker.getLngLat();
+          updatePOIPosition(poi.id, {
+            lat: newPos.lat,
+            lon: newPos.lng
+          });
+        } else {
+          // If not in POI mode, reset marker to original position
+          marker.setLngLat([poi.location.lon, poi.location.lat]);
+        }
+      });
+
       markersRef.current[poi.id] = marker;
       console.log(`Created permanent marker for POI ${poi.id}`, marker);
     });
 
-  }, [map, currentPOIs]);
+  }, [map, currentPOIs, isPlacingPOI, updatePOIPosition]);  // Added updatePOIPosition to dependencies
 
   // Clean up on unmount
   useEffect(() => {

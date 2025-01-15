@@ -9,6 +9,7 @@ export interface PlacingPOIState {
   iconType?: InfrastructurePOIType;
 }
 
+// Define the context state interface
 interface POIContextState {
   currentPOIs: POI[];
   isPlacingPOI: PlacingPOIState | null;
@@ -17,6 +18,7 @@ interface POIContextState {
   setCurrentPOIs: (pois: POI[]) => void;
   addPOI: (poi: POI) => void;
   removePOI: (id: string) => void;
+  updatePOIPosition: (id: string, newLocation: { lat: number; lon: number }) => void;
   setIsPlacingPOI: (state: PlacingPOIState | null) => void;
   setPoiModalOpen: (open: boolean) => void;
   setTempMarker: (marker: Marker | null) => void;
@@ -41,6 +43,14 @@ export const POIProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentPOIs(prev => prev.filter(poi => poi.id !== id));
   }, []);
 
+  const updatePOIPosition = useCallback((id: string, newLocation: { lat: number; lon: number }) => {
+    setCurrentPOIs(prev => prev.map(poi => 
+      poi.id === id 
+        ? { ...poi, location: newLocation }
+        : poi
+    ));
+  }, []);
+
   const clearPOIs = useCallback(() => {
     setCurrentPOIs([]);
     setIsPlacingPOI(null);
@@ -59,6 +69,7 @@ export const POIProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentPOIs,
     addPOI,
     removePOI,
+    updatePOIPosition,
     setIsPlacingPOI,
     setPoiModalOpen,
     setTempMarker,

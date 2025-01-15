@@ -35,7 +35,7 @@ export const createPOIMarker = (
   map: mapboxgl.Map,
   position: { lat: number; lon: number },
   poiType: POIType,
-  isDraggable: boolean = false
+  isTemporary: boolean = false  // Changed parameter name to be more explicit
 ): mapboxgl.Marker => {
   // Create main container
   const el = document.createElement('div');
@@ -54,7 +54,7 @@ export const createPOIMarker = (
   markerContainer.style.zIndex = '2';
   markerContainer.style.display = 'flex';
   markerContainer.style.alignItems = 'center';
-  markerContainer.style.cursor = isDraggable ? 'move' : 'pointer';
+  markerContainer.style.cursor = 'move';  // Always show move cursor
   markerContainer.style.minWidth = '16px';
   markerContainer.style.minHeight = '16px';
   markerContainer.style.justifyContent = 'center';
@@ -84,7 +84,7 @@ export const createPOIMarker = (
 
   const marker = new mapboxgl.Marker({
     element: el,
-    draggable: isDraggable,
+    draggable: true,  // Make all markers draggable
     anchor: 'bottom',
     offset: [0, 0]
   })
