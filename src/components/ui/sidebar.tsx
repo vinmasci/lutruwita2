@@ -35,6 +35,7 @@ import {
   FolderOpen as FolderOpenIcon,
   LocationOn as LocationOnIcon
 } from '@mui/icons-material';
+import { PlaceManager } from './map/components/place-poi/PlaceManager';
 import LoadMapModal from './load-map-modal';
 import { POIModal } from './poi-modal';
 
@@ -95,6 +96,7 @@ const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
 const [saveMapModalOpen, setSaveMapModalOpen] = useState(false);
 const [loadMapModalOpen, setLoadMapModalOpen] = useState(false);
 const [poiModalOpen, setPoiModalOpen] = useState(false);
+const [placePOIMode, setPlacePOIMode] = useState(false);
 const [routes, setRoutes] = useState<Array<{
   id: string;
   name: string;
@@ -467,7 +469,6 @@ const [routes, setRoutes] = useState<Array<{
 </ListItemButton>
 
 <ListItemButton
-  disabled={!mapReady}
   onClick={() => setLoadMapModalOpen(true)}
   sx={{ justifyContent: open ? 'start' : 'center', minHeight: 48 }}
 >
@@ -476,6 +477,33 @@ const [routes, setRoutes] = useState<Array<{
   </ListItemIcon>
   <ListItemText 
     primary="Load Map" 
+    sx={{ 
+      opacity: open ? 1 : 0,
+      display: open ? 'block' : 'none'
+    }} 
+  />
+</ListItemButton>
+
+<ListItemButton
+  onClick={() => setPlacePOIMode(!placePOIMode)}
+  sx={{ justifyContent: open ? 'start' : 'center', minHeight: 48 }}
+>
+  <ListItemIcon>
+    <Box sx={{ position: 'relative' }}>
+      <LayersIcon />
+      <LocationOnIcon 
+        sx={{ 
+          position: 'absolute',
+          bottom: -8,
+          right: -8,
+          fontSize: 16,
+          color: placePOIMode ? 'primary.main' : 'inherit'
+        }} 
+      />
+    </Box>
+  </ListItemIcon>
+  <ListItemText 
+    primary="Place POI" 
     sx={{ 
       opacity: open ? 1 : 0,
       display: open ? 'block' : 'none'
@@ -504,6 +532,23 @@ const [routes, setRoutes] = useState<Array<{
     });
   }}
 />
+
+{placePOIMode && mapRef.current?.map && (
+  <PlaceManager
+    map={mapRef.current.map}
+    onPlaceDetected={(place) => {
+      if (place) {
+        console.log('Selected place:', place);
+        setPlacePOIMode(false);
+        setSnackbar({
+          open: true,
+          message: `Selected ${place.name}`,
+          severity: 'success'
+        });
+      }
+    }}
+  />
+)}
 
 <POIModal 
   open={poiModalOpen}

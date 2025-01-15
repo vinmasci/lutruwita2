@@ -1,58 +1,103 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
+import PlaceHighlight from './PlaceHighlight';
 
-interface PlaceManagerProps {
-  map: mapboxgl.Map | null;
+interface PlaceLabel {
+  id: string;
+  name: string;
+  type: 'town' | 'city' | 'suburb' | 'village';
+  coordinates: [number, number];
+  zoom: number;
 }
 
-export const PlaceManager: React.FC<PlaceManagerProps> = ({ map }) => {
+interface PlaceManagerProps {
+  map: mapboxgl.Map;
+  onPlaceDetected?: (place: PlaceLabel | null) => void;
+  detectionRadius?: number; // in pixels
+}
+
+const PLACE_LAYER_PATTERNS = [
+  'settlement-label',
+  'place-city-label',
+  'place-town-label',
+  'place-village-label',
+  'place-suburb-label'
+];
+
+const DEFAULT_DETECTION_RADIUS = 50; // pixels
+
+export const PlaceManager: React.FC<PlaceManagerProps> = ({
+  map,
+  onPlaceDetected,
+  detectionRadius = DEFAULT_DETECTION_RADIUS
+}) => {
+  const [hoverPlace, setHoverPlace] = useState<PlaceLabel | null>(null);
+  const clickHandlerRef = useRef<((e: mapboxgl.MapMouseEvent) => void) | null>(null);
+  const moveHandlerRef = useRef<((e: mapboxgl.MapMouseEvent) => void) | null>(null);
+
+  // Rest of your existing helper functions (determinePlaceType, getRelevantLayers, etc.)...
+
+  const handleMapMove = (e: mapboxgl.MapMouseEvent) => {
+    const point = e.point;
+    const bbox: [mapboxgl.Point, mapboxgl.Point] = [
+      new mapboxgl.Point(
+        point.x - detectionRadius,
+        point.y - detectionRadius
+      ),
+      new mapboxgl.Point(
+        point.x + detectionRadius,
+        point.y + detectionRadius
+      )
+    ];
+
+    const place = findNearestPlace(point, bbox);
+    setHoverPlace(place);
+  };
+
+  const handleMapClick = (e: mapboxgl.MapMouseEvent) => {
+    const clickPoint = e.point;
+    const bbox: [mapboxgl.Point, mapboxgl.Point] = [
+      new mapboxgl.Point(
+        clickPoint.x - detectionRadius,
+        clickPoint.y - detectionRadius
+      ),
+      new mapboxgl.Point(
+        clickPoint.x + detectionRadius,
+        clickPoint.y + detectionRadius
+      )
+    ];
+
+    const place = findNearestPlace(clickPoint, bbox);
+    onPlaceDetected?.(place);
+  };
+
   useEffect(() => {
     if (!map) return;
 
-    const handleClick = (e: mapboxgl.MapMouseEvent & { lngLat: mapboxgl.LngLat }) => {
-      // Get all layers first to see what's available
-      const allLayers = map.getStyle().layers;
-      const labelLayers = allLayers
-        .filter(layer => layer.id.includes('label') && layer.id.includes('place'))
-        .map(layer => layer.id);
-      
-      console.log('Available label layers:', labelLayers);
+    moveHandlerRef.current = handleMapMove;
+    clickHandlerRef.current = handleMapClick;
 
-      // Query a slightly larger area around the click point for labels
-      const bbox = [
-        [e.point.x - 20, e.point.y - 20],
-        [e.point.x + 20, e.point.y + 20]
-      ];
-
-      // Query for place labels in all relevant layers
-      const features = labelLayers.flatMap(layerId => 
-        map.queryRenderedFeatures(bbox, { layers: [layerId] })
-      );
-
-      // Log what we found
-      console.log('Click position:', e.lngLat);
-      console.log('Found place labels:', features);
-
-      // If we found any labels, log more details about the first one
-      if (features.length > 0) {
-        const place = features[0];
-        console.log('Place details:', {
-          name: place.properties?.name,
-          type: place.properties?.type,
-          class: place.properties?.class,
-          position: place.geometry.type === 'Point' ? place.geometry.coordinates : null
-        });
-      }
-    };
-
-    map.on('click', handleClick);
+    map.on('mousemove', moveHandlerRef.current);
+    map.on('click', clickHandlerRef.current);
 
     return () => {
-      map.off('click', handleClick);
+      if (moveHandlerRef.current) {
+        map.off('mousemove', moveHandlerRef.current);
+        moveHandlerRef.current = null;
+      }
+      if (clickHandlerRef.current) {
+        map.off('click', clickHandlerRef.current);
+        clickHandlerRef.current = null;
+      }
     };
   }, [map]);
 
-  return null;
+  return (
+    <PlaceHighlight
+      map={map}
+      coordinates={hoverPlace?.coordinates || null}
+    />
+  );
 };
 
 export default PlaceManager;
