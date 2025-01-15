@@ -1702,16 +1702,22 @@ if (savedPhotos?.length) {
       {!placePOIMode && (
         <POIManager map={map.current} placePOIMode={placePOIMode} />
       )}
-      {placePOIMode && map.current && isMapReady && (
-        <PlaceManager 
-          map={map.current} 
-          onPlaceDetected={(place) => {
-            if (place) {
-              // Modal opens automatically in PlaceManager
-            }
-          }} 
-        />
-      )}
+{placePOIMode && map.current && isMapReady && (
+  console.log('Attempting to mount PlaceManager with:', {
+    placePOIMode,
+    hasMap: !!map.current,
+    isMapReady
+  }),
+  <PlaceManager 
+    map={map.current} 
+    onPlaceDetected={(place) => {
+      console.log('Place detected:', place);
+      if (place) {
+        // Modal opens automatically in PlaceManager
+      }
+    }} 
+  />
+)}
       <div ref={mapContainer} className="w-full h-full" />
       {surfaceProgress.isProcessing && (
         <LoadingOverlay

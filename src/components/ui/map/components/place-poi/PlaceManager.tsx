@@ -113,6 +113,7 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
   };
 
   const handleMapClick = (e: mapboxgl.MapMouseEvent) => {
+    console.log('Map clicked in PlaceManager');
     const clickPoint = e.point;
     const bbox: [mapboxgl.Point, mapboxgl.Point] = [
       new mapboxgl.Point(
@@ -124,9 +125,15 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
         clickPoint.y + detectionRadius
       )
     ];
-
+  
+    const layers = getRelevantLayers();
+    console.log('Found layers:', layers);
+  
     const place = findNearestPlace(clickPoint, bbox);
+    console.log('Found place:', place);
+    
     if (place) {
+      console.log('Setting selected place and opening modal');
       setSelectedPlace(place);
       setModalOpen(true);
     }
