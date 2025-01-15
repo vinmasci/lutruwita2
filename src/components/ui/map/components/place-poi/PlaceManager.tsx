@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import PlaceHighlight from './PlaceHighlight';
+import PlacePOIModal from './PlacePOIModal';
+import { POICategory } from '@/types/note-types';
 
-interface PlaceLabel {
+export interface PlaceLabel {
   id: string;
   name: string;
   type: 'town' | 'city' | 'suburb' | 'village';
@@ -13,7 +15,7 @@ interface PlaceLabel {
 interface PlaceManagerProps {
   map: mapboxgl.Map;
   onPlaceDetected?: (place: PlaceLabel | null) => void;
-  detectionRadius?: number; // in pixels
+  detectionRadius?: number;
 }
 
 const PLACE_LAYER_PATTERNS = [
@@ -24,7 +26,7 @@ const PLACE_LAYER_PATTERNS = [
   'place-suburb-label'
 ];
 
-const DEFAULT_DETECTION_RADIUS = 50; // pixels
+const DEFAULT_DETECTION_RADIUS = 50;
 
 export const PlaceManager: React.FC<PlaceManagerProps> = ({
   map,
@@ -32,6 +34,8 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
   detectionRadius = DEFAULT_DETECTION_RADIUS
 }) => {
   const [hoverPlace, setHoverPlace] = useState<PlaceLabel | null>(null);
+  const [selectedPlace, setSelectedPlace] = useState<PlaceLabel | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
   const clickHandlerRef = useRef<((e: mapboxgl.MapMouseEvent) => void) | null>(null);
   const moveHandlerRef = useRef<((e: mapboxgl.MapMouseEvent) => void) | null>(null);
 
@@ -120,7 +124,19 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
     ];
 
     const place = findNearestPlace(clickPoint, bbox);
+    if (place) {
+      setSelectedPlace(place);
+      setModalOpen(true);
+    }
     onPlaceDetected?.(place);
+  };
+
+  const handleAddPOIs = (placeId: string, pois: Array<{
+    category: POICategory;
+    type: any;  // Replace 'any' with your POI type union
+  }>) => {
+    console.log('Adding POIs to place:', placeId, pois);
+    // TODO: Implement POI creation and attachment to place
   };
 
   useEffect(() => {
@@ -132,6 +148,8 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
     map.on('mousemove', moveHandlerRef.current);
     map.on('click', clickHandlerRef.current);
 
+    map.getCanvas().style.cursor = 'pointer';
+
     return () => {
       if (moveHandlerRef.current) {
         map.off('mousemove', moveHandlerRef.current);
@@ -141,14 +159,26 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
         map.off('click', clickHandlerRef.current);
         clickHandlerRef.current = null;
       }
+      map.getCanvas().style.cursor = '';
     };
   }, [map]);
 
   return (
-    <PlaceHighlight
-      map={map}
-      coordinates={hoverPlace?.coordinates || null}
-    />
+    <>
+      <PlaceHighlight
+        map={map}
+        coordinates={hoverPlace?.coordinates || null}
+      />
+      <PlacePOIModal
+        open={modalOpen}
+        place={selectedPlace}
+        onClose={() => {
+          setModalOpen(false);
+          setSelectedPlace(null);
+        }}
+        onAddPOIs={handleAddPOIs}
+      />
+    </>
   );
 };
 
