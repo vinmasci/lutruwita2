@@ -1,22 +1,31 @@
 import mapboxgl from 'mapbox-gl';
-import { POI, POIType, POIIcons, POICategory } from '@/types/note-types';
+import { 
+  POI, 
+  POIType, 
+  POIIcons,
+  InfrastructurePOIType,
+  ServicesPOIType,
+  AccommodationPOIType,
+  NaturalFeaturesPOIType,
+  InformationPOIType
+} from '@/types/note-types';
 import { usePOI } from './poi-state';
 
 const getCategoryColor = (poiType: POIType): string => {
-  // Check which category the POI type belongs to
-  if (Object.values(POICategory.Infrastructure).includes(poiType)) {
+  // Check if type exists in each category enum
+  if (Object.values(InfrastructurePOIType).includes(poiType)) {
     return '#00a8ff';  // Infrastructure - Blue
   }
-  if (Object.values(POICategory.Services).includes(poiType)) {
+  if (Object.values(ServicesPOIType).includes(poiType)) {
     return '#fd9644';  // Services - Orange
   }
-  if (Object.values(POICategory.Accommodation).includes(poiType)) {
+  if (Object.values(AccommodationPOIType).includes(poiType)) {
     return '#e056fd';  // Accommodation - Purple
   }
-  if (Object.values(POICategory.NaturalFeatures).includes(poiType)) {
+  if (Object.values(NaturalFeaturesPOIType).includes(poiType)) {
     return '#20bf6b';  // Natural Features - Green
   }
-  if (Object.values(POICategory.Information).includes(poiType)) {
+  if (Object.values(InformationPOIType).includes(poiType)) {
     return '#eb4d4b';  // Information - Red
   }
   return '#1f2937';  // Default dark gray
@@ -85,7 +94,7 @@ export const createPOIMarker = (
   console.log('Created marker:', {
     position,
     poiType,
-    isDraggable,
+    backgroundColor,  // Added this log to debug color
     element: el.outerHTML
   });
 
