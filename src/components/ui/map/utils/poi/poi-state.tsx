@@ -15,6 +15,8 @@ interface POIContextState {
   isPlacingPOI: PlacingPOIState | null;
   poiModalOpen: boolean;
   tempMarker: Marker | null;
+  selectedPOI: POI | null;
+  isDrawerOpen: boolean;
   setCurrentPOIs: (pois: POI[]) => void;
   addPOI: (poi: POI) => void;
   removePOI: (id: string) => void;
@@ -22,6 +24,8 @@ interface POIContextState {
   setIsPlacingPOI: (state: PlacingPOIState | null) => void;
   setPoiModalOpen: (open: boolean) => void;
   setTempMarker: (marker: Marker | null) => void;
+  setSelectedPOI: (poi: POI | null) => void;
+  setIsDrawerOpen: (open: boolean) => void;
   clearPOIs: () => void;
 }
 
@@ -34,6 +38,8 @@ export const POIProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isPlacingPOI, setIsPlacingPOI] = useState<PlacingPOIState | null>(null);
   const [poiModalOpen, setPoiModalOpen] = useState(false);
   const [tempMarker, setTempMarker] = useState<Marker | null>(null);
+  const [selectedPOI, setSelectedPOI] = useState<POI | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   const addPOI = useCallback((poi: POI) => {
     setCurrentPOIs(prev => [...prev, poi]);
@@ -66,6 +72,8 @@ export const POIProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     isPlacingPOI,
     poiModalOpen,
     tempMarker,
+    selectedPOI,
+    isDrawerOpen,
     setCurrentPOIs,
     addPOI,
     removePOI,
@@ -73,6 +81,8 @@ export const POIProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsPlacingPOI,
     setPoiModalOpen,
     setTempMarker,
+    setSelectedPOI,
+    setIsDrawerOpen,
     clearPOIs
   };
 

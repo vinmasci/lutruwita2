@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { usePOI } from '../../utils/poi/poi-state';
 import { POIModal } from './POIModal';
+import { POIDrawer } from './POIDrawer';
 import { createPOIMarker } from '../../utils/poi/poi-markers';
 
 interface POIManagerProps {
@@ -14,10 +15,15 @@ export const POIManager: React.FC<POIManagerProps> = ({ map }) => {
     isPlacingPOI,
     poiModalOpen,
     tempMarker,
+    selectedPOI,
+    isDrawerOpen,
     setIsPlacingPOI,
     setPoiModalOpen,
     setTempMarker,
-    updatePOIPosition  // Added this
+    setSelectedPOI,
+    setIsDrawerOpen,
+    setCurrentPOIs,
+    updatePOIPosition
   } = usePOI();
 
   // Keep track of active markers
@@ -131,25 +137,29 @@ export const POIManager: React.FC<POIManagerProps> = ({ map }) => {
       const el = marker.getElement();
       el.setAttribute('data-poi-id', poi.id);
 
+      // Add click handler to open drawer
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!isPlacingPOI) {  // Only open drawer if not in placement mode
+          setSelectedPOI(poi);
+          setIsDrawerOpen(true);
+        }
+      });
+
       // Add dragend event handler
       marker.on('dragend', () => {
-        if (isPlacingPOI) {  // Only allow updates when in POI mode
-          const newPos = marker.getLngLat();
-          updatePOIPosition(poi.id, {
-            lat: newPos.lat,
-            lon: newPos.lng
-          });
-        } else {
-          // If not in POI mode, reset marker to original position
-          marker.setLngLat([poi.location.lon, poi.location.lat]);
-        }
+        const newPos = marker.getLngLat();
+        updatePOIPosition(poi.id, {
+          lat: newPos.lat,
+          lon: newPos.lng
+        });
       });
 
       markersRef.current[poi.id] = marker;
       console.log(`Created permanent marker for POI ${poi.id}`, marker);
     });
 
-  }, [map, currentPOIs, isPlacingPOI, updatePOIPosition]);  // Added updatePOIPosition to dependencies
+  }, [map, currentPOIs, isPlacingPOI, updatePOIPosition, setSelectedPOI, setIsDrawerOpen]);
 
   // Clean up on unmount
   useEffect(() => {
@@ -162,23 +172,41 @@ export const POIManager: React.FC<POIManagerProps> = ({ map }) => {
   return (
     <>
       {map && (
-        <POIModal
-          map={map}
-          open={poiModalOpen}
-          selectedType={isPlacingPOI?.type}
-          tempMarker={tempMarker}
-          onClose={() => {
-            setPoiModalOpen(false);
-            if (tempMarker) {
-              tempMarker.remove();
-              setTempMarker(null);
-            }
-            if (!isPlacingPOI?.position) {
-              setIsPlacingPOI(null);
-              map.getCanvas().style.cursor = 'default';
-            }
-          }}
-        />
+        <>
+          <POIModal
+            map={map}
+            open={poiModalOpen}
+            selectedType={isPlacingPOI?.type}
+            tempMarker={tempMarker}
+            onClose={() => {
+              setPoiModalOpen(false);
+              if (tempMarker) {
+                tempMarker.remove();
+                setTempMarker(null);
+              }
+              if (!isPlacingPOI?.position) {
+                setIsPlacingPOI(null);
+                map.getCanvas().style.cursor = 'default';
+              }
+            }}
+          />
+          <POIDrawer
+            open={isDrawerOpen}
+            onClose={() => {
+              setIsDrawerOpen(false);
+              setSelectedPOI(null);
+            }}
+            poi={selectedPOI}
+            onSave={(updatedPOI) => {
+              setCurrentPOIs(prev => 
+                prev.map(p => p.id === updatedPOI.id ? updatedPOI : p)
+              );
+            }}
+            onDelete={(poiId) => {
+              setCurrentPOIs(prev => prev.filter(p => p.id !== poiId));
+            }}
+          />
+        </>
       )}
     </>
   );
