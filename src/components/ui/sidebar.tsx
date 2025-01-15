@@ -533,23 +533,6 @@ const [routes, setRoutes] = useState<Array<{
   }}
 />
 
-{placePOIMode && mapRef.current?.map && (
-  <PlaceManager
-    map={mapRef.current.map}
-    onPlaceDetected={(place) => {
-      if (place) {
-        console.log('Selected place:', place);
-        setPlacePOIMode(false);
-        setSnackbar({
-          open: true,
-          message: `Selected ${place.name}`,
-          severity: 'success'
-        });
-      }
-    }}
-  />
-)}
-
 <POIModal 
   open={poiModalOpen}
   onClose={() => setPoiModalOpen(false)}
