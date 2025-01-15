@@ -58,7 +58,11 @@
     │       └── map/
     │           ├── components/
     │           │   ├── place-poi/
-    │           │   │   └── PlaceManager.tsx - Manages place-based POIs
+    │           │   │   ├── PlaceManager.tsx - Main place-based POI manager
+    │           │   │   ├── PlaceHighlight.tsx - Place highlighting component
+    │           │   │   ├── PlacePOIControl.tsx - Place POI controls
+    │           │   │   ├── PlacePOIModeManager.tsx - Manages place POI modes
+    │           │   │   └── PlacePOIModal.tsx - Modal for place POI management
     │           │   └── poi/
     │           │       ├── POIManager.tsx - POI management component
     │           │       ├── POIDrawer.tsx - POI drawing interface
@@ -104,6 +108,7 @@
 - **PlaceManager**: Manages place-based POIs
   - Extends POI functionality for specific places
   - Integrates with map components and services
+  - Coordinates with PlaceHighlight, PlacePOIControl, and PlacePOIModeManager
 
 - **FloatingIcon**: Context-managed floating UI element
   - Provides context for floating icon state
