@@ -32,6 +32,7 @@ import { createRoot } from 'react-dom/client';
 
 // New POI imports
 import { POIProvider } from './map/utils/poi/poi-state';
+import { PlaceManager } from './map/components/place-poi/PlaceManager';
 import { POIManager } from './map/components/poi/POIManager';
 import { addPOIMarkerToMap } from './map/utils/poi/poi-markers';
 import { POI, POICategory, InfrastructurePOIType } from '@/types/note-types';
@@ -1697,6 +1698,7 @@ if (savedPhotos?.length) {
         <h1 className="text-white text-2xl font-fraunces font-bold pl-4 drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">{routeName}</h1>
       </div>
       <POIManager map={map.current} />
+      <PlaceManager map={map.current} />  {/* Add this line */}
 
       <div ref={mapContainer} className="w-full h-full" />
       {surfaceProgress.isProcessing && (
