@@ -87,7 +87,7 @@ export const POIManager: React.FC<POIManagerProps> = ({ map, placePOIMode }) => 
     return () => {
       map.off('click', handleClick);
     };
-  }, [map, isPlacingPOI, tempMarker, setIsPlacingPOI, setPoiModalOpen, setTempMarker]);
+  }, [map, isPlacingPOI, tempMarker, setIsPlacingPOI, setPoiModalOpen, setTempMarker, placePOIMode]);
 
   // Set up escape key handler
   useEffect(() => {
@@ -114,7 +114,7 @@ export const POIManager: React.FC<POIManagerProps> = ({ map, placePOIMode }) => 
     return () => {
       window.removeEventListener('keydown', handleEscape);
     };
-  }, [map, isPlacingPOI, tempMarker, setIsPlacingPOI, setPoiModalOpen, setTempMarker]);
+  }, [map, isPlacingPOI, tempMarker, setIsPlacingPOI, setPoiModalOpen, setTempMarker, placePOIMode]);
 
   // Update markers when POIs change
   useEffect(() => {

@@ -1699,7 +1699,7 @@ if (savedPhotos?.length) {
       <div className="absolute top-0 left-[160px] right-0 right-[40px] z-10 bg-black/0 p-4">
         <h1 className="text-white text-2xl font-fraunces font-bold pl-4 drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">{routeName}</h1>
       </div>
-      {placePOIMode ? (
+      {placePOIMode && map.current && isMapReady ? (
   <PlaceManager map={map.current} onPlaceDetected={(place) => {
     if (place) {
       setPlacePOIMode(false);
@@ -1707,7 +1707,7 @@ if (savedPhotos?.length) {
     }
   }} />
 ) : (
-<POIManager map={map.current} placePOIMode={placePOIMode} />
+  <POIManager map={map.current} placePOIMode={placePOIMode} />
 )}
 
       <div ref={mapContainer} className="w-full h-full" />
