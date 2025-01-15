@@ -112,16 +112,13 @@ export const PlacePOIModal: React.FC<PlacePOIModalProps> = ({
       fullWidth
       data-testid="place-poi-modal"
     >
-      <DialogTitle>
-        <Typography variant="h6">
-          Add POIs to {place?.name}
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
+<DialogTitle sx={{ pb: 0 }}>
+        Add POIs to {place?.name}
+      </DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Select POIs to attach to this location
         </Typography>
-      </DialogTitle>
-
-      <DialogContent>
         <Box sx={{ mb: 3 }}>
           <Typography variant="subtitle1" sx={{ mb: 1 }}>
             Selected POIs:
@@ -159,25 +156,26 @@ export const PlacePOIModal: React.FC<PlacePOIModalProps> = ({
         </Typography>
         <List>
           {POI_OPTIONS.map((poiOption) => (
-            <ListItem
-              key={poiOption.type}
-              component="button"
-              onClick={() => handleAddPOI(poiOption)}
-              sx={{
-                cursor: 'pointer',
-                '&:hover': {
-                  backgroundColor: 'action.hover'
-                }
-              }}
-            >
-              <ListItemIcon>
-                {poiOption.icon}
-              </ListItemIcon>
-              <ListItemText primary={poiOption.label} />
-              <IconButton edge="end" aria-label="add">
-                <AddIcon />
-              </IconButton>
-            </ListItem>
+           <ListItem
+           key={poiOption.type}
+           onClick={() => handleAddPOI(poiOption)}
+           sx={{
+             cursor: 'pointer',
+             '&:hover': {
+               backgroundColor: 'action.hover'
+             }
+           }}
+           secondaryAction={
+             <IconButton edge="end" aria-label="add">
+               <AddIcon />
+             </IconButton>
+           }
+         >
+           <ListItemIcon>
+             {poiOption.icon}
+           </ListItemIcon>
+           <ListItemText primary={poiOption.label} />
+         </ListItem>
           ))}
         </List>
       </DialogContent>

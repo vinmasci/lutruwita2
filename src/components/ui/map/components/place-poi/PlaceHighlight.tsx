@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+// PlaceHighlight.tsx
+import React, { useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 
 interface PlaceHighlightProps {
@@ -10,65 +11,53 @@ export const PlaceHighlight: React.FC<PlaceHighlightProps> = ({
   map,
   coordinates
 }) => {
-  const [marker, setMarker] = useState<mapboxgl.Marker | null>(null);
+  const highlightLayerId = 'place-highlight-layer';
 
   useEffect(() => {
-    if (!coordinates) {
-      if (marker) {
-        marker.remove();
-        setMarker(null);
-      }
-      return;
+    // Remove any existing highlight layer
+    if (map.getLayer(highlightLayerId)) {
+      map.removeLayer(highlightLayerId);
+    }
+    if (map.getSource(highlightLayerId)) {
+      map.removeSource(highlightLayerId);
     }
 
-    // Create a custom DOM element for the highlight
-    const el = document.createElement('div');
-    el.className = 'place-highlight';
-    el.style.width = '32px';
-    el.style.height = '32px';
-    el.style.borderRadius = '50%';
-    el.style.backgroundColor = 'rgba(33, 150, 243, 0.2)';
-    el.style.border = '2px solid rgb(33, 150, 243)';
-    el.style.animation = 'pulse 2s infinite';
-
-    // Add pulse animation style if it doesn't exist
-    if (!document.querySelector('#place-highlight-style')) {
-      const style = document.createElement('style');
-      style.id = 'place-highlight-style';
-      style.innerHTML = `
-        @keyframes pulse {
-          0% {
-            transform: scale(0.95);
-            box-shadow: 0 0 0 0 rgba(33, 150, 243, 0.4);
-          }
-          
-          70% {
-            transform: scale(1);
-            box-shadow: 0 0 0 10px rgba(33, 150, 243, 0);
-          }
-          
-          100% {
-            transform: scale(0.95);
-            box-shadow: 0 0 0 0 rgba(33, 150, 243, 0);
-          }
+    // Only add highlight if we have coordinates
+    if (coordinates) {
+      // Add a new source and layer for the highlight
+      map.addSource(highlightLayerId, {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: coordinates
+          },
+          properties: {}
         }
-      `;
-      document.head.appendChild(style);
+      });
+
+      map.addLayer({
+        id: highlightLayerId,
+        type: 'circle',
+        source: highlightLayerId,
+        paint: {
+          'circle-radius': 12,
+          'circle-color': 'rgba(255, 255, 255, 0.2)',
+          'circle-stroke-width': 2,
+          'circle-stroke-color': 'rgba(255, 255, 255, 0.8)'
+        }
+      });
     }
 
-    // Create and add the marker
-    const newMarker = new mapboxgl.Marker({
-      element: el,
-      anchor: 'center'
-    })
-      .setLngLat(coordinates)
-      .addTo(map);
-
-    setMarker(newMarker);
-
+    // Cleanup
     return () => {
-      newMarker.remove();
-      setMarker(null);
+      if (map.getLayer(highlightLayerId)) {
+        map.removeLayer(highlightLayerId);
+      }
+      if (map.getSource(highlightLayerId)) {
+        map.removeSource(highlightLayerId);
+      }
     };
   }, [map, coordinates]);
 
