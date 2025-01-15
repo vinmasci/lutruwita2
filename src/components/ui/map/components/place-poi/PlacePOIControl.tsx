@@ -43,93 +43,93 @@ const PlacePOIControl: React.FC<PlacePOIControlProps> = ({ isActive, onToggle })
 
   const handleAddPOIs = (placeId: string, pois: Array<{
     category: POICategory;
-    type: any;
+    type: POIType;
   }>) => {
     if (!selectedPlace || !map) {
       console.log('No selected place or map available');
       return;
     }
     
-    console.log('Selected place coordinates:', selectedPlace.coordinates);
-    console.log('Adding POIs to place:', placeId, pois);
-    
-    const existingMarkers = document.querySelectorAll(`.poi-marker-${placeId}`);
-    existingMarkers.forEach(marker => marker.remove());
-    
-    console.log('Selected place coordinates:', selectedPlace.coordinates);
-    
+    console.log('Starting to add POIs:', {
+      placeId,
+      pois,
+      selectedPlace
+    });
+
+    // Calculate vertical offset based on place name text size
+    const verticalBaseOffset = 0.0015; // Adjust this value based on testing
+
     pois.forEach((poi, index) => {
-      // Increased offset and adjusted calculations
-      const baseOffset = 0.003; // Significantly increased for visibility
-      const angle = (Math.PI * (index + 1)) / (pois.length + 1);
-      const xOffset = Math.cos(angle) * baseOffset * 2; // Double horizontal spread
-      const yOffset = Math.sin(angle) * baseOffset;
+      // Create a horizontal line of POIs below the place name
+      const totalWidth = pois.length * 0.001; // total width of all POIs
+      const startX = selectedPlace.coordinates[0] - (totalWidth / 2);
+      const spacing = 0.001; // space between POIs
       
-      const poiCoordinates: [number, number] = [
-        selectedPlace.coordinates[0] + xOffset,
-        selectedPlace.coordinates[1] - Math.abs(yOffset) * 2 // Increased vertical drop
-      ];
+      const poiCoordinates = {
+        lat: selectedPlace.coordinates[1] - verticalBaseOffset,
+        lon: startX + (spacing * (index + 0.5)) // Center the POIs
+      };
+
+      // Create main container
+      const el = document.createElement('div');
+      el.className = 'place-poi-marker mapboxgl-marker';
+      el.style.zIndex = '1'; // Below place name
+
+      // Create marker container
+      const markerContainer = document.createElement('div');
+      markerContainer.style.backgroundColor = '#FFFFFF'; // White background
+      markerContainer.style.padding = '6px';
+      markerContainer.style.borderRadius = '4px';
+      markerContainer.style.border = '2px solid #000000'; // Black border
+      markerContainer.style.position = 'relative';
+      markerContainer.style.display = 'flex';
+      markerContainer.style.alignItems = 'center';
+      markerContainer.style.cursor = 'pointer';
+      markerContainer.style.minWidth = '24px';
+      markerContainer.style.minHeight = '24px';
+      markerContainer.style.justifyContent = 'center';
+      markerContainer.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
+
+      // Add icon
+      const icon = document.createElement('span');
+      icon.className = 'material-icons';
+      icon.textContent = POIIcons[poi.type];
+      icon.style.color = '#000000'; // Black icon
+      icon.style.fontSize = '16px';
+      markerContainer.appendChild(icon);
+
+      // Add arrow
+      const arrow = document.createElement('div');
+      arrow.style.position = 'absolute';
+      arrow.style.bottom = '-6px';
+      arrow.style.left = '50%';
+      arrow.style.transform = 'translateX(-50%)';
+      arrow.style.width = '0';
+      arrow.style.height = '0';
+      arrow.style.borderLeft = '6px solid transparent';
+      arrow.style.borderRight = '6px solid transparent';
+      arrow.style.borderTop = '6px solid #000000'; // Black arrow
+
+      markerContainer.appendChild(arrow);
+      el.appendChild(markerContainer);
+
+      // Create and add the marker
+      const marker = new mapboxgl.Marker({
+        element: el,
+        anchor: 'bottom',
+        offset: [0, 0]
+      })
+      .setLngLat([poiCoordinates.lon, poiCoordinates.lat])
+      .addTo(map);
+
+      // Add data attributes
+      el.setAttribute('data-poi-id', `place-${placeId}-poi-${Date.now()}-${index}`);
+      el.setAttribute('data-place-id', placeId);
       
-      console.log(`Creating POI ${index + 1}/${pois.length}:`, {
+      console.log('Added place POI marker:', {
         type: poi.type,
         coordinates: poiCoordinates
       });
-      
-      console.log(`Creating POI ${index + 1}/${pois.length}:`, {
-        type: poi.type,
-        baseOffset,
-        angle: angle * (180 / Math.PI),
-        coordinates: poiCoordinates,
-        offset: { x: xOffset, y: yOffset }
-      });
-
-      const el = document.createElement('div');
-      el.className = `poi-marker-container poi-marker-${placeId}`;
-      el.style.position = 'relative';
-      el.style.width = '30px';
-      el.style.height = '30px';
-      el.style.backgroundColor = '#1f2937';
-      el.style.borderRadius = '50%';
-      el.style.display = 'flex';
-      el.style.alignItems = 'center';
-      el.style.justifyContent = 'center';
-      el.style.cursor = 'pointer';
-      el.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
-      el.style.border = '2px solid white';
-      el.style.zIndex = '999';
-
-      let iconContent = '📍';
-      switch(poi.type) {
-        case 'Water Point':
-          iconContent = '💧';
-          break;
-        case 'Cafe':
-          iconContent = '☕';
-          break;
-        case 'General Store':
-          iconContent = '🏪';
-          break;
-        case 'Parking':
-          iconContent = '🅿️';
-          break;
-      }
-
-      const icon = document.createElement('span');
-      icon.textContent = iconContent;
-      icon.style.fontSize = '16px';
-      el.appendChild(icon);
-
-      const marker = new mapboxgl.Marker({
-        element: el,
-        anchor: 'center',
-        offset: [0, 0]
-      })
-        .setLngLat(poiCoordinates)
-        .addTo(map);
-
-      console.log(`Marker ${index + 1} added at:`, poiCoordinates);
-      const markersOnMap = document.querySelectorAll('.poi-marker-container').length;
-      console.log(`Total markers on map: ${markersOnMap}`);
     });
     
     setModalOpen(false);

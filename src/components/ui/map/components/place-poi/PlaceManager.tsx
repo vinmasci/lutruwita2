@@ -3,6 +3,7 @@ import mapboxgl, { MapMouseEvent } from 'mapbox-gl';
 import PlaceHighlight from './PlaceHighlight';
 import PlacePOIModal from './PlacePOIModal';
 import { POICategory } from '@/types/note-types';
+import { createPOIMarker } from '@/components/ui/map/utils/poi/poi-markers';
 
 export interface PlaceLabel {
   id: string;
@@ -169,10 +170,42 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
 
   const handleAddPOIs = (placeId: string, pois: Array<{
     category: POICategory;
-    type: any;  // Replace 'any' with your POI type union
+    type: any;
   }>) => {
-    console.log('Adding POIs to place:', placeId, pois);
-    // TODO: Implement POI creation and attachment to place
+    if (!selectedPlace || !map) {
+      console.log('No selected place or map available');
+      return;
+    }
+
+    console.log('Starting to add POIs:', {
+      placeId,
+      pois,
+      selectedPlace
+    });
+
+    pois.forEach((poi, index) => {
+      const offset = 0.002;
+      const angle = (Math.PI * (index + 1)) / (pois.length + 1);
+      
+      const poiLocation = {
+        lat: selectedPlace.coordinates[1] - offset,
+        lon: selectedPlace.coordinates[0] + Math.cos(angle) * offset
+      };
+
+      const marker = createPOIMarker(map, poiLocation, poi.type, false);
+      const el = marker.getElement();
+      el.setAttribute('data-poi-id', `place-${placeId}-poi-${Date.now()}-${index}`);
+      el.setAttribute('data-place-id', placeId);
+      
+      console.log('Added marker:', {
+        placeId,
+        poiType: poi.type,
+        location: poiLocation
+      });
+    });
+
+    setModalOpen(false);
+    setSelectedPlace(null);
   };
 
   useEffect(() => {
@@ -181,7 +214,7 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
     const setupListeners = () => {
       if (!map.getStyle()) return;
 
-      console.log('Setting up click handlers in PlaceManager'); // Add this line
+      console.log('Setting up click handlers in PlaceManager');
 
       // Remove existing listeners first to avoid duplicates
       if (moveHandlerRef.current) {
@@ -232,6 +265,22 @@ export const PlaceManager: React.FC<PlaceManagerProps> = ({
 
   return (
     <>
+      <div 
+        style={{
+          position: 'absolute',
+          top: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          backgroundColor: 'rgba(0,0,0,0.8)',
+          color: 'white',
+          padding: '10px 20px',
+          borderRadius: '4px',
+          zIndex: 1000,
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+        }}
+      >
+        Hover over a village, suburb, town or city name
+      </div>
       <PlaceHighlight
         map={map}
         coordinates={hoverPlace?.coordinates || null}
