@@ -78,7 +78,7 @@ interface SidebarProps {
   setPlacePOIMode: (mode: boolean) => void;
 }
 
-const Sidebar = ({ mapRef, onStartPOIPlacement }: SidebarProps) => {
+const Sidebar = ({ mapRef, onStartPOIPlacement, placePOIMode, setPlacePOIMode }: SidebarProps) => {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [mapReady, setMapReady] = useState(false);
@@ -99,7 +99,6 @@ const [saveMapModalOpen, setSaveMapModalOpen] = useState(false);
 const [loadMapModalOpen, setLoadMapModalOpen] = useState(false);
 const [poiModalOpen, setPoiModalOpen] = useState(false);
 const [tempMarker, setTempMarker] = useState<mapboxgl.Marker | null>(null);
-const [placePOIMode, setPlacePOIMode] = useState(false);
 const [routes, setRoutes] = useState<Array<{
   id: string;
   name: string;
