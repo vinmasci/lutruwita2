@@ -17,6 +17,7 @@ export enum InfrastructurePOIType {
     Campsite = 'Campsite',
     Parking = 'Parking',
     Viewpoint = 'Viewpoint',
+    CaravanPark = 'Caravan Park', // Add this new type
     Other = 'Other'
 }
 
@@ -77,7 +78,7 @@ export const POIIcons: Record<POIType, string> = {
     [InfrastructurePOIType.BikeShop]: 'pedal_bike',
     [InfrastructurePOIType.BikeStorage]: 'garage',
     [InfrastructurePOIType.Shelter]: 'house',
-    [InfrastructurePOIType.Campsite]: 'camping',
+    [InfrastructurePOIType.Campsite]: 'cabin',
     [InfrastructurePOIType.Parking]: 'local_parking',
     [InfrastructurePOIType.Viewpoint]: 'visibility',
     [InfrastructurePOIType.Other]: 'place',
@@ -91,6 +92,7 @@ export const POIIcons: Record<POIType, string> = {
     [ServicesPOIType.PostOffice]: 'local_post_office',
     [ServicesPOIType.MedicalCenter]: 'local_hospital',
     [ServicesPOIType.Pharmacy]: 'local_pharmacy',
+    [ServicesPOIType.FuelStation]: 'local_gas_station', // Added fuel station icon
 
     // Accommodation
     [AccommodationPOIType.Campground]: 'camping',
@@ -98,6 +100,7 @@ export const POIIcons: Record<POIType, string> = {
     [AccommodationPOIType.Hostel]: 'house',
     [AccommodationPOIType.FreeCamping]: 'nature',
     [AccommodationPOIType.HutShelter]: 'cabin',
+    [InfrastructurePOIType.CaravanPark]: 'rv_hookup', // Add this new icon mapping
 
     // Natural Features
     [NaturalFeaturesPOIType.Lookout]: 'visibility',

@@ -146,6 +146,12 @@ const POI_OPTIONS: POIOption[] = [
     icon: <FuelIcon />,
     label: 'Fuel Station'
 },
+{
+  category: POICategory.Infrastructure,
+  type: InfrastructurePOIType.CaravanPark,  // Make sure this is added to InfrastructurePOIType
+  icon: <CaravanIcon />,
+  label: 'Caravan Park'
+},
 
   // Services POIs
   {

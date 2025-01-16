@@ -32,7 +32,7 @@ import { createRoot } from 'react-dom/client';
 
 // New POI imports
 import { POIProvider } from './map/utils/poi/poi-state';
-import { PlaceManager } from './map/components/place-poi/PlaceManager';
+import { PlaceManager } from "./map/components/poi/place-poi/PlaceManager";
 import { POIManager } from './map/components/poi/POIManager';
 import { addPOIMarkerToMap } from './map/utils/poi/poi-markers';
 import { POI, POICategory, InfrastructurePOIType } from '@/types/note-types';
@@ -1045,31 +1045,37 @@ const handleAddPOI = useCallback(async (poiData: Omit<POI, 'id' | 'createdAt' | 
 
 // Save map handler
 const handleSaveMap = useCallback(async (data: {
-name: string;
-description: string;
-isPublic: boolean;
-}) => {
-if (!map.current) return;
-
-try {
-  const source = map.current.getSource(routeSourceId);
-  if (!source) {
-    throw new Error('No route source found');
-  }
+  name: string;
+  description: string;
+  isPublic: boolean;
+  }) => {
+  if (!map.current) return;
+  
+  try {
+    console.log('Current photos before saving:', currentPhotos);  // Add this line here
+    
+    const source = map.current.getSource(routeSourceId);
+    if (!source) {
+      throw new Error('No route source found');
+    }
   
   const routeData = (source as mapboxgl.GeoJSONSource)._data;
   if (!routeData || routeData.type !== 'FeatureCollection') {
     throw new Error('Invalid route data');
   }
 
-  // Get all routes with their GPX data and filepath from the route store
-  const routes = routeStore.map(route => ({
+// Get all routes, deduplicating any with identical GPX data
+const routes = routeStore
+  .filter((route, index, self) => 
+    index === self.findIndex((r) => r.gpxData === route.gpxData)
+  )
+  .map(route => ({
     id: route.id,
     name: route.name,
     color: route.color,
     isVisible: route.isVisible,
     gpxData: route.gpxData,
-    gpxFilePath: route.gpxFilePath // Include the filepath
+    gpxFilePath: route.gpxFilePath
   }));
 
   // Get current map view state
@@ -1086,10 +1092,8 @@ const photos = currentPhotos.map(photo => ({
   id: photo._id,
   url: photo.url,
   caption: photo.originalName,
-  location: {
-    lat: photo.latitude,
-    lon: photo.longitude
-  }
+  latitude: photo.latitude,
+  longitude: photo.longitude
 }));
 
 console.log('Photos to save:', photos);
@@ -1112,14 +1116,12 @@ const mapData = {
   },
   pois: currentPOIs,  // Add this line
   photos: currentPhotos.map(photo => ({
-      id: photo._id,
-      url: photo.url,
-      caption: photo.originalName,
-      location: {
-        lat: photo.latitude,
-        lon: photo.longitude
-      }
-    })),
+    id: photo._id,
+    url: photo.url,
+    caption: photo.originalName,
+    latitude: photo.latitude,
+    longitude: photo.longitude
+  })),
     viewState,
     mapStyle: map.current.getStyle().name || 'mapbox://styles/mapbox/satellite-streets-v12',
     createdAt: new Date().toISOString(),

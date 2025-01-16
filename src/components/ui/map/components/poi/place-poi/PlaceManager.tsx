@@ -29,15 +29,15 @@ interface PlaceManagerProps {
 // ======================
 const getScaledSize = (map: mapboxgl.Map) => {
   const zoom = map.getZoom();
-  // Base size is 12px, scales up with zoom but caps at 24px
-  const size = Math.min(24, Math.max(12, Math.floor(zoom * 1.2)));
+  const size = Math.min(32, Math.max(16, Math.floor(zoom * 1.2)));
   return {
     iconSize: size,
-    padding: Math.max(3, Math.floor(size / 4)),
-    fontSize: Math.max(10, Math.floor(size * 0.8)),
-    arrowSize: Math.max(3, Math.floor(size / 4))
+    padding: 0,
+    fontSize: Math.max(14, Math.floor(size * 0.9)),
+    arrowSize: 0
   };
 };
+
 
 // These patterns match the satellite-streets-v12 style layer IDs
 const PLACE_LAYER_PATTERNS = [
@@ -206,10 +206,10 @@ const handleAddPOIs = (placeId: string, pois: Array<{
 
   // Calculate base vertical offset and spacing
   const scale = getScaledSize(map);
-  const poiSpacing = scale.iconSize + 8;
+  const poiSpacing = scale.iconSize + 5;
   const labelHeight = Math.max(14, map.getZoom() * 1.2);
   const baseVerticalOffset = labelHeight + 2;
-  const poisPerRow = 5;
+  const poisPerRow = 8;
   
   pois.forEach((poi, index) => {
     // Calculate row and column for this POI
@@ -221,8 +221,8 @@ const handleAddPOIs = (placeId: string, pois: Array<{
     const totalRowWidth = poisInThisRow * poiSpacing;
 
     // Calculate pixel offsets from the place label
-    const xOffset = -totalRowWidth/2 + (col * poiSpacing) + (scale.iconSize / 2);
-    const yOffset = baseVerticalOffset + (row * (scale.iconSize + 4));
+    const xOffset = -totalRowWidth/2 + (col * poiSpacing) + (scale.iconSize / 2) + 2;
+    const yOffset = baseVerticalOffset + (row * (scale.iconSize + 3));
 
     // Create the marker element
     const el = document.createElement('div');
@@ -230,10 +230,10 @@ const handleAddPOIs = (placeId: string, pois: Array<{
 
     // Create marker container with custom styling
     const markerContainer = document.createElement('div');
-    markerContainer.style.backgroundColor = '#FFFFFF';
-    markerContainer.style.padding = `${scale.padding}px`;
-    markerContainer.style.borderRadius = `${scale.padding}px`;
-    markerContainer.style.border = '1px solid #000000';
+    markerContainer.style.backgroundColor = 'transparent';
+    markerContainer.style.padding = '0';
+    markerContainer.style.borderRadius = '0';
+    markerContainer.style.border = 'none';
     markerContainer.style.position = 'relative';
     markerContainer.style.display = 'flex';
     markerContainer.style.alignItems = 'center';
@@ -244,8 +244,10 @@ const handleAddPOIs = (placeId: string, pois: Array<{
     const icon = document.createElement('span');
     icon.className = 'material-icons';
     icon.textContent = POIIcons[poi.type];
-    icon.style.color = '#000000';
+    icon.style.color = '#FFFFFF';
     icon.style.fontSize = `${scale.fontSize}px`;
+    icon.style.textShadow = '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000';
+    icon.style.fontWeight = '600';
     markerContainer.appendChild(icon);
 
     // Add arrow pointing up (since anchor is now top)

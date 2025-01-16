@@ -99,7 +99,7 @@ app.use((req, res, next) => {
 
 // Add OPTIONS handling for preflight requests
 app.options('*', cors());
-app.use(express.json());
+app.use(express.json({limit: '12mb'}));
 app.use('/uploads', express.static('uploads'));
 
 // Configure multer for file uploads
@@ -348,7 +348,9 @@ app.put('/api/profile', requiresAuth(), async (req, res) => {
 app.post('/api/maps', requiresAuth(), async (req, res) => {
   try {
     console.log('Creating new map for user:', req.oidc.user.sub);
-    console.log('Received map data:', req.body); // Add this line to log received data
+    console.log('Received map data:', JSON.stringify(req.body, null, 2)); // More detailed logging
+    console.log('Photos in received data:', req.body.photos); // Specifically log photos
+    
     const mapData = {
       ...req.body,
       createdBy: req.oidc.user.sub,
