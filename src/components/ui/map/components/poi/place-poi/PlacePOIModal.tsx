@@ -142,7 +142,7 @@ const POI_OPTIONS: POIOption[] = [
   },
   {
     category: POICategory.Infrastructure,
-    type: InfrastructurePOIType.Parking,  // Need to check what type to use for fuel station
+    type: ServicesPOIType.FuelStation,  // Using new FuelStation type
     icon: <FuelIcon />,
     label: 'Fuel Station'
 },

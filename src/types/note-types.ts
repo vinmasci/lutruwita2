@@ -28,7 +28,8 @@ export enum ServicesPOIType {
     GeneralStore = 'General Store',
     PostOffice = 'Post Office',
     MedicalCenter = 'Medical Center',
-    Pharmacy = 'Pharmacy'
+    Pharmacy = 'Pharmacy',
+    FuelStation = 'Fuel Station'  // Add this
 }
 
 export enum AccommodationPOIType {
@@ -56,21 +57,6 @@ export enum InformationPOIType {
     HistoricalSite = 'Historical Site',
     InformationBoard = 'Information Board',
     Warning = 'Warning'
-}
-
-export enum InfrastructurePOIType {
-    Place = 'Place',  // Add this line
-    WaterPoint = 'Water Point',
-    PublicToilet = 'Public Toilet',
-    PublicShower = 'Public Shower',
-    BikeRepairStation = 'Bike Repair Station',
-    BikeShop = 'Bike Shop',
-    BikeStorage = 'Bike Storage',
-    Shelter = 'Shelter',
-    Campsite = 'Campsite',
-    Parking = 'Parking',
-    Viewpoint = 'Viewpoint',
-    Other = 'Other'
 }
 
 export type POIType = 
