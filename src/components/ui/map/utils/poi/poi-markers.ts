@@ -11,7 +11,7 @@ import {
 } from '@/types/note-types';
 import { usePOI } from './poi-state';
 
-const getCategoryColor = (poiType: POIType): string => {
+export const getCategoryColor = (poiType: POIType): string => {
   // Check if type exists in each category enum
   if (Object.values(InfrastructurePOIType).includes(poiType)) {
     return '#00a8ff';  // Infrastructure - Blue

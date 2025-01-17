@@ -1,17 +1,18 @@
-// src/components/ui/gpx-uploader.tsx
-import React, { useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import { Button } from './button';
-import { Upload } from 'lucide-react';
+import { Upload, Loader2 } from 'lucide-react';
+import { useGpxProcessing, useRouteRendering } from '@/hooks';
 import type { MapRef } from './map-container';
+import { Alert } from '@/components/ui/alert';
 
 interface GpxUploaderProps {
   mapRef: React.RefObject<MapRef>;
 }
 
 const GpxUploader: React.FC<GpxUploaderProps> = ({ mapRef }) => {
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { processGpxFile, status: processingStatus } = useGpxProcessing();
+  const { addRouteToMap } = useRouteRendering(mapRef.current?.getMap() || null);
 
   const handleClick = () => {
     fileInputRef.current?.click();
@@ -20,10 +21,6 @@ const GpxUploader: React.FC<GpxUploaderProps> = ({ mapRef }) => {
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
-    // Reset states
-    setIsLoading(true);
-    setError(null);
 
     try {
       // Check if map is ready
@@ -36,26 +33,18 @@ const GpxUploader: React.FC<GpxUploaderProps> = ({ mapRef }) => {
         throw new Error('Please select a GPX file');
       }
 
-      // Read file content for map display
-      const content = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target?.result as string);
-        reader.onerror = () => reject(new Error('Failed to read file'));
-        reader.readAsText(file);
-      });
+      // Process the file
+      const route = await processGpxFile(file);
+      if (route) {
+        addRouteToMap(route);
+      }
 
-      // Upload to map with the file object
-      await mapRef.current.handleGpxUpload(content, file);
-      
       // Clear input for future uploads
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
     } catch (err) {
-      console.error('Error uploading GPX:', err);
-      setError(err instanceof Error ? err.message : 'Failed to upload GPX file');
-    } finally {
-      setIsLoading(false);
+      console.error('Error processing GPX:', err);
     }
   };
 
@@ -71,23 +60,22 @@ const GpxUploader: React.FC<GpxUploaderProps> = ({ mapRef }) => {
       <div className="flex flex-col gap-2">
         <Button
           onClick={handleClick}
-          disabled={isLoading}
+          disabled={processingStatus.isProcessing}
           variant="default"
           size="icon"
           className="h-10 w-10 bg-white hover:bg-gray-100"
         >
-          {isLoading ? (
-            <span className="animate-spin">
-              <Upload className="h-4 w-4" />
-            </span>
+          {processingStatus.isProcessing ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <Upload className="h-4 w-4" />
           )}
         </Button>
-        {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded text-sm">
-            {error}
-          </div>
+        
+        {processingStatus.error && (
+          <Alert variant="destructive" className="w-64">
+            {processingStatus.error}
+          </Alert>
         )}
       </div>
     </div>
