@@ -1,120 +1,275 @@
-### CURRENT IMPLEMENTATION (SLOW) 
+# GPX Upload and Processing Documentation
 
-Let me check your repository for the GPX file handling code.
+## Current Implementation
 
-After reviewing your code, here's how the GPX file loading process works in your application:
+### Client-Side Components
 
-1. Initial Upload:
-- When a user selects a GPX file, the `GpxUploader` component handles the file selection using a hidden input element
-- The component first validates that the file is a .gpx file
-- It then uses FileReader to read the file content as text
+1. **GpxUploader Component** (`src/components/ui/gpx-uploader.tsx`)
+- Handles file selection UI
+- Validates file type (.gpx)
+- Displays upload progress
+- Uses hooks for processing status
 
-2. GPX Processing (`handleGpxUpload` in MapContainer):
-- The GPX content is first uploaded to your server at 'http://localhost:3001/api/gpx/upload'
-- The XML content is parsed using xml2js to extract coordinate points
-- Each coordinate point contains latitude and longitude information
+2. **MapContainer** (`src/components/ui/map-container.tsx`)
+- Manages map state and rendering
+- Handles route visualization
+- Integrates with photo markers and POIs
 
-3. Surface Detection:
-- For each coordinate point, the map uses the `assignSurfacesViaNearest` function to determine the surface type
-- The system moves the map view to each point's location
-- It then queries nearby roads using Mapbox's queryRenderedFeatures API
-- Surface types are classified as either 'paved' or 'unpaved' based on predefined arrays of surface descriptions
-- The process shows a loading overlay with progress indication during this step
+3. **Hooks**
+- `useGpxProcessing`: Manages GPX processing state and operations
+- `useRouteRendering`: Handles route visualization on the map
 
-4. Route Visualization:
-- After surface detection, the route is split into segments based on surface changes
-- Each segment is styled differently:
-  - White stroke base layer for visibility
-  - Solid lines for paved segments (in orange '#e17055')
-  - Dashed lines for unpaved segments (same color)
-- Distance markers are added along the route at intervals based on the zoom level
-- Photo markers are added if there are any photos near the route points
+### Processing Flow
 
-5. State Management:
-- The route is added to the route store with:
-  - A unique ID
-  - The original GPX data
-  - The file path
-  - Color and visibility settings
-- The system also maintains state for:
-  - Current photos
-  - Surface processing progress
-  - Map readiness
-  - Route name
+1. **File Upload**
+```typescript
+const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const file = event.target.files?.[0];
+  if (!file || !file.name.toLowerCase().endsWith('.gpx')) return;
+  
+  const route = await processGpxFile(file);
+  if (route) {
+    addRouteToMap(route);
+  }
+};
+```
 
-6. Additional Features:
-- The system includes clustering for photo markers
-- Distance markers are dynamically updated based on zoom level
-- The map automatically fits to show the entire route
-- A loading overlay shows progress during surface detection
+2. **GPX Processing**
+- File is uploaded to server
+- Content is parsed for coordinates
+- Route segments are created
+- Photos near route are fetched
+- Surface types are detected (currently disabled)
 
-The key innovation in your system is the surface detection algorithm that tries to determine whether each segment is paved or unpaved based on nearby road data.
+3. **Route Rendering**
+- Route is split into segments
+- Each segment is styled based on surface type
+- Distance markers are added
+- Photo markers are clustered and added
 
-### MOVING PROCESSING TO DIGITAL OCEAN
-I'll create a detailed migration plan to move your GPX processing to DigitalOcean.
+## Planned Server-Side Implementation
 
-Migration Plan:
+### Server Components
 
-1. Initial DigitalOcean Setup
-- Create new project in DO
-- Set up PostgreSQL with PostGIS
-  - Create tables for routes, segments, surface data
-  - Set up spatial indexes
-- Set up Spaces bucket for file storage
-- Set up App Platform for backend service
+1. **Upload Endpoint**
+```typescript
+POST /api/gpx/upload
+- Accepts GPX file
+- Returns file path and processing ID
+```
 
-2. Backend Development
-- Create Express/Node backend with endpoints:
-  ```
-  POST /gpx/upload - Initial file upload
-  GET /gpx/status/:id - Check processing status
-  GET /gpx/route/:id - Get processed route data
-  ```
-- Create processing services:
-  - GPXParser service
-  - SurfaceDetection service
-  - RouteOptimizer service
-  - Queue system for processing
+2. **Processing Service**
+```typescript
+interface ProcessingService {
+  parseGpx(filePath: string): Promise<GpxPoints[]>;
+  detectSurfaces(points: GpxPoint[]): Promise<RouteSegment[]>;
+  optimizeRoute(segments: RouteSegment[]): Promise<ProcessedRoute>;
+}
+```
 
-3. Frontend Changes Needed
-- Remove all GPX processing logic from MapContainer
-- Remove surface detection code
-- Modify upload flow:
-  - Upload UI stays but becomes progress indicator
-  - Add status checking
-  - Modify route rendering to use server-processed data
-- Update state management for processing status
+3. **Status Endpoint**
+```typescript
+GET /api/gpx/status/:id
+- Returns processing status and progress
+```
 
-4. Migration Steps
+4. **Route Endpoint**
+```typescript
+GET /api/gpx/route/:id
+- Returns processed route data
+```
 
-Step 1 - Setup Backend:
-- Create initial DO backend service
-- Set up database schema
-- Create basic file upload endpoint
-- Add basic route processing
+### Database Schema
 
-Step 2 - Update Frontend Upload:
-- Modify GpxUploader to use new endpoints
-- Add upload progress indicator
-- Remove client-side processing
-- Test basic upload flow
+```typescript
+interface SavedRoute {
+  id: string;
+  name: string;
+  originalFilePath: string;
+  processedData: {
+    segments: RouteSegment[];
+    totalDistance: number;
+    elevationProfile?: ElevationPoint[];
+  };
+  metadata: {
+    createdAt: Date;
+    updatedAt: Date;
+    createdBy: string;
+    isPublic: boolean;
+  };
+}
 
-Step 3 - Implement Processing:
-- Add full GPX parsing on server
-- Add surface detection using PostGIS
-- Add route optimization
-- Add status endpoints
+interface RouteSegment {
+  points: GpxPoint[];
+  surface: 'paved' | 'unpaved';
+  properties?: {
+    grade?: number;
+    elevation?: number;
+  };
+}
+```
 
-Step 4 - Update Frontend Display:
-- Modify route rendering
-- Add processing status display
-- Update state management
-- Test full flow
+### Missing Components To Be Implemented
 
-Step 5 - Migration:
-- Test with existing routes
-- Add data migration script if needed
-- Deploy backend
-- Deploy frontend updates
+1. **Surface Detection Service**
+- PostGIS integration for road matching
+- Improved accuracy with multiple data sources
+- Caching of common routes
 
-Would you like me to expand on any of these steps before we start implementation?
+2. **Optimization Service**
+- Route simplification for better performance
+- Elevation data processing
+- Grade calculation
+
+3. **Error Handling**
+- Retry logic for failed uploads
+- Graceful degradation of features
+- User feedback mechanisms
+
+4. **Performance Optimizations**
+- Batch processing of points
+- Worker threads for heavy processing
+- Response caching
+
+### Infrastructure Requirements
+
+1. **DigitalOcean Setup**
+- App Platform for backend service
+- Managed PostgreSQL with PostGIS
+- Spaces bucket for file storage
+- Load balancer configuration
+
+2. **Environment Variables**
+```bash
+VITE_API_BASE_URL=http://localhost:3001
+POSTGRES_URL=postgres://user:pass@host:5432/db
+DO_SPACES_KEY=your_key
+DO_SPACES_SECRET=your_secret
+```
+
+3. **API Rate Limiting**
+```typescript
+const rateLimiter = {
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100 // limit each IP to 100 requests per windowMs
+};
+```
+
+## Migration Steps
+
+1. Create server infrastructure
+2. Implement core API endpoints
+3. Migrate processing logic to server
+4. Update client to use new endpoints
+5. Add error handling and feedback
+6. Implement optimization features
+7. Add monitoring and logging
+
+## Security Considerations
+
+1. File validation
+2. User authentication
+3. Rate limiting
+4. CORS configuration
+5. Input sanitization
+
+## Future Improvements
+
+1. Support for different file formats
+2. Batch upload capabilities
+3. Real-time processing updates
+4. Advanced route analysis
+5. Integration with external services
+6. Mobile optimization
+
+### UPDATE:
+# GPX Upload - Remaining Tasks
+
+## Client-Side Tasks
+1. Photo Service Integration
+   - Set up PhotoService endpoints
+   - Update addPhotoMarkersToMap to use new service
+   - Add error handling for failed photo fetches
+
+2. Environment Variables
+   - Ensure all API keys are in .env.local
+   - Add proper typings for environment variables
+   - Add validation checks for required env vars
+
+3. Cleanup Improvements
+   - Add proper cleanup for all markers
+   - Add cleanup for map event listeners
+   - Handle component unmounting better
+
+## Server-Side Tasks
+1. Initial Setup
+   - Create Digital Ocean project
+   - Set up PostgreSQL with PostGIS
+   - Set up Spaces bucket for file storage
+   - Configure App Platform
+
+2. Database Setup
+   - Create routes table
+   - Create photos table
+   - Set up spatial indexes
+   - Create API schemas
+
+3. API Endpoints Needed
+   ```
+   POST /api/gpx/upload
+   - Handle file upload to DO Spaces
+   - Validate GPX content
+   - Return upload status and path
+   
+   GET /api/gpx/status/:id
+   - Return processing status
+   - Include progress information
+   
+   GET /api/gpx/route/:id
+   - Return processed route data
+   - Include surface information
+   
+   POST /api/photos/near-points
+   - Find photos near route points
+   - Return photo metadata
+   ```
+
+4. Processing Service
+   - GPX parsing service
+   - Surface detection using PostGIS
+   - Route optimization
+   - Photo proximity detection
+   - Queue system for processing
+
+## Security Tasks
+1. API Security
+   - Add rate limiting
+   - Add request validation
+   - Set up CORS properly
+   - Add authentication
+
+2. File Handling
+   - Add file size limits
+   - Add file type validation
+   - Add virus scanning
+   - Set up secure file storage
+
+## Performance Tasks
+1. Optimization
+   - Add caching layer
+   - Optimize database queries
+   - Add batch processing
+   - Implement lazy loading
+
+2. Error Handling
+   - Add retry logic
+   - Add proper error reporting
+   - Add user feedback mechanisms
+   - Add logging system
+
+## Next Steps
+1. Set up Digital Ocean infrastructure
+2. Create basic server with file upload endpoint
+3. Move GPX processing to server
+4. Set up photo service endpoints
+5. Update client to use new endpoints

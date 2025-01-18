@@ -7,28 +7,62 @@ import {
     RouteResponse 
 } from '../types';
 
-const API_BASE_URL = process.env.VITE_API_BASE_URL || 'http://localhost:3001';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000;
 
 export class GpxService {
+    private static async retryOperation<T>(
+        operation: () => Promise<T>,
+        retries = MAX_RETRIES,
+        delay = RETRY_DELAY
+    ): Promise<T> {
+        try {
+            return await operation();
+        } catch (error) {
+            if (retries > 0) {
+                await new Promise(resolve => setTimeout(resolve, delay));
+                return this.retryOperation(operation, retries - 1, delay * 2);
+            }
+            throw error;
+        }
+    }
+
     // File Upload
     static async uploadGpxFile(file: File): Promise<UploadResponse> {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+
         try {
             const formData = new FormData();
             formData.append('gpx', file);
 
-            const response = await fetch(`${API_BASE_URL}/api/gpx/upload`, {
-                method: 'POST',
-                body: formData,
-                credentials: 'include',
+            const response = await this.retryOperation(async () => {
+                const resp = await fetch(`${API_BASE_URL}/api/gpx/upload`, {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'include',
+                    signal: controller.signal
+                });
+
+                if (!resp.ok) {
+                    const errorText = await resp.text();
+                    throw new Error(`Upload failed: ${errorText}`);
+                }
+
+                return resp;
             });
 
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Upload failed: ${errorText}`);
+            clearTimeout(timeoutId);
+            const data = await response.json();
+            
+            if (!data.path) {
+                throw new Error('No file path returned from server');
             }
 
-            return await response.json();
+            return data;
         } catch (error) {
+            clearTimeout(timeoutId);
             console.error('Upload error:', error);
             return {
                 success: false,
@@ -92,13 +126,17 @@ export class GpxService {
     // Status Check
     static async getRouteStatus(routeId: string): Promise<ProcessingResponse> {
         try {
-            const response = await fetch(`${API_BASE_URL}/api/gpx/status/${routeId}`, {
-                credentials: 'include',
-            });
+            const response = await this.retryOperation(async () => {
+                const resp = await fetch(`${API_BASE_URL}/api/gpx/status/${routeId}`, {
+                    credentials: 'include',
+                });
 
-            if (!response.ok) {
-                throw new Error('Failed to get route status');
-            }
+                if (!resp.ok) {
+                    throw new Error('Failed to get route status');
+                }
+
+                return resp;
+            });
 
             return await response.json();
         } catch (error) {
@@ -113,13 +151,17 @@ export class GpxService {
     // Get Processed Route
     static async getProcessedRoute(routeId: string): Promise<RouteResponse> {
         try {
-            const response = await fetch(`${API_BASE_URL}/api/gpx/route/${routeId}`, {
-                credentials: 'include',
-            });
+            const response = await this.retryOperation(async () => {
+                const resp = await fetch(`${API_BASE_URL}/api/gpx/route/${routeId}`, {
+                    credentials: 'include',
+                });
 
-            if (!response.ok) {
-                throw new Error('Failed to get processed route');
-            }
+                if (!resp.ok) {
+                    throw new Error('Failed to get processed route');
+                }
+
+                return resp;
+            });
 
             return await response.json();
         } catch (error) {

@@ -13,6 +13,7 @@ import { CircularProgress, Box, Typography } from '@mui/material';  // UI compon
 import 'mapbox-gl/dist/mapbox-gl.css';
 import * as turf from '@turf/turf';
 import nearestPointOnLine from '@turf/nearest-point-on-line';
+import { PhotoService } from '../../services/photo-service';
 import { useGpxProcessing, useRouteRendering } from '@/hooks';
 import { ProcessedRoute } from '@/types';
 import { findPhotosNearPoints } from '@/lib/db';
@@ -108,6 +109,48 @@ interface MapRef {
     coordinates: [number, number];
   }) => Promise<POI>;
 }
+
+// --------------------------------------------
+// Utility Functions
+// --------------------------------------------
+const getDistancePoints = (
+  map: mapboxgl.Map | null,
+  lineString: Feature<LineString>,
+  totalLength: number
+) => {
+  if (!map) return [];
+
+  const zoom = map.getZoom();
+  let interval = 25;
+  if (zoom >= 14) interval = 5;
+  else if (zoom >= 12) interval = 10;
+  else if (zoom >= 10) interval = 15;
+
+  const points = [];
+  
+  points.push({
+    point: turf.along(lineString, 0, { units: 'kilometers' }),
+    distance: 0
+  });
+
+  if (zoom >= 9) {
+    let distance = interval;
+    while (distance < totalLength - interval/2) {
+      points.push({
+        point: turf.along(lineString, distance, { units: 'kilometers' }),
+        distance: Math.round(distance)
+      });
+      distance += interval;
+    }
+  }
+
+  points.push({
+    point: turf.along(lineString, totalLength, { units: 'kilometers' }),
+    distance: totalLength
+  });
+
+  return points;
+};
 
 // --------------------------------------------
 // Loading Overlay UI Component
@@ -482,7 +525,7 @@ console.log('Final photos array:', photos);
 // Create complete map data object
 const mapData = {
   ...data,
-  routes,
+  routes: mapRoutes,
   routeData: {
     ...routeData,
     features: routeData.features.map(f => ({
@@ -800,15 +843,20 @@ React.useImperativeHandle(
         console.log('[MapContainer] Base map loaded');
 
         try {
-          // Add MapTiler vector tile source containing road data
-          const tileUrl =
-            'https://api.maptiler.com/tiles/5dd3666f-1ce4-4df6-9146-eda62a200bcb/{z}/{x}/{y}.pbf?key=DFSAZFJXzvprKbxHrHXv';
-          newMap.addSource('australia-roads', {
-            type: 'vector',
-            tiles: [tileUrl],
-            minzoom: 12,
-            maxzoom: 14
-          });
+// Add MapTiler vector tile source containing road data
+const maptilerKey = import.meta.env.VITE_MAPTILER_KEY;
+if (!maptilerKey) {
+  console.error('[MapContainer] MapTiler key not found');
+  throw new Error('MapTiler API key is required');
+}
+
+const tileUrl = `https://api.maptiler.com/tiles/5dd3666f-1ce4-4df6-9146-eda62a200bcb/{z}/{x}/{y}.pbf?key=${maptilerKey}`;
+newMap.addSource('australia-roads', {
+  type: 'vector',
+  tiles: [tileUrl],
+  minzoom: 12,
+  maxzoom: 14
+});
 
           // Add custom roads layer with surface-based styling
           newMap.addLayer({
@@ -920,13 +968,23 @@ React.useImperativeHandle(
       console.error('[MapContainer] Error creating map:', err);
     }
 
-    // Cleanup on unmount
-    return () => {
-      if (map.current) {
-        map.current.remove();
-        map.current = null;
-      }
-    };
+// Cleanup on unmount
+return () => {
+  if (map.current) {
+    // Remove event listeners
+    map.current.off('moveend');
+    map.current.off('zoomend');
+    
+    // Clean up markers
+    document.querySelectorAll('.photo-marker, .photo-marker-container').forEach(el => el.remove());
+    document.querySelectorAll('.photo-modal-container').forEach(el => el.remove());
+    document.querySelectorAll('.mapboxgl-marker').forEach(el => el.remove());
+    
+    // Remove map
+    map.current.remove();
+    map.current = null;
+  }
+};
   }, []); // Remove isPlacingPOI from dependencies
 
 // ------------------------------------------------------------------
@@ -935,9 +993,9 @@ React.useImperativeHandle(
 return (
   <div className="w-full h-full relative">
     <div className="absolute top-0 left-[160px] right-0 right-[40px] z-10 bg-black/0 p-4">
-    <h1 className="text-white text-2xl font-fraunces font-bold pl-4 drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">
-  {activeRoute?.name || ''}
-</h1>
+      <h1 className="text-white text-2xl font-fraunces font-bold pl-4 drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">
+        {activeRoute?.name || ''}
+      </h1>
     </div>
     {!placePOIMode && (
       <POIManager map={map.current} placePOIMode={placePOIMode} />
@@ -955,7 +1013,10 @@ return (
     )}
     <div ref={mapContainer} className="w-full h-full" />
     <LoadingOverlay />
+  </div>
+));  // Close the return and the forwardRef
 
+// Put these outside the component
 MapContainer.displayName = 'MapContainer';
 
 export default MapContainer;
