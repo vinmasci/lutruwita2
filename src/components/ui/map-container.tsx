@@ -192,6 +192,7 @@ const LoadingOverlay = () => {
     </Box>
   );
 };
+
 // --------------------------------------------
 // Main MapContainer Component
 // Handles all map rendering and GPX processing
@@ -209,13 +210,10 @@ interface MapContainerProps {
 }
 
 const MapContainer = forwardRef<MapRef, MapContainerProps>(({ placePOIMode, setPlacePOIMode, children }, ref) => {
-  // POI Context
   const { isPlacingPOI, setIsPlacingPOI } = usePOI();
-  
-  // New GPX and Route Hooks
   const { processGpxFile, status: processingStatus } = useGpxProcessing();
   const { routes, activeRoute, addRouteToMap, removeRoute, clearRoutes } = useRouteRendering(map.current);
-  
+
   // Layer IDs
   const routeSourceId = 'route';
   const routeLayerId = 'route-layer';
@@ -1014,7 +1012,9 @@ return (
     <div ref={mapContainer} className="w-full h-full" />
     <LoadingOverlay />
   </div>
-));  // Close the return and the forwardRef
+  </div>
+);
+});  // Close the forwardRef
 
 // Put these outside the component
 MapContainer.displayName = 'MapContainer';
