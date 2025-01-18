@@ -46,6 +46,25 @@ We are migrating the GPX file processing from client-side to server-side using D
 - [ ] Create migrations
 - [ ] Add database backup configuration
 
+### 2A. Next Steps
+- [ ] Configure App Platform
+  - [ ] Set up Node.js environment
+  - [ ] Configure auto-deployments
+  - [ ] Set up environment variables
+- [ ] Implement server endpoints
+  - [ ] File upload handling
+  - [ ] Route processing
+  - [ ] Photo management
+  - [ ] POI management
+- [ ] Add monitoring and logging
+  - [ ] Set up error tracking
+  - [ ] Configure performance monitoring
+  - [ ] Implement logging system
+
+### NEXT STEPS:
+First, let's set "File Listing" to "Restricted" instead of "Enabled" for security (click "Edit" next to File Listing)
+You already have an access key "gravelmap...." with all permissions which we can use in your application.
+
 ### 3. API Endpoints to Implement
 ```typescript
 POST /api/gpx/upload
@@ -146,32 +165,3 @@ DO_SPACES_ENDPOINT=your_endpoint
 - Consider implementing retry logic for failed operations
 - Cache commonly accessed routes
 - Add monitoring for server health
-
-
-
-
-
-### NEXT STEPS:
-First, let's set "File Listing" to "Restricted" instead of "Enabled" for security (click "Edit" next to File Listing)
-You already have an access key "gravelmap...." with all permissions which we can use in your application.
-
-## Pending Tasks
-
-
-
-
-
-### 3. Next Steps
-- [ ] Configure App Platform
-  - [ ] Set up Node.js environment
-  - [ ] Configure auto-deployments
-  - [ ] Set up environment variables
-- [ ] Implement server endpoints
-  - [ ] File upload handling
-  - [ ] Route processing
-  - [ ] Photo management
-  - [ ] POI management
-- [ ] Add monitoring and logging
-  - [ ] Set up error tracking
-  - [ ] Configure performance monitoring
-  - [ ] Implement logging system
