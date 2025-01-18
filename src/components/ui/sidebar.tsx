@@ -121,13 +121,6 @@ const [routes, setRoutes] = useState<Array<{
     let checkInterval: NodeJS.Timeout | null = null;
     
     const checkMapReady = () => {
-      // ADD DEBUG LOG HERE
-      console.log("Debug mapRef:", {
-        hasRef: Boolean(mapRef.current),
-        isReadyFn: Boolean(mapRef.current?.isReady),
-        isReadyResult: mapRef.current?.isReady?.()
-      });
-  
       if (mapRef.current?.isReady()) {
         console.log('Map is ready');
         setMapReady(true);
@@ -135,20 +128,20 @@ const [routes, setRoutes] = useState<Array<{
           clearInterval(checkInterval);
           checkInterval = null;
         }
-      } else {
-        console.log('Map not ready yet...');
       }
     };
-
-    // Check immediately
-    checkMapReady();
-    
-    // Also set up an interval to keep checking until ready
-    if (!checkInterval) {
-      checkInterval = setInterval(checkMapReady, 500);
-    }
-
+  
+    // First check after a delay to allow initialization
+    const initialTimeout = setTimeout(() => {
+      checkMapReady();
+      // Only start interval if not ready after initial check
+      if (!mapRef.current?.isReady()) {
+        checkInterval = setInterval(checkMapReady, 1000); // Changed to 1000ms
+      }
+    }, 2000); // Wait 2 seconds before first check
+  
     return () => {
+      clearTimeout(initialTimeout);
       if (checkInterval) {
         clearInterval(checkInterval);
       }

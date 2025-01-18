@@ -270,8 +270,14 @@ const MapContainer = forwardRef<MapRef, MapContainerProps>(({ placePOIMode, setP
   // Used to ensure map is ready before processing GPX data
   // ------------------------------------------------------------------
   const isReady = useCallback((): boolean => {
-    const ready = Boolean(map.current) && isMapReady && streetsLayersLoaded;
-    console.log('[isReady] Map check =>', { ready, isMapReady, streetsLayersLoaded });
+    const mapExists = Boolean(map.current);
+    const ready = mapExists && isMapReady && streetsLayersLoaded;
+    console.log('[isReady] Map check =>', { 
+      mapExists,
+      isMapReady, 
+      streetsLayersLoaded,
+      ready 
+    });
     return ready;
   }, [isMapReady, streetsLayersLoaded]);
 
