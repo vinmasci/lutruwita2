@@ -15,6 +15,7 @@ import * as turf from '@turf/turf';
 import nearestPointOnLine from '@turf/nearest-point-on-line';
 import { useGpxProcessing, useRouteRendering } from '@/hooks';
 import { ProcessedRoute } from '@/types';
+import { findPhotosNearPoints } from '@/lib/db';
 import type { 
   Feature,
   Point as TurfPoint,
@@ -50,6 +51,12 @@ interface PhotoDocument {
   latitude: number;
   longitude: number;
   uploadedAt: string;
+}
+
+// Add Point interface here
+interface Point {
+  lat: number;
+  lon: number;
 }
 
 interface MapRef {
@@ -100,15 +107,6 @@ interface MapRef {
     type: InfrastructurePOIType;
     coordinates: [number, number];
   }) => Promise<POI>;
-}
-
-interface PhotoDocument {
-  _id: string;
-  url: string;
-  originalName?: string;
-  latitude: number;
-  longitude: number;
-  uploadedAt: string;
 }
 
 // --------------------------------------------
@@ -516,7 +514,7 @@ const mapData = {
 } catch (error) {
   console.error('Error saving map:', error);
 }
-}, [routeStore, mapService, currentPhotos]);
+}, [routes, mapService, currentPhotos, activeRoute]);
 
 // ------------------------------------------------------------------
 // Expose methods to parent component
@@ -937,7 +935,9 @@ React.useImperativeHandle(
 return (
   <div className="w-full h-full relative">
     <div className="absolute top-0 left-[160px] right-0 right-[40px] z-10 bg-black/0 p-4">
-      <h1 className="text-white text-2xl font-fraunces font-bold pl-4 drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">{routeName}</h1>
+    <h1 className="text-white text-2xl font-fraunces font-bold pl-4 drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">
+  {activeRoute?.name || ''}
+</h1>
     </div>
     {!placePOIMode && (
       <POIManager map={map.current} placePOIMode={placePOIMode} />
