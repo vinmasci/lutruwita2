@@ -43,6 +43,15 @@ import { usePOI } from './map/utils/poi/poi-state';
 // --------------------------------------------
 // Type definitions for the component
 // --------------------------------------------
+interface PhotoDocument {
+  _id: string;
+  url: string;
+  originalName?: string;
+  latitude: number;
+  longitude: number;
+  uploadedAt: string;
+}
+
 interface MapRef {
   handleGpxUpload: (content: string, file: File) => Promise<void>;
   isReady: () => boolean;                               
@@ -91,6 +100,15 @@ interface MapRef {
     type: InfrastructurePOIType;
     coordinates: [number, number];
   }) => Promise<POI>;
+}
+
+interface PhotoDocument {
+  _id: string;
+  url: string;
+  originalName?: string;
+  latitude: number;
+  longitude: number;
+  uploadedAt: string;
 }
 
 // --------------------------------------------
@@ -432,18 +450,14 @@ const handleSaveMap = useCallback(async (data: {
   }
 
 // Get all routes, deduplicating any with identical GPX data
-const routes = routeStore
-  .filter((route, index, self) => 
-    index === self.findIndex((r) => r.gpxData === route.gpxData)
-  )
-  .map(route => ({
-    id: route.id,
-    name: route.name,
-    color: route.color,
-    isVisible: route.isVisible,
-    gpxData: route.gpxData,
-    gpxFilePath: route.gpxFilePath
-  }));
+const mapRoutes = routes.map(route => ({
+  id: route.id,
+  name: route.name,
+  color: route.color,
+  isVisible: route.isVisible,
+  gpxData: route.gpxData,
+  gpxFilePath: route.gpxFilePath
+}));
 
   // Get current map view state
   const center = map.current.getCenter();

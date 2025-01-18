@@ -6,7 +6,9 @@
 ├── .env.local - Environment variables for local development
 ├── .gitignore - Specifies files to ignore in version control
 ├── eslint.config.js - ESLint configuration for code linting
+├── GPXUPLOAD.md - Documentation for GPX file upload functionality
 ├── index.html - Main HTML entry point for the Vite application
+├── OLDMAP-CONTAINER.md - Documentation for legacy map container
 ├── package-lock.json - Lock file for npm dependencies
 ├── package.json - Project dependencies and scripts configuration
 ├── postcss.config.js - PostCSS configuration (likely for Tailwind)
@@ -76,6 +78,10 @@
     │                   └── poi-state.tsx - POI state management
     ├── contexts/
     │   └── floating-icon-context.tsx - Context for floating icon state
+    ├── hooks/
+    │   ├── useGpxProcessing.ts - Hook for GPX file processing
+    │   ├── useRouteRendering.ts - Hook for route rendering
+    │   └── index.ts - Main hooks exports
     ├── lib/
     │   ├── db.ts - Database utilities
     │   └── utils.ts - Utility functions
@@ -84,10 +90,21 @@
     │   ├── explore.tsx - Explore page component
     │   └── home.tsx - Home page component
     ├── services/
-    │   └── map-service.ts - Map-related service functions
-    └── types/
-        ├── map-types.ts - Type definitions for mapping functionality
-        └── note-types.ts - Type definitions for notes functionality
+    │   ├── gpx-service.ts - GPX file processing service
+    │   ├── map-route-service.ts - Map route service
+    │   ├── map-service.ts - Map-related service functions
+    │   └── index.ts - Main service exports
+    ├── types/
+    │   ├── gpx-types.ts - Type definitions for GPX file processing
+    │   ├── index.ts - Main type exports
+    │   ├── map-types.ts - Type definitions for mapping functionality
+    │   ├── note-types.ts - Type definitions for notes functionality
+    │   └── place-types.ts - Type definitions for place-related functionality
+    └── utils/
+        └── gpx/
+            ├── index.ts - Main GPX utilities
+            ├── parsing.ts - GPX parsing utilities
+            └── surface-detection.ts - Surface detection utilities
 ```
 
 ## Key Components and Relationships
