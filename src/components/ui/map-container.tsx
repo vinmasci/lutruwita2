@@ -210,6 +210,11 @@ interface MapContainerProps {
 }
 
 const MapContainer = forwardRef<MapRef, MapContainerProps>(({ placePOIMode, setPlacePOIMode, children }, ref) => {
+  // Core references first
+  const mapContainer = useRef<HTMLDivElement>(null);
+  const map = useRef<mapboxgl.Map | null>(null);
+
+  // Then hooks
   const { isPlacingPOI, setIsPlacingPOI } = usePOI();
   const { processGpxFile, status: processingStatus } = useGpxProcessing();
   const { routes, activeRoute, addRouteToMap, removeRoute, clearRoutes } = useRouteRendering(map.current);
@@ -218,10 +223,6 @@ const MapContainer = forwardRef<MapRef, MapContainerProps>(({ placePOIMode, setP
   const routeSourceId = 'route';
   const routeLayerId = 'route-layer';
   
-  // Core references
-  const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<mapboxgl.Map | null>(null);
-
   // State management
   const [isMapReady, setIsMapReady] = React.useState(false);
   const [streetsLayersLoaded, setStreetsLayersLoaded] = React.useState(false);
