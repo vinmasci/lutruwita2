@@ -831,215 +831,183 @@ React.useImperativeHandle(
 );
 
 // ------------------------------------------------------------------
-  // Map initialization
-  // Sets up the map and loads necessary layers
-  // Called once when component mounts
-  // ------------------------------------------------------------------
-  useEffect(() => {
-    if (!mapContainer.current || map.current) return;
+// Map initialization
+// Sets up the map and loads necessary layers
+// Called once when component mounts
+// ------------------------------------------------------------------
+useEffect(() => {
+  if (!mapContainer.current || map.current) return;
 
-    const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
-    if (!mapboxToken) {
-      console.error('[MapContainer] Mapbox token not found');
-      return;
-    }
-
-    try {
-      mapboxgl.accessToken = mapboxToken;
-
-      // Create new map instance
-      const newMap = new mapboxgl.Map({
-        container: mapContainer.current,
-        style: 'mapbox://styles/mapbox/satellite-streets-v12',
-        bounds: [[144.5, -43.7], [148.5, -40.5]], // Tasmania bounds: [west, south], [east, north]
-        fitBoundsOptions: {
-          padding: 50,
-          pitch: 45,  // 3D perspective view
-          bearing: 0
-        }
-      } as any);
-
-      // Add terrain source
-      newMap.addSource('mapbox-dem', {
-        type: 'raster-dem',
-        url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
-        tileSize: 512,
-        maxzoom: 14
-      });
-      
-      // Enable terrain with some exaggeration
-      newMap.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
-
-      // Add terrain source
-      newMap.addSource('mapbox-dem', {
-        type: 'raster-dem',
-        url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
-        tileSize: 512,
-        maxzoom: 14
-      });
-      
-      // Enable terrain with some exaggeration
-      newMap.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
-
-      map.current = newMap;
-
-      newMap.on('load', () => {
-        // Add terrain source and layer
-        newMap.addSource('mapbox-dem', {
-          'type': 'raster-dem',
-          'url': 'mapbox://mapbox.mapbox-terrain-dem-v1',
-          'tileSize': 512,
-          'maxzoom': 14
-        });
-        
-        // Add terrain layer
-        newMap.setTerrain({ 'source': 'mapbox-dem', 'exaggeration': 1.5 });
-        console.log('[MapContainer] Base map loaded');
-
-        try {
-// Add MapTiler vector tile source containing road data
-const maptilerKey = import.meta.env.VITE_MAPTILER_KEY;
-if (!maptilerKey) {
-  console.error('[MapContainer] MapTiler key not found');
-  throw new Error('MapTiler API key is required');
-}
-
-const tileUrl = `https://api.maptiler.com/tiles/5dd3666f-1ce4-4df6-9146-eda62a200bcb/{z}/{x}/{y}.pbf?key=${maptilerKey}`;
-newMap.addSource('australia-roads', {
-  type: 'vector',
-  tiles: [tileUrl],
-  minzoom: 12,
-  maxzoom: 14
-});
-
-          // Add custom roads layer with surface-based styling
-          newMap.addLayer({
-            id: 'custom-roads',
-            type: 'line',
-            source: 'australia-roads',
-            'source-layer': 'lutruwita',
-            minzoom: 12,
-            maxzoom: 14,
-            layout: {
-              visibility: 'visible'
-            },
-            paint: {
-              'line-opacity': 1,
-              'line-color': [
-                'match',
-                ['get', 'surface'],
-
-                // Color roads based on surface type
-                // Paved roads in blue
-                ['paved', 'asphalt', 'concrete', 'compacted', 'sealed', 'bitumen', 'tar'],
-                '#4A90E2',
-
-                // Unpaved roads in orange
-                ['unpaved', 'gravel', 'fine', 'fine_gravel', 'dirt', 'earth'],
-                '#D35400',
-
-                // Unknown surfaces in grey
-                '#888888'
-              ],
-              'line-width': 2
-            }
-          });
-
-          // Mark map as ready
-          setStreetsLayersLoaded(true);
-          setIsMapReady(true);
-          console.log('[MapContainer] Roads layer added, map is ready.');
-        } catch (err) {
-          console.error('[MapContainer] Error adding roads source/layer:', err);
-        }
-      });
-
-      // Add standard map controls
-      newMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
-      newMap.addControl(new mapboxgl.FullscreenControl(), 'top-right');
-
-      // Add control margin for navbar
-      const controlContainer = document.querySelector('.mapboxgl-control-container');
-      if (controlContainer) {
-        (controlContainer as HTMLElement).style.marginTop = '64px';
-      }
-
-      // Track current interval
-      let currentInterval = 25;
-
-      // Add zoom change handler to update distance markers
-      newMap.on('zoom', () => {
-        const zoom = newMap.getZoom();
-        // Calculate new interval based on zoom
-        let newInterval = 25; // Default
-        if (zoom >= 14) newInterval = 5;        // Very close zoom
-        else if (zoom >= 12) newInterval = 10;  // Medium zoom
-        else if (zoom >= 10) newInterval = 15;  // Medium-far zoom
-
-        // Only update if interval changed
-        if (newInterval !== currentInterval && newMap.getSource(routeSourceId)) {
-          currentInterval = newInterval;
-          
-          // Remove only distance markers, explicitly excluding photo markers
-          const distanceMarkers = document.querySelectorAll('.mapboxgl-marker:not(.photo-marker):not(.photo-marker-container)');
-          distanceMarkers.forEach(marker => marker.remove());
-          
-          // Get current route data
-          const source = newMap.getSource(routeSourceId) as mapboxgl.GeoJSONSource;
-          const data = (source as any)._data as FeatureCollection;
-          
-          // Rebuild combined line
-          const combinedLine = turf.lineString(
-            data.features.reduce((coords: number[][], feature) => {
-              if (feature.geometry.type === 'LineString') {
-                return [...coords, ...feature.geometry.coordinates];
-              }
-              return coords;
-            }, [])
-          );
-
-          // Calculate length and add new markers
-          const totalLength = turf.length(combinedLine, { units: 'kilometers' });
-          const distancePoints = getDistancePoints(newMap, combinedLine, totalLength);
-          
-          distancePoints.forEach(({ point, distance }) => {
-            const el = document.createElement('div');
-            const root = createRoot(el);
-            root.render(<DistanceMarker distance={distance} />);
-
-            new mapboxgl.Marker({
-              element: el,
-              anchor: 'center',
-              scale: 0.25
-            })
-              .setLngLat(point.geometry.coordinates)
-              .addTo(newMap);
-          });
-        }
-      });
-
-    } catch (err) {
-      console.error('[MapContainer] Error creating map:', err);
-    }
-
-// Cleanup on unmount
-return () => {
-  if (map.current) {
-    // Remove event listeners
-    map.current.off('moveend');
-    map.current.off('zoomend');
-    
-    // Clean up markers
-    document.querySelectorAll('.photo-marker, .photo-marker-container').forEach(el => el.remove());
-    document.querySelectorAll('.photo-modal-container').forEach(el => el.remove());
-    document.querySelectorAll('.mapboxgl-marker').forEach(el => el.remove());
-    
-    // Remove map
-    map.current.remove();
-    map.current = null;
+  const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
+  if (!mapboxToken) {
+    console.error('[MapContainer] Mapbox token not found');
+    return;
   }
-};
-  }, []); // Remove isPlacingPOI from dependencies
+
+  try {
+    mapboxgl.accessToken = mapboxToken;
+
+    // Create new map instance
+    const newMap = new mapboxgl.Map({
+      container: mapContainer.current,
+      style: 'mapbox://styles/mapbox/satellite-streets-v12',
+      bounds: [[144.5, -43.7], [148.5, -40.5]], // Tasmania bounds: [west, south], [east, north]
+      fitBoundsOptions: {
+        padding: 50,
+        pitch: 45,  // 3D perspective view
+        bearing: 0
+      }
+    } as any);
+
+    map.current = newMap;
+
+    newMap.on('load', () => {
+      // Add terrain source and layer ONCE
+      newMap.addSource('mapbox-dem', {
+        'type': 'raster-dem',
+        'url': 'mapbox://mapbox.mapbox-terrain-dem-v1',
+        'tileSize': 512,
+        'maxzoom': 14
+      });
+      
+      // Add terrain layer
+      newMap.setTerrain({ 'source': 'mapbox-dem', 'exaggeration': 1.5 });
+      console.log('[MapContainer] Base map loaded');
+
+      try {
+        // Using the tile URL format that worked before
+        const tileUrl = 'https://api.maptiler.com/tiles/5dd3666f-1ce4-4df6-9146-eda62a200bcb/{z}/{x}/{y}.pbf?key=DFSAZFJXzvprKbxHrHXv';
+        newMap.addSource('australia-roads', {
+          type: 'vector',
+          tiles: [tileUrl],
+          minzoom: 12,
+          maxzoom: 14
+        });
+
+        // Add custom roads layer with surface-based styling
+        newMap.addLayer({
+          id: 'custom-roads',
+          type: 'line',
+          source: 'australia-roads',
+          'source-layer': 'lutruwita',
+          minzoom: 12,
+          maxzoom: 14,
+          layout: {
+            visibility: 'visible'
+          },
+          paint: {
+            'line-opacity': 1,
+            'line-color': [
+              'match',
+              ['get', 'surface'],
+              // Paved roads in blue
+              ['paved', 'asphalt', 'concrete', 'compacted', 'sealed', 'bitumen', 'tar'],
+              '#4A90E2',
+              // Unpaved roads in orange
+              ['unpaved', 'gravel', 'fine', 'fine_gravel', 'dirt', 'earth'],
+              '#D35400',
+              // Unknown surfaces in grey
+              '#888888'
+            ],
+            'line-width': 2
+          }
+        });
+
+        // Mark map as ready
+        setStreetsLayersLoaded(true);
+        setIsMapReady(true);
+        console.log('[MapContainer] Roads layer added, map is ready.');
+      } catch (err) {
+        console.error('[MapContainer] Error adding roads source/layer:', err);
+      }
+    });
+
+    // Add standard map controls
+    newMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
+    newMap.addControl(new mapboxgl.FullscreenControl(), 'top-right');
+
+    // Add control margin for navbar
+    const controlContainer = document.querySelector('.mapboxgl-control-container');
+    if (controlContainer) {
+      (controlContainer as HTMLElement).style.marginTop = '64px';
+    }
+
+    // Track current interval
+    let currentInterval = 25;
+
+    // Add zoom change handler to update distance markers
+    newMap.on('zoom', () => {
+      const zoom = newMap.getZoom();
+      // Calculate new interval based on zoom
+      let newInterval = 25; // Default
+      if (zoom >= 14) newInterval = 5;        // Very close zoom
+      else if (zoom >= 12) newInterval = 10;  // Medium zoom
+      else if (zoom >= 10) newInterval = 15;  // Medium-far zoom
+
+      // Only update if interval changed
+      if (newInterval !== currentInterval && newMap.getSource(routeSourceId)) {
+        currentInterval = newInterval;
+        
+        // Remove only distance markers, explicitly excluding photo markers
+        const distanceMarkers = document.querySelectorAll('.mapboxgl-marker:not(.photo-marker):not(.photo-marker-container)');
+        distanceMarkers.forEach(marker => marker.remove());
+        
+        // Get current route data
+        const source = newMap.getSource(routeSourceId) as mapboxgl.GeoJSONSource;
+        const data = (source as any)._data as FeatureCollection;
+        
+        // Rebuild combined line
+        const combinedLine = turf.lineString(
+          data.features.reduce((coords: number[][], feature) => {
+            if (feature.geometry.type === 'LineString') {
+              return [...coords, ...feature.geometry.coordinates];
+            }
+            return coords;
+          }, [])
+        );
+
+        // Calculate length and add new markers
+        const totalLength = turf.length(combinedLine, { units: 'kilometers' });
+        const distancePoints = getDistancePoints(newMap, combinedLine, totalLength);
+        
+        distancePoints.forEach(({ point, distance }) => {
+          const el = document.createElement('div');
+          const root = createRoot(el);
+          root.render(<DistanceMarker distance={distance} />);
+
+          new mapboxgl.Marker({
+            element: el,
+            anchor: 'center',
+            scale: 0.25
+          })
+            .setLngLat(point.geometry.coordinates)
+            .addTo(newMap);
+        });
+      }
+    });
+
+  } catch (err) {
+    console.error('[MapContainer] Error creating map:', err);
+  }
+
+  // Cleanup on unmount
+  return () => {
+    if (map.current) {
+      // Remove event listeners
+      map.current.off('moveend');
+      map.current.off('zoomend');
+      
+      // Clean up markers
+      document.querySelectorAll('.photo-marker, .photo-marker-container').forEach(el => el.remove());
+      document.querySelectorAll('.photo-modal-container').forEach(el => el.remove());
+      document.querySelectorAll('.mapboxgl-marker').forEach(el => el.remove());
+      
+      // Remove map
+      map.current.remove();
+      map.current = null;
+    }
+  };
+}, []); // Remove isPlacingPOI from dependencies
 
 // ------------------------------------------------------------------
 // Render the map component with loading overlay when processing
