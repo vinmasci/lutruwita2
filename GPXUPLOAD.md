@@ -34,6 +34,8 @@ We are migrating the GPX file processing from client-side to server-side using D
   - [x] Enable CDN
   - [x] Configure CORS
   - [x] Set up access keys
+  - [x] Configure secure file listing
+  - [x] Set up storage service integration
 - [ ] Set up App Platform for backend service
 - [ ] Configure environment variables for production
 
@@ -52,7 +54,7 @@ We are migrating the GPX file processing from client-side to server-side using D
   - [ ] Configure auto-deployments
   - [ ] Set up environment variables
 - [ ] Implement server endpoints
-  - [ ] File upload handling
+  - [x] Configure DO Spaces file upload handling
   - [ ] Route processing
   - [ ] Photo management
   - [ ] POI management
@@ -62,8 +64,10 @@ We are migrating the GPX file processing from client-side to server-side using D
   - [ ] Implement logging system
 
 ### NEXT STEPS:
-First, let's set "File Listing" to "Restricted" instead of "Enabled" for security (click "Edit" next to File Listing)
-You already have an access key "gravelmap...." with all permissions which we can use in your application.
+Configure App Platform for the backend service, starting with the Node.js environment setup. This will involve:
+1. Setting up the Node.js runtime environment
+2. Configuring deployment settings
+3. Setting up production environment variables
 
 ### 3. API Endpoints to Implement
 ```typescript
