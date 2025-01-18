@@ -15,6 +15,8 @@
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
     "@mapbox/mapbox-gl-draw": "^1.5.0",
+    "@aws-sdk/client-s3": "^3.535.0",
+    "@aws-sdk/s3-request-presigner": "^3.535.0",
     "@mui/icons-material": "^6.3.1",
     "@mui/material": "^6.3.1",
     "@radix-ui/react-dialog": "^1.1.4",

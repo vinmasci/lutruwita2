@@ -9,6 +9,10 @@ import { dirname } from 'path';
 import { auth as Auth0 } from 'express-openid-connect';
 import pkg from 'express-openid-connect';
 import fs from 'fs';
+import { StorageService } from './src/services/storage-service.js';
+
+// Initialize storage service
+const storageService = new StorageService();
 const { requiresAuth } = pkg;
 
 const __filename = fileURLToPath(import.meta.url);
@@ -103,16 +107,7 @@ app.use(express.json({limit: '12mb'}));
 app.use('/uploads', express.static('uploads'));
 
 // Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, 'uploads/');
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = file.originalname ? path.extname(file.originalname) : '';
-    cb(null, uniqueSuffix + ext);
-  }
-});
+const storage = multer.memoryStorage(); // Change to memory storage for DO Spaces
 
 const photoUpload = multer({ 
   storage,
@@ -158,11 +153,14 @@ app.post('/api/photos/upload', photoUpload.single('photo'), async (req, res) => 
       return res.status(400).json({ error: 'Location coordinates are required' });
     }
 
+    // Upload to DO Spaces
+    const key = await storageService.uploadFile(req.file, 'photos');
+
     await client.connect();
     const db = client.db('photoApp');
     const result = await db.collection('photos').insertOne({
-      filename: req.file.filename,
-      path: `/uploads/${req.file.filename}`,
+      filename: req.file.originalname,
+      key: key, // Store the DO Spaces key instead of local path
       longitude: Number(longitude),
       latitude: Number(latitude),
       description: description || '',
@@ -172,7 +170,7 @@ app.post('/api/photos/upload', photoUpload.single('photo'), async (req, res) => 
     res.json({ 
       success: true, 
       photoId: result.insertedId,
-      path: `/uploads/${req.file.filename}`
+      key: key
     });
   } catch (error) {
     console.error('Error uploading photo:', error);
