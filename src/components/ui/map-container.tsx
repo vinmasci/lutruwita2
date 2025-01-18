@@ -213,7 +213,6 @@ const MapContainer = forwardRef<MapRef, MapContainerProps>(({ placePOIMode, setP
   // Core references first
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
-  const [mapInstance, setMapInstance] = useState<mapboxgl.Map | null>(null);
 
   useEffect(() => {
     if (!mapContainer.current) return;
@@ -257,6 +256,7 @@ const MapContainer = forwardRef<MapRef, MapContainerProps>(({ placePOIMode, setP
   const routeLayerId = 'route-layer';
   
   // State management
+  const [mapInstance, setMapInstance] = useState<mapboxgl.Map | null>(null);
   const [isMapReady, setIsMapReady] = React.useState(false);
   const [streetsLayersLoaded, setStreetsLayersLoaded] = React.useState(false);
   const [isUploading, setIsUploading] = React.useState(false);
@@ -868,19 +868,22 @@ useEffect(() => {
     map.current = newMap;
 
     newMap.on('load', () => {
-      // Add terrain source and layer ONCE
-      newMap.addSource('mapbox-dem', {
-        'type': 'raster-dem',
-        'url': 'mapbox://mapbox.mapbox-terrain-dem-v1',
-        'tileSize': 512,
-        'maxzoom': 14
-      });
-      
-      // Add terrain layer
-      newMap.setTerrain({ 'source': 'mapbox-dem', 'exaggeration': 1.5 });
-      console.log('[MapContainer] Base map loaded');
-
       try {
+        // Add terrain source and layer ONCE
+        newMap.addSource('mapbox-dem', {
+          'type': 'raster-dem',
+          'url': 'mapbox://mapbox.mapbox-terrain-dem-v1',
+          'tileSize': 512,
+          'maxzoom': 14
+        });
+        
+        // Add terrain layer
+        newMap.setTerrain({ 'source': 'mapbox-dem', 'exaggeration': 1.5 });
+        
+        // Mark base map as ready
+        setIsMapReady(true);
+        console.log('[MapContainer] Base map loaded and ready');
+    
         // Using the tile URL format that worked before
         const tileUrl = 'https://api.maptiler.com/tiles/5dd3666f-1ce4-4df6-9146-eda62a200bcb/{z}/{x}/{y}.pbf?key=DFSAZFJXzvprKbxHrHXv';
         newMap.addSource('australia-roads', {
@@ -889,7 +892,7 @@ useEffect(() => {
           minzoom: 12,
           maxzoom: 14
         });
-
+    
         // Add custom roads layer with surface-based styling
         newMap.addLayer({
           id: 'custom-roads',
@@ -918,13 +921,31 @@ useEffect(() => {
             'line-width': 2
           }
         });
-
-        // Mark map as ready
+    
+        // Mark streets layer as loaded
         setStreetsLayersLoaded(true);
-        setIsMapReady(true);
-        console.log('[MapContainer] Roads layer added, map is ready.');
+        console.log('[MapContainer] Roads layer added successfully');
       } catch (err) {
-        console.error('[MapContainer] Error adding roads source/layer:', err);
+        console.error('[MapContainer] Error in map initialization:', err);
+        // Reset states on error
+        setIsMapReady(false);
+        setStreetsLayersLoaded(false);
+      }
+    });
+    
+    // Add error handler for the source loading
+    newMap.on('error', (e) => {
+      console.error('[MapContainer] Map error:', e.error);
+      if (e.error.message.includes('australia-roads')) {
+        setStreetsLayersLoaded(false);
+      }
+    });
+    
+    // Add error handler for the source loading
+    newMap.on('error', (e) => {
+      console.error('[MapContainer] Map error:', e.error);
+      if (e.error.message.includes('australia-roads')) {
+        setStreetsLayersLoaded(false);
       }
     });
 
