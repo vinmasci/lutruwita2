@@ -213,6 +213,39 @@ const MapContainer = forwardRef<MapRef, MapContainerProps>(({ placePOIMode, setP
   // Core references first
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
+  const [mapInstance, setMapInstance] = useState<mapboxgl.Map | null>(null);
+
+  useEffect(() => {
+    if (!mapContainer.current) return;
+
+    const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
+    if (!mapboxToken) {
+      console.error('Mapbox token not found');
+      return;
+    }
+
+    mapboxgl.accessToken = mapboxToken;
+    const newMap = new mapboxgl.Map({
+      container: mapContainer.current,
+      style: 'mapbox://styles/mapbox/satellite-streets-v12',
+      bounds: [[144.5, -43.7], [148.5, -40.5]],
+      fitBoundsOptions: {
+        padding: 50,
+        pitch: 0,
+        bearing: 0
+      }
+    });
+
+    map.current = newMap;
+    setMapInstance(newMap);
+
+    return () => {
+      if (map.current) {
+        map.current.remove();
+        map.current = null;
+      }
+    };
+  }, []);
 
   // Then hooks
   const { isPlacingPOI, setIsPlacingPOI } = usePOI();
@@ -821,10 +854,32 @@ React.useImperativeHandle(
         bounds: [[144.5, -43.7], [148.5, -40.5]], // Tasmania bounds: [west, south], [east, north]
         fitBoundsOptions: {
           padding: 50,
-          pitch: 0,  // Bird's eye view (looking straight down)
+          pitch: 45,  // 3D perspective view
           bearing: 0
         }
       } as any);
+
+      // Add terrain source
+      newMap.addSource('mapbox-dem', {
+        type: 'raster-dem',
+        url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
+        tileSize: 512,
+        maxzoom: 14
+      });
+      
+      // Enable terrain with some exaggeration
+      newMap.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
+
+      // Add terrain source
+      newMap.addSource('mapbox-dem', {
+        type: 'raster-dem',
+        url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
+        tileSize: 512,
+        maxzoom: 14
+      });
+      
+      // Enable terrain with some exaggeration
+      newMap.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
 
       map.current = newMap;
 
@@ -989,31 +1044,30 @@ return () => {
 // ------------------------------------------------------------------
 // Render the map component with loading overlay when processing
 // ------------------------------------------------------------------
-return (
-  <div className="w-full h-full relative">
-    <div className="absolute top-0 left-[160px] right-0 right-[40px] z-10 bg-black/0 p-4">
-      <h1 className="text-white text-2xl font-fraunces font-bold pl-4 drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">
-        {activeRoute?.name || ''}
-      </h1>
+  return (
+    <div className="w-full h-full relative">
+      <div className="absolute top-0 left-[160px] right-0 right-[40px] z-10 bg-black/0 p-4">
+        <h1 className="text-white text-2xl font-fraunces font-bold pl-4 drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">
+          {activeRoute?.name || ''}
+        </h1>
+      </div>
+      {!placePOIMode && (
+        <POIManager map={map.current} placePOIMode={placePOIMode} />
+      )}
+      {placePOIMode && map.current && isMapReady && (
+        <PlaceManager 
+          map={map.current} 
+          onPlaceDetected={(place) => {
+            console.log('Place detected:', place);
+            if (place) {
+              // Modal opens automatically in PlaceManager
+            }
+          }} 
+        />
+      )}
+      <div ref={mapContainer} className="w-full h-full" />
+      <LoadingOverlay />
     </div>
-    {!placePOIMode && (
-      <POIManager map={map.current} placePOIMode={placePOIMode} />
-    )}
-    {placePOIMode && map.current && isMapReady && (
-      <PlaceManager 
-        map={map.current} 
-        onPlaceDetected={(place) => {
-          console.log('Place detected:', place);
-          if (place) {
-            // Modal opens automatically in PlaceManager
-          }
-        }} 
-      />
-    )}
-    <div ref={mapContainer} className="w-full h-full" />
-    <LoadingOverlay />
-  </div>
-  </div>
 );
 });  // Close the forwardRef
 
