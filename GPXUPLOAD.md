@@ -1,275 +1,177 @@
 # GPX Upload and Processing Documentation
 
-## Current Implementation
+## Overview
+We are migrating the GPX file processing from client-side to server-side using Digital Ocean. This will improve performance, reduce client workload, and enable more sophisticated processing capabilities. The main goals are:
+1. Move file upload and processing to Digital Ocean
+2. Implement server-side surface detection using PostGIS
+3. Add efficient caching and optimization
+4. Improve error handling and user feedback
 
-### Client-Side Components
+## Completed Tasks
 
-1. **GpxUploader Component** (`src/components/ui/gpx-uploader.tsx`)
-- Handles file selection UI
-- Validates file type (.gpx)
-- Displays upload progress
-- Uses hooks for processing status
+### Client-Side Structure
+- ✅ Separated GPX processing logic from MapContainer
+- ✅ Created GPX processing hook (useGpxProcessing)
+- ✅ Created route rendering hook (useRouteRendering)
+- ✅ Added cleanup for photo markers and event listeners
+- ✅ Moved environment variables to .env.local
+- ✅ Added proper error handling in client components
+- ✅ Added progress indicators for processing
+- ✅ Improved route data management
 
-2. **MapContainer** (`src/components/ui/map-container.tsx`)
-- Manages map state and rendering
-- Handles route visualization
-- Integrates with photo markers and POIs
+### API Structure
+- ✅ Defined API endpoints
+- ✅ Created GPX service class
+- ✅ Added PhotoService for photo handling
+- ✅ Created basic type definitions
 
-3. **Hooks**
-- `useGpxProcessing`: Manages GPX processing state and operations
-- `useRouteRendering`: Handles route visualization on the map
+## Pending Tasks
 
-### Processing Flow
+### 1. Digital Ocean Setup
+- [x] Create new DO project
+- [x] Set up PostgreSQL with PostGIS extension
+- [x] Configure Spaces bucket for file storage
+  - [x] Enable CDN
+  - [x] Configure CORS
+  - [x] Set up access keys
+- [ ] Set up App Platform for backend service
+- [ ] Configure environment variables for production
 
-1. **File Upload**
-```typescript
-const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-  const file = event.target.files?.[0];
-  if (!file || !file.name.toLowerCase().endsWith('.gpx')) return;
-  
-  const route = await processGpxFile(file);
-  if (route) {
-    addRouteToMap(route);
-  }
-};
-```
+### 2. Database Setup
+- [x] Create routes table
+- [x] Create photos table
+- [x] Create POI tables
+- [x] Create place tables
+- [x] Set up spatial indexes
+- [ ] Create migrations
+- [ ] Add database backup configuration
 
-2. **GPX Processing**
-- File is uploaded to server
-- Content is parsed for coordinates
-- Route segments are created
-- Photos near route are fetched
-- Surface types are detected (currently disabled)
-
-3. **Route Rendering**
-- Route is split into segments
-- Each segment is styled based on surface type
-- Distance markers are added
-- Photo markers are clustered and added
-
-## Planned Server-Side Implementation
-
-### Server Components
-
-1. **Upload Endpoint**
+### 3. API Endpoints to Implement
 ```typescript
 POST /api/gpx/upload
-- Accepts GPX file
-- Returns file path and processing ID
-```
+- Handle file upload to DO Spaces
+- Initial validation
+- Return upload ID
 
-2. **Processing Service**
-```typescript
-interface ProcessingService {
-  parseGpx(filePath: string): Promise<GpxPoints[]>;
-  detectSurfaces(points: GpxPoint[]): Promise<RouteSegment[]>;
-  optimizeRoute(segments: RouteSegment[]): Promise<ProcessedRoute>;
-}
-```
+POST /api/gpx/process/:id
+- Parse GPX file
+- Detect surface types
+- Process elevation data
+- Return processing status
 
-3. **Status Endpoint**
-```typescript
 GET /api/gpx/status/:id
-- Returns processing status and progress
-```
+- Return current processing status
+- Include progress information
 
-4. **Route Endpoint**
-```typescript
 GET /api/gpx/route/:id
-- Returns processed route data
+- Return processed route data
+- Include surface information
+
+POST /api/photos/near-points
+- Find photos near route points
+- Return photo metadata
 ```
 
-### Database Schema
+### 4. Server-Side Processing
+- [ ] Implement GPX parsing service
+- [ ] Add surface detection using PostGIS
+- [ ] Create route optimization service
+- [ ] Add elevation profile generation
+- [ ] Implement photo proximity detection
+- [ ] Add processing queue system
 
-```typescript
-interface SavedRoute {
-  id: string;
-  name: string;
-  originalFilePath: string;
-  processedData: {
-    segments: RouteSegment[];
-    totalDistance: number;
-    elevationProfile?: ElevationPoint[];
-  };
-  metadata: {
-    createdAt: Date;
-    updatedAt: Date;
-    createdBy: string;
-    isPublic: boolean;
-  };
-}
+### 5. Error Handling & Security
+- [ ] Add rate limiting
+- [ ] Implement request validation
+- [ ] Set up proper CORS configuration
+- [ ] Add file size limits
+- [ ] Add file type validation
+- [ ] Configure secure file storage
+- [ ] Add error reporting system
 
-interface RouteSegment {
-  points: GpxPoint[];
-  surface: 'paved' | 'unpaved';
-  properties?: {
-    grade?: number;
-    elevation?: number;
-  };
-}
-```
+### 6. Performance Optimizations
+- [ ] Add Redis caching layer
+- [ ] Optimize database queries
+- [ ] Implement batch processing
+- [ ] Add lazy loading for photos
+- [ ] Configure CDN for static assets
 
-### Missing Components To Be Implemented
-
-1. **Surface Detection Service**
-- PostGIS integration for road matching
-- Improved accuracy with multiple data sources
-- Caching of common routes
-
-2. **Optimization Service**
-- Route simplification for better performance
-- Elevation data processing
-- Grade calculation
-
-3. **Error Handling**
-- Retry logic for failed uploads
-- Graceful degradation of features
-- User feedback mechanisms
-
-4. **Performance Optimizations**
-- Batch processing of points
-- Worker threads for heavy processing
-- Response caching
-
-### Infrastructure Requirements
-
-1. **DigitalOcean Setup**
-- App Platform for backend service
-- Managed PostgreSQL with PostGIS
-- Spaces bucket for file storage
-- Load balancer configuration
-
-2. **Environment Variables**
+## Required Environment Variables
 ```bash
+# Client
 VITE_API_BASE_URL=http://localhost:3001
-POSTGRES_URL=postgres://user:pass@host:5432/db
-DO_SPACES_KEY=your_key
-DO_SPACES_SECRET=your_secret
+VITE_MAPBOX_TOKEN=your_mapbox_token
+VITE_MAPTILER_KEY=your_maptiler_key
+
+# Server
+DATABASE_URL=postgres://user:pass@host:5432/db
+DO_SPACES_KEY=your_spaces_key
+DO_SPACES_SECRET=your_spaces_secret
+DO_SPACES_BUCKET=your_bucket_name
+DO_SPACES_ENDPOINT=your_endpoint
 ```
-
-3. **API Rate Limiting**
-```typescript
-const rateLimiter = {
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
-};
-```
-
-## Migration Steps
-
-1. Create server infrastructure
-2. Implement core API endpoints
-3. Migrate processing logic to server
-4. Update client to use new endpoints
-5. Add error handling and feedback
-6. Implement optimization features
-7. Add monitoring and logging
-
-## Security Considerations
-
-1. File validation
-2. User authentication
-3. Rate limiting
-4. CORS configuration
-5. Input sanitization
-
-## Future Improvements
-
-1. Support for different file formats
-2. Batch upload capabilities
-3. Real-time processing updates
-4. Advanced route analysis
-5. Integration with external services
-6. Mobile optimization
-
-### UPDATE:
-# GPX Upload - Remaining Tasks
-
-## Client-Side Tasks
-1. Photo Service Integration
-   - Set up PhotoService endpoints
-   - Update addPhotoMarkersToMap to use new service
-   - Add error handling for failed photo fetches
-
-2. Environment Variables
-   - Ensure all API keys are in .env.local
-   - Add proper typings for environment variables
-   - Add validation checks for required env vars
-
-3. Cleanup Improvements
-   - Add proper cleanup for all markers
-   - Add cleanup for map event listeners
-   - Handle component unmounting better
-
-## Server-Side Tasks
-1. Initial Setup
-   - Create Digital Ocean project
-   - Set up PostgreSQL with PostGIS
-   - Set up Spaces bucket for file storage
-   - Configure App Platform
-
-2. Database Setup
-   - Create routes table
-   - Create photos table
-   - Set up spatial indexes
-   - Create API schemas
-
-3. API Endpoints Needed
-   ```
-   POST /api/gpx/upload
-   - Handle file upload to DO Spaces
-   - Validate GPX content
-   - Return upload status and path
-   
-   GET /api/gpx/status/:id
-   - Return processing status
-   - Include progress information
-   
-   GET /api/gpx/route/:id
-   - Return processed route data
-   - Include surface information
-   
-   POST /api/photos/near-points
-   - Find photos near route points
-   - Return photo metadata
-   ```
-
-4. Processing Service
-   - GPX parsing service
-   - Surface detection using PostGIS
-   - Route optimization
-   - Photo proximity detection
-   - Queue system for processing
-
-## Security Tasks
-1. API Security
-   - Add rate limiting
-   - Add request validation
-   - Set up CORS properly
-   - Add authentication
-
-2. File Handling
-   - Add file size limits
-   - Add file type validation
-   - Add virus scanning
-   - Set up secure file storage
-
-## Performance Tasks
-1. Optimization
-   - Add caching layer
-   - Optimize database queries
-   - Add batch processing
-   - Implement lazy loading
-
-2. Error Handling
-   - Add retry logic
-   - Add proper error reporting
-   - Add user feedback mechanisms
-   - Add logging system
 
 ## Next Steps
-1. Set up Digital Ocean infrastructure
-2. Create basic server with file upload endpoint
-3. Move GPX processing to server
-4. Set up photo service endpoints
-5. Update client to use new endpoints
+
+1. Initial Server Setup
+   - Set up Digital Ocean project
+   - Create basic Express server
+   - Configure database connection
+   - Set up file upload endpoint
+
+2. Database Migration
+   - Design schema
+   - Create migrations
+   - Add indexes
+   - Test performance
+
+3. Processing Pipeline
+   - Implement file processing queue
+   - Add surface detection
+   - Set up photo processing
+   - Add caching
+
+4. Client Updates
+   - Update API calls
+   - Add better error handling
+   - Improve progress indicators
+   - Update tests
+
+## Notes
+- The server needs to handle large GPX files efficiently
+- Surface detection should use PostGIS spatial queries
+- All file operations should be asynchronous
+- Processing should be queued for large files
+- Add proper logging for debugging
+- Consider implementing retry logic for failed operations
+- Cache commonly accessed routes
+- Add monitoring for server health
+
+
+
+
+
+### NEXT STEPS:
+First, let's set "File Listing" to "Restricted" instead of "Enabled" for security (click "Edit" next to File Listing)
+You already have an access key "gravelmap...." with all permissions which we can use in your application.
+
+## Pending Tasks
+
+
+
+
+
+### 3. Next Steps
+- [ ] Configure App Platform
+  - [ ] Set up Node.js environment
+  - [ ] Configure auto-deployments
+  - [ ] Set up environment variables
+- [ ] Implement server endpoints
+  - [ ] File upload handling
+  - [ ] Route processing
+  - [ ] Photo management
+  - [ ] POI management
+- [ ] Add monitoring and logging
+  - [ ] Set up error tracking
+  - [ ] Configure performance monitoring
+  - [ ] Implement logging system
