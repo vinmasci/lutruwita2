@@ -474,19 +474,20 @@ app.post('/api/surface-detection', async (req, res) => {
     }
 
     const query = `
-      WITH route AS (
-        SELECT ST_GeomFromGeoJSON($1) as geom
-      )
-      SELECT 
-        COALESCE(sc.standardized_surface, 'unknown') as surface_type,
-        ST_Length(ST_Intersection(rn.geometry, route.geom)) as intersection_length,
-        ST_Length(route.geom) as total_route_length,
-        (ST_Length(ST_Intersection(rn.geometry, route.geom)) / ST_Length(route.geom) * 100) as percentage
-      FROM route
-      JOIN road_network rn ON ST_Intersects(rn.geometry, route.geom)
-      LEFT JOIN surface_classifications sc ON rn.surface = sc.original_surface
-      WHERE ST_Intersects(rn.geometry, route.geom)
-      ORDER BY intersection_length DESC;
+WITH route AS (
+  SELECT ST_GeomFromGeoJSON($1) as geom
+)
+SELECT 
+  COALESCE(sc.standardized_surface, 'unknown') as surface_type,
+  ST_Length(ST_Intersection(rn.geometry, route.geom)::geography) as intersection_length,
+  ST_Length(route.geom::geography) as total_route_length,
+  (ST_Length(ST_Intersection(rn.geometry, route.geom)::geography) / 
+   NULLIF(ST_Length(route.geom::geography), 0) * 100) as percentage
+FROM route
+JOIN road_network rn ON ST_Intersects(rn.geometry, route.geom)
+LEFT JOIN surface_classifications sc ON rn.surface = sc.original_surface
+WHERE ST_Length(ST_Intersection(rn.geometry, route.geom)::geography) > 0
+ORDER BY intersection_length DESC;
     `;
 
     console.log('Executing query...');
@@ -509,19 +510,21 @@ app.post('/api/surface-detection/breakdown', async (req, res) => {
     }
 
     const query = `
-      WITH route AS (
-        SELECT ST_GeomFromGeoJSON($1) as geom
-      )
-      SELECT 
-        COALESCE(sc.standardized_surface, 'unknown') as surface_type,
-        SUM(ST_Length(ST_Intersection(rn.geometry, route.geom))) as intersection_length,
-        ST_Length(route.geom) as total_route_length,
-        SUM(ST_Length(ST_Intersection(rn.geometry, route.geom))) / ST_Length(route.geom) * 100 as percentage
-      FROM route
-      JOIN road_network rn ON ST_Intersects(rn.geometry, route.geom)
-      LEFT JOIN surface_classifications sc ON rn.surface = sc.original_surface
-      GROUP BY sc.standardized_surface, ST_Length(route.geom)
-      ORDER BY intersection_length DESC;
+WITH route AS (
+  SELECT ST_GeomFromGeoJSON($1) as geom
+)
+SELECT 
+  COALESCE(sc.standardized_surface, 'unknown') as surface_type,
+  SUM(ST_Length(ST_Intersection(rn.geometry, route.geom)::geography)) as intersection_length,
+  ST_Length(route.geom::geography) as total_route_length,
+  SUM(ST_Length(ST_Intersection(rn.geometry, route.geom)::geography)) / 
+   NULLIF(ST_Length(route.geom::geography), 0) * 100 as percentage
+FROM route
+JOIN road_network rn ON ST_Intersects(rn.geometry, route.geom)
+LEFT JOIN surface_classifications sc ON rn.surface = sc.original_surface
+WHERE ST_Length(ST_Intersection(rn.geometry, route.geom)::geography) > 0
+GROUP BY sc.standardized_surface, route.geom
+ORDER BY intersection_length DESC;
     `;
 
     const result = await pool.query(query, [JSON.stringify(route)]);
