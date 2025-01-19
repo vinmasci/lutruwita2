@@ -478,59 +478,42 @@ WITH route AS (
   SELECT ST_GeomFromGeoJSON($1) as geom
 ),
 buffered_route AS (
-  SELECT ST_Buffer(route.geom::geography, 30)::geometry as geom_buffered
+  SELECT ST_Buffer(route.geom::geography, 15)::geometry as geom_buffered
   FROM route
 ),
 nearby_roads AS (
-  SELECT rn.geometry, rn.surface
+  SELECT 
+    rn.geometry, 
+    rn.surface,
+    ST_HausdorffDistance(route.geom, rn.geometry) as similarity_score,
+    ST_Length(ST_Intersection(rn.geometry, route.geom)::geography) as intersection_length,
+    ST_Length(route.geom::geography) as total_route_length
   FROM route
   CROSS JOIN buffered_route
   JOIN road_network rn ON ST_Intersects(rn.geometry, buffered_route.geom_buffered)
 ),
-merged_roads AS (
+road_scores AS (
   SELECT 
     surface,
-    ST_Union(geometry) as geometry,
-    ST_Buffer(ST_Union(geometry)::geography, 20)::geometry as buffered_geom
+    geometry,
+    similarity_score,
+    intersection_length,
+    total_route_length,
+    -- Combine both intersection length and similarity for ranking
+    (intersection_length / NULLIF(similarity_score, 0)) as combined_score
   FROM nearby_roads
-  GROUP BY surface
-),
-transition_areas AS (
-  SELECT ST_Union(
-    ST_Intersection(
-      a.buffered_geom,
-      b.buffered_geom
-    )
-  ) as geometry
-  FROM merged_roads a
-  JOIN merged_roads b ON a.surface != b.surface
-),
-snapped_route AS (
-  SELECT ST_Snap(
-    route.geom,
-    (SELECT ST_Union(geometry) FROM merged_roads),
-    0.0001
-  ) as geom,
-  (SELECT geometry FROM transition_areas) as transition_geom
-  FROM route
+  WHERE intersection_length > 0
 )
 SELECT 
   COALESCE(sc.standardized_surface, 'unknown') as surface_type,
-  ST_Length(ST_Intersection(rn.geometry, snapped_route.geom)::geography) as intersection_length,
-  ST_Length(route.geom::geography) as total_route_length,
-  (ST_Length(ST_Intersection(rn.geometry, snapped_route.geom)::geography) / 
-   NULLIF(ST_Length(route.geom::geography), 0) * 100) as percentage
-FROM route, snapped_route
-CROSS JOIN buffered_route
-JOIN road_network rn ON ST_Intersects(rn.geometry, buffered_route.geom_buffered)
-LEFT JOIN surface_classifications sc ON rn.surface = sc.original_surface
-WHERE ST_Length(ST_Intersection(rn.geometry, snapped_route.geom)::geography) > 0
-  OR ST_DWithin(rn.geometry::geography, snapped_route.geom::geography, 20)
-  OR (
-    snapped_route.transition_geom IS NOT NULL 
-    AND ST_Intersects(rn.geometry, snapped_route.transition_geom)
-  )
-ORDER BY intersection_length DESC;
+  SUM(rs.intersection_length) as intersection_length,
+  rs.total_route_length,
+  (SUM(rs.intersection_length) / NULLIF(rs.total_route_length, 0) * 100) as percentage
+FROM road_scores rs
+LEFT JOIN surface_classifications sc ON rs.surface = sc.original_surface
+GROUP BY sc.standardized_surface, rs.total_route_length
+HAVING SUM(rs.intersection_length) > 0
+ORDER BY SUM(rs.intersection_length) DESC;
     `;
 
     console.log('Executing query...');
