@@ -5,17 +5,18 @@
 ```
 ├── .env.local - Environment variables for local development
 ├── .gitignore - Specifies files to ignore in version control
+├── australia-roads.geojson - Australian roads geodata
 ├── eslint.config.js - ESLint configuration for code linting
 ├── GPXUPLOAD.md - Documentation for GPX file upload functionality
 ├── index.html - Main HTML entry point for the Vite application
 ├── OLDMAP-CONTAINER.md - Documentation for legacy map container
 ├── package-lock.json - Lock file for npm dependencies
 ├── package.json - Project dependencies and scripts configuration
+├── PLACELABELS.md - Documentation for place labeling functionality
+├── POILAYER.md - Documentation for POI layer functionality
 ├── postcss.config.js - PostCSS configuration (likely for Tailwind)
 ├── README.md - Project documentation
 ├── SAVEMAP.md - Documentation for map saving functionality
-├── POILAYER.md - Documentation for POI layer functionality
-├── PLACELABELS.md - Documentation for place labeling functionality
 ├── server.js - Server-side application code
 ├── tailwind.config.js - Tailwind CSS configuration
 ├── tsconfig.app.json - TypeScript config for application code
@@ -23,6 +24,7 @@
 ├── tsconfig.node.json - TypeScript config for Node/backend
 ├── tsconfig.server.json - TypeScript config for server code
 ├── vite.config.ts - Vite build tool configuration
+├── certs/ - SSL certificates directory
 ├── public/
 │   └── vite.svg - Vite logo asset
 ├── uploads/ - Directory for uploaded GPX files
@@ -45,7 +47,6 @@
     │       ├── floating-icon.tsx - Floating icon component
     │       ├── gpx-uploader.tsx - GPX file upload component
     │       ├── load-map-modal.tsx - Map loading modal
-    │       ├── map-container.css - Map container styles
     │       ├── map-container.tsx - Map container component
     │       ├── map-controls.tsx - Map controls UI
     │       ├── map-note.tsx - Map note component
@@ -59,18 +60,18 @@
     │       ├── tabs.tsx - Tabbed interface component
     │       └── map/
     │           ├── components/
-    │           │   ├── place-poi/
-    │           │   │   ├── PlaceManager.tsx - Main place-based POI manager
-    │           │   │   ├── PlaceHighlight.tsx - Place highlighting component
-    │           │   │   ├── PlacePOIControl.tsx - Place POI controls
-    │           │   │   ├── PlacePOIModeManager.tsx - Manages place POI modes
-    │           │   │   └── PlacePOIModal.tsx - Modal for place POI management
     │           │   └── poi/
-    │           │       ├── POIManager.tsx - POI management component
     │           │       ├── POIDrawer.tsx - POI drawing interface
+    │           │       ├── POIManager.tsx - POI management component
     │           │       ├── POIMarker.tsx - POI marker implementation
     │           │       ├── POIModal.tsx - POI modal implementation
-    │           │       └── POIToolbar.tsx - POI toolbar controls
+    │           │       ├── POIToolbar.tsx - POI toolbar controls
+    │           │       └── place-poi/
+    │           │           ├── PlaceHighlight.tsx - Place highlighting component
+    │           │           ├── PlaceManager.tsx - Main place-based POI manager
+    │           │           ├── PlacePOIControl.tsx - Place POI controls
+    │           │           ├── PlacePOIModal.tsx - Modal for place POI management
+    │           │           └── PlacePOIModeManager.tsx - Manages place POI modes
     │           └── utils/
     │               └── poi/
     │                   ├── poi-events.ts - POI event handlers
@@ -79,9 +80,9 @@
     ├── contexts/
     │   └── floating-icon-context.tsx - Context for floating icon state
     ├── hooks/
+    │   ├── index.ts - Main hooks exports
     │   ├── useGpxProcessing.ts - Hook for GPX file processing
-    │   ├── useRouteRendering.ts - Hook for route rendering
-    │   └── index.ts - Main hooks exports
+    │   └── useRouteRendering.ts - Hook for route rendering
     ├── lib/
     │   ├── db.ts - Database utilities
     │   └── utils.ts - Utility functions
@@ -91,9 +92,12 @@
     │   └── home.tsx - Home page component
     ├── services/
     │   ├── gpx-service.ts - GPX file processing service
+    │   ├── index.ts - Main service exports
     │   ├── map-route-service.ts - Map route service
     │   ├── map-service.ts - Map-related service functions
-    │   └── index.ts - Main service exports
+    │   ├── photo-service.ts - Photo handling service
+    │   ├── storage-service.js - Local storage service
+    │   └── surface-detection.ts - Surface detection service
     ├── types/
     │   ├── gpx-types.ts - Type definitions for GPX file processing
     │   ├── index.ts - Main type exports
@@ -103,8 +107,7 @@
     └── utils/
         └── gpx/
             ├── index.ts - Main GPX utilities
-            ├── parsing.ts - GPX parsing utilities
-            └── surface-detection.ts - Surface detection utilities
+            └── parsing.ts - GPX parsing utilities
 ```
 
 ## Key Components and Relationships
@@ -116,20 +119,34 @@
   - Handles POI management through POIManager
   - Coordinates with POI-related utilities
 
-- **POIManager**: Manages Points of Interest
-  - Handles POI creation, editing, and deletion
-  - Integrates with POIMarker, POIModal, and POIToolbar
-  - Uses poi-state for state management
-  - Coordinates with poi-markers for marker rendering
+- **POI System**: Comprehensive POI management
+  - **POIManager**: Central POI coordination
+    - Handles POI creation, editing, and deletion
+    - Integrates with POIMarker, POIModal, and POIToolbar
+    - Uses poi-state for state management
+  - **POIDrawer**: Drawing interface for POIs
+  - **POIToolbar**: UI controls for POI manipulation
+  - **POIModal**: Interface for POI details and editing
 
-- **PlaceManager**: Manages place-based POIs
-  - Extends POI functionality for specific places
-  - Integrates with map components and services
-  - Coordinates with PlaceHighlight, PlacePOIControl, and PlacePOIModeManager
+- **Place POI System**: Place-specific POI management
+  - **PlaceManager**: Main place-based POI coordinator
+    - Extends POI functionality for specific places
+    - Integrates with map components and services
+  - **PlacePOIControl**: Place-specific POI controls
+  - **PlacePOIModeManager**: Mode management for place POIs
+  - **PlaceHighlight**: Visual highlighting for places
+  - **PlacePOIModal**: Place-specific POI editing interface
 
 - **FloatingIcon**: Context-managed floating UI element
   - Provides context for floating icon state
   - Used across multiple components for consistent UI
+
+### Services
+- **MapService**: Core map functionality
+- **GPXService**: GPX file processing
+- **PhotoService**: Photo handling and management
+- **StorageService**: Local data persistence
+- **SurfaceDetection**: Trail surface analysis
 
 ### Data Flow
 1. **User Interaction** → UI Components → Services
@@ -151,14 +168,6 @@
 3. Implement data fetching logic
 4. Handle loading/error states
 5. Update UI components with new data
-
-## POI Management Process
-
-1. User interacts with POIToolbar to create/edit POIs
-2. POIManager coordinates state changes through poi-state
-3. POIMarker handles visual representation on map
-4. POIModal provides editing interface
-5. Changes are persisted through map-service
 
 ## Testing Strategy
 
