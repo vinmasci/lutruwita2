@@ -129,7 +129,7 @@ const getDistancePoints = (
   const points = [];
   
   points.push({
-    point: turf.along(lineString, 0, { units: 'kilometers' }),
+    point: turf.along(lineString, 0, { units: "kilometers" as const }),
     distance: 0
   });
 
@@ -137,7 +137,7 @@ const getDistancePoints = (
     let distance = interval;
     while (distance < totalLength - interval/2) {
       points.push({
-        point: turf.along(lineString, distance, { units: 'kilometers' }),
+        point: turf.along(lineString, distance, { units: "kilometers" as const }),
         distance: Math.round(distance)
       });
       distance += interval;
@@ -145,7 +145,7 @@ const getDistancePoints = (
   }
 
   points.push({
-    point: turf.along(lineString, totalLength, { units: 'kilometers' }),
+    point: turf.along(lineString, totalLength, { units: "kilometers" as const }),
     distance: totalLength
   });
 
@@ -214,37 +214,6 @@ const MapContainer = forwardRef<MapRef, MapContainerProps>(({ placePOIMode, setP
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
 
-  useEffect(() => {
-    if (!mapContainer.current) return;
-
-    const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
-    if (!mapboxToken) {
-      console.error('Mapbox token not found');
-      return;
-    }
-
-    mapboxgl.accessToken = mapboxToken;
-    const newMap = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/satellite-streets-v12',
-      bounds: [[144.5, -43.7], [148.5, -40.5]],
-      fitBoundsOptions: {
-        padding: 50,
-        pitch: 0,
-        bearing: 0
-      }
-    });
-
-    map.current = newMap;
-    setMapInstance(newMap);
-
-    return () => {
-      if (map.current) {
-        map.current.remove();
-        map.current = null;
-      }
-    };
-  }, []);
 
   // Then hooks
   const { isPlacingPOI, setIsPlacingPOI } = usePOI();
@@ -347,8 +316,10 @@ const createMarkerElement = useCallback((photo: any, count?: number) => {
 const updateMarkers = useCallback((clusterIndex: Supercluster) => {
   if (!map.current) return;
 
-  const bounds = map.current.getBounds();
-  const zoom = Math.floor(map.current.getZoom());
+  const bounds = map.current?.getBounds();
+  const zoom = Math.floor(map.current?.getZoom() || 0);
+
+  if (!bounds) return;
 
   const clusters = clusterIndex.getClusters(
     [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
@@ -442,13 +413,16 @@ const addPhotoMarkersToMap = useCallback(async (coordinates: Point[]) => {
   document.querySelectorAll('.photo-modal-container').forEach(el => el.remove());
 
   const features = photos.map((photo, index) => ({
-    type: 'Feature',
+    type: 'Feature' as const,
     properties: {
       id: `photo-${index}`,
-      photo
+      photo: {
+        ...photo,
+        uploadedAt: photo.uploadedAt.toString()
+      }
     },
     geometry: {
-      type: 'Point',
+      type: 'Point' as const,
       coordinates: [photo.longitude, photo.latitude]
     }
   }));
@@ -523,8 +497,8 @@ const handleSaveMap = useCallback(async (data: {
       throw new Error('No route source found');
     }
   
-  const routeData = (source as mapboxgl.GeoJSONSource)._data;
-  if (!routeData || routeData.type !== 'FeatureCollection') {
+  const routeData = (source as mapboxgl.GeoJSONSource)._data as GeoJSON.FeatureCollection;
+  if (!routeData || !('type' in routeData) || routeData.type !== 'FeatureCollection') {
     throw new Error('Invalid route data');
   }
 
@@ -841,23 +815,36 @@ React.useImperativeHandle(
 // Sets up the map and loads necessary layers
 // Called once when component mounts
 // ------------------------------------------------------------------
-useEffect(() => {
-  if (!mapContainer.current || map.current) return;
+  useEffect(() => {
+    console.log("[MapInit] Starting map initialization");
+    if (!mapContainer.current) {
+      console.log("[MapInit] Early return - container not ready");
+      return;
+    }
 
-  const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
-  if (!mapboxToken) {
-    console.error('[MapContainer] Mapbox token not found');
-    return;
-  }
+    if (map.current) {
+      console.log("[MapInit] Map already exists, cleaning up");
+      map.current.remove();
+      map.current = null;
+      setIsMapReady(false);
+      setStreetsLayersLoaded(false);
+    }
 
-  try {
-    mapboxgl.accessToken = mapboxToken;
+    const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
+    if (!mapboxToken) {
+      console.error('[MapInit] Mapbox token not found');
+      return;
+    }
 
-    // Create new map instance
+    try {
+      console.log("[MapInit] Setting access token");
+      mapboxgl.accessToken = mapboxToken;
+    console.log("[MapInit] Creating new map instance");
+
     const newMap = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/satellite-streets-v12',
-      bounds: [[144.5, -43.7], [148.5, -40.5]], // Tasmania bounds: [west, south], [east, north]
+      bounds: [[144.5, -43.7], [148.5, -40.5]], // Tasmania bounds
       fitBoundsOptions: {
         padding: 50,
         pitch: 45,  // 3D perspective view
@@ -867,9 +854,17 @@ useEffect(() => {
 
     map.current = newMap;
 
+    // Listen for style load first
+    newMap.on('style.load', () => {
+      console.log("[MapInit] Style loaded");
+      setIsMapReady(true);
+    });
+
     newMap.on('load', () => {
+      console.log("[MapInit] Map load event fired");
+      
       try {
-        // Add terrain source and layer ONCE
+        // Add terrain source and layer
         newMap.addSource('mapbox-dem', {
           'type': 'raster-dem',
           'url': 'mapbox://mapbox.mapbox-terrain-dem-v1',
@@ -877,73 +872,76 @@ useEffect(() => {
           'maxzoom': 14
         });
         
-        // Add terrain layer
         newMap.setTerrain({ 'source': 'mapbox-dem', 'exaggeration': 1.5 });
-        
-        // Mark base map as ready
-        setIsMapReady(true);
-        console.log('[MapContainer] Base map loaded and ready');
-    
-        // Using the tile URL format that worked before
-        const tileUrl = 'https://api.maptiler.com/tiles/5dd3666f-1ce4-4df6-9146-eda62a200bcb/{z}/{x}/{y}.pbf?key=DFSAZFJXzvprKbxHrHXv';
-        newMap.addSource('australia-roads', {
-          type: 'vector',
-          tiles: [tileUrl],
-          minzoom: 12,
-          maxzoom: 14
-        });
-    
-        // Add custom roads layer with surface-based styling
-        newMap.addLayer({
-          id: 'custom-roads',
-          type: 'line',
-          source: 'australia-roads',
-          'source-layer': 'lutruwita',
-          minzoom: 12,
-          maxzoom: 14,
-          layout: {
-            visibility: 'visible'
-          },
-          paint: {
-            'line-opacity': 1,
-            'line-color': [
-              'match',
-              ['get', 'surface'],
-              // Paved roads in blue
-              ['paved', 'asphalt', 'concrete', 'compacted', 'sealed', 'bitumen', 'tar'],
-              '#4A90E2',
-              // Unpaved roads in orange
-              ['unpaved', 'gravel', 'fine', 'fine_gravel', 'dirt', 'earth'],
-              '#D35400',
-              // Unknown surfaces in grey
-              '#888888'
-            ],
-            'line-width': 2
-          }
-        });
-    
-        // Mark streets layer as loaded
-        setStreetsLayersLoaded(true);
-        console.log('[MapContainer] Roads layer added successfully');
+        console.log("[MapInit] Terrain added");
+
+        try {
+          // Add MapTiler vector tile source containing road data
+          console.log("[MapInit] Adding roads source");
+          const tileUrl = 'https://api.maptiler.com/tiles/5dd3666f-1ce4-4df6-9146-eda62a200bcb/{z}/{x}/{y}.pbf?key=DFSAZFJXzvprKbxHrHXv';
+          
+          newMap.addSource('australia-roads', {
+            type: 'vector',
+            tiles: [tileUrl],
+            minzoom: 12,
+            maxzoom: 14
+          });
+
+          // Add custom roads layer with surface-based styling
+          newMap.addLayer({
+            id: 'custom-roads',
+            type: 'line',
+            source: 'australia-roads',
+            'source-layer': 'lutruwita', // Using original source layer name
+            minzoom: 12,
+            maxzoom: 14,
+            layout: {
+              visibility: 'visible'
+            },
+            paint: {
+              'line-opacity': 1,
+              'line-color': [
+                'match',
+                ['get', 'surface'],
+                ['paved', 'asphalt', 'concrete', 'compacted', 'sealed', 'bitumen', 'tar'],
+                '#4A90E2',
+                ['unpaved', 'gravel', 'fine', 'fine_gravel', 'dirt', 'earth'],
+                '#D35400',
+                '#888888'
+              ],
+              'line-width': 2
+            }
+          });
+
+          console.log("[MapInit] Roads layer added");
+          setStreetsLayersLoaded(true);
+
+          console.log("[MapInit] Roads layer added");
+
+          // Add error handler for source loading issues
+          newMap.on('error', (e) => {
+            console.error('[MapInit] Map error:', e.error);
+            if (e.error.message.includes('source layer') || e.error.message.includes('source-layer')) {
+              console.error('[MapInit] Source layer error:', e.error);
+            }
+          });
+
+        } catch (err) {
+          console.error('[MapInit] Error setting up roads:', err);
+          // Mark as loaded anyway to prevent hanging state
+          setStreetsLayersLoaded(true);
+        }
+
       } catch (err) {
-        console.error('[MapContainer] Error in map initialization:', err);
-        // Reset states on error
+        console.error('[MapInit] Error in map initialization:', err);
         setIsMapReady(false);
         setStreetsLayersLoaded(false);
       }
     });
-    
-    // Add error handler for the source loading
+
+    // Error handling for roads source
     newMap.on('error', (e) => {
-      console.error('[MapContainer] Map error:', e.error);
-      if (e.error.message.includes('australia-roads')) {
-        setStreetsLayersLoaded(false);
-      }
-    });
-    
-    // Add error handler for the source loading
-    newMap.on('error', (e) => {
-      console.error('[MapContainer] Map error:', e.error);
+      console.error('[MapInit] Map error:', e.error);
       if (e.error.message.includes('australia-roads')) {
         setStreetsLayersLoaded(false);
       }
@@ -962,20 +960,18 @@ useEffect(() => {
     // Track current interval
     let currentInterval = 25;
 
-    // Add zoom change handler to update distance markers
+    // Add zoom change handler
     newMap.on('zoom', () => {
       const zoom = newMap.getZoom();
-      // Calculate new interval based on zoom
       let newInterval = 25; // Default
-      if (zoom >= 14) newInterval = 5;        // Very close zoom
-      else if (zoom >= 12) newInterval = 10;  // Medium zoom
-      else if (zoom >= 10) newInterval = 15;  // Medium-far zoom
+      if (zoom >= 14) newInterval = 5;        
+      else if (zoom >= 12) newInterval = 10;  
+      else if (zoom >= 10) newInterval = 15;  
 
-      // Only update if interval changed
       if (newInterval !== currentInterval && newMap.getSource(routeSourceId)) {
         currentInterval = newInterval;
         
-        // Remove only distance markers, explicitly excluding photo markers
+        // Remove only distance markers
         const distanceMarkers = document.querySelectorAll('.mapboxgl-marker:not(.photo-marker):not(.photo-marker-container)');
         distanceMarkers.forEach(marker => marker.remove());
         
@@ -994,7 +990,7 @@ useEffect(() => {
         );
 
         // Calculate length and add new markers
-        const totalLength = turf.length(combinedLine, { units: 'kilometers' });
+        const totalLength = turf.length(combinedLine, { units: "kilometers" as const });
         const distancePoints = getDistancePoints(newMap, combinedLine, totalLength);
         
         distancePoints.forEach(({ point, distance }) => {
@@ -1007,14 +1003,14 @@ useEffect(() => {
             anchor: 'center',
             scale: 0.25
           })
-            .setLngLat(point.geometry.coordinates)
+            .setLngLat(point.geometry.coordinates as [number, number])
             .addTo(newMap);
         });
       }
     });
 
   } catch (err) {
-    console.error('[MapContainer] Error creating map:', err);
+    console.error('[MapInit] Critical error in map setup:', err);
   }
 
   // Cleanup on unmount
@@ -1034,7 +1030,7 @@ useEffect(() => {
       map.current = null;
     }
   };
-}, []); // Remove isPlacingPOI from dependencies
+}, []); // Dependencies empty to prevent re-initialization
 
 // ------------------------------------------------------------------
 // Render the map component with loading overlay when processing
