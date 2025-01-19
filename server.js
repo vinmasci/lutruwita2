@@ -475,24 +475,28 @@ app.post('/api/surface-detection', async (req, res) => {
 
     const query = `
 WITH route AS (
-  SELECT ST_GeomFromGeoJSON($1) as geom
+  SELECT ST_Transform(ST_GeomFromGeoJSON($1), 3857) as geom
 ),
 buffered_route AS (
-  SELECT ST_Buffer(route.geom::geography, 20)::geometry as geom_buffered
+  SELECT ST_Transform(ST_Buffer(ST_Transform(route.geom, 4326)::geography, 20)::geometry, 3857) as geom_buffered
   FROM route
 )
 SELECT 
   COALESCE(sc.standardized_surface, 'unknown') as surface_type,
-  ST_Length(ST_Intersection(rn.geometry, route.geom)::geography) as intersection_length,
-  ST_Length(route.geom::geography) as total_route_length,
-  (ST_Length(ST_Intersection(rn.geometry, route.geom)::geography) / 
-   NULLIF(ST_Length(route.geom::geography), 0) * 100) as percentage
+  ST_Length(ST_Transform(ST_Intersection(ST_Transform(rn.geometry, 3857), route.geom), 4326)::geography) as intersection_length,
+  ST_Length(ST_Transform(route.geom, 4326)::geography) as total_route_length,
+  CASE 
+    WHEN ST_Length(ST_Transform(route.geom, 4326)::geography) > 0 
+    THEN (ST_Length(ST_Transform(ST_Intersection(ST_Transform(rn.geometry, 3857), route.geom), 4326)::geography) / 
+          ST_Length(ST_Transform(route.geom, 4326)::geography) * 100)
+    ELSE 0 
+  END as percentage
 FROM route
 CROSS JOIN buffered_route
-JOIN road_network rn ON ST_Intersects(rn.geometry, buffered_route.geom_buffered)
+JOIN road_network rn ON ST_Intersects(ST_Transform(rn.geometry, 3857), buffered_route.geom_buffered)
 LEFT JOIN surface_classifications sc ON rn.surface = sc.original_surface
-WHERE ST_Length(ST_Intersection(rn.geometry, route.geom)::geography) > 0
-  OR ST_DWithin(rn.geometry::geography, route.geom::geography, 20)
+WHERE ST_Length(ST_Transform(ST_Intersection(ST_Transform(rn.geometry, 3857), route.geom), 4326)::geography) > 0
+  OR ST_DWithin(ST_Transform(rn.geometry, 3857)::geography, ST_Transform(route.geom, 3857)::geography, 20)
 ORDER BY intersection_length DESC;
     `;
 

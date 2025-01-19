@@ -45,10 +45,15 @@ export class SurfaceDetectionService {
   
       const surfaceData = await response.json();
       console.log('Received surface data:', surfaceData);
+      console.log('First few surface segments:', surfaceData.slice(0, 3).map(s => ({
+        surface: s.surface_type,
+        length: s.intersection_length,
+        percentage: s.percentage
+      })));
       
-// Find segments along the route
-const surfaceSegments = surfaceData.filter(s => s.intersection_length > 0)
-.sort((a, b) => b.intersection_length - a.intersection_length);
+      // Find segments along the route
+      const surfaceSegments = surfaceData.filter(s => s.intersection_length > 0)
+        .sort((a, b) => b.intersection_length - a.intersection_length);
 
 // If no valid segments found, return unknown surface type
 if (surfaceSegments.length === 0) {
