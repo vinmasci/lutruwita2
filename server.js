@@ -478,17 +478,40 @@ WITH route AS (
   SELECT ST_GeomFromGeoJSON($1) as geom
 ),
 buffered_route AS (
-  SELECT ST_Buffer(route.geom::geography, 20)::geometry as geom_buffered
+  SELECT ST_Buffer(route.geom::geography, 30)::geometry as geom_buffered
   FROM route
 ),
 nearby_roads AS (
-  SELECT rn.geometry
+  SELECT rn.geometry, rn.surface
   FROM route
   CROSS JOIN buffered_route
   JOIN road_network rn ON ST_Intersects(rn.geometry, buffered_route.geom_buffered)
 ),
+merged_roads AS (
+  SELECT 
+    surface,
+    ST_Union(geometry) as geometry,
+    ST_Buffer(ST_Union(geometry)::geography, 20)::geometry as buffered_geom
+  FROM nearby_roads
+  GROUP BY surface
+),
+transition_areas AS (
+  SELECT ST_Union(
+    ST_Intersection(
+      a.buffered_geom,
+      b.buffered_geom
+    )
+  ) as geometry
+  FROM merged_roads a
+  JOIN merged_roads b ON a.surface != b.surface
+),
 snapped_route AS (
-  SELECT ST_Snap(route.geom, (SELECT ST_Collect(geometry) FROM nearby_roads), 0.00001) as geom
+  SELECT ST_Snap(
+    route.geom,
+    (SELECT ST_Union(geometry) FROM merged_roads),
+    0.0001
+  ) as geom,
+  (SELECT geometry FROM transition_areas) as transition_geom
   FROM route
 )
 SELECT 
@@ -503,6 +526,10 @@ JOIN road_network rn ON ST_Intersects(rn.geometry, buffered_route.geom_buffered)
 LEFT JOIN surface_classifications sc ON rn.surface = sc.original_surface
 WHERE ST_Length(ST_Intersection(rn.geometry, snapped_route.geom)::geography) > 0
   OR ST_DWithin(rn.geometry::geography, snapped_route.geom::geography, 20)
+  OR (
+    snapped_route.transition_geom IS NOT NULL 
+    AND ST_Intersects(rn.geometry, snapped_route.transition_geom)
+  )
 ORDER BY intersection_length DESC;
     `;
 
