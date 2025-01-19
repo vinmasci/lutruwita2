@@ -10,6 +10,20 @@ import { auth as Auth0 } from 'express-openid-connect';
 import pkg from 'express-openid-connect';
 import fs from 'fs';
 import { StorageService } from './src/services/storage-service.js';
+import pg from 'pg';
+const { Pool } = pg;
+
+// PostgreSQL connection pool
+const pool = new Pool({
+  host: 'db-postgresql-syd1-03661-do-user-18256196-0.m.db.ondigitalocean.com',
+  port: 25060,
+  database: 'defaultdb',
+  user: 'doadmin',
+  password: 'AVNS_NqgCqQKrbGcdayFfg3C',
+  ssl: {
+    rejectUnauthorized: false
+  }
+});
 
 // Initialize storage service
 const storageService = new StorageService();
@@ -480,6 +494,71 @@ app.delete('/api/maps/:id', requiresAuth(), async (req, res) => {
   }
 });
 
+// Surface Detection Endpoints
+app.post('/api/surface-detection', async (req, res) => {
+  try {
+    const { route } = req.body;
+    
+    if (!route || !route.coordinates) {
+      return res.status(400).json({ error: 'Invalid route format' });
+    }
+
+    const query = `
+      WITH route AS (
+        SELECT ST_GeomFromGeoJSON($1) as geom
+      )
+      SELECT 
+        COALESCE(sc.standardized_surface, 'unknown') as surface_type,
+        ST_Length(ST_Intersection(rn.geometry, route.geom)) as intersection_length,
+        ST_Length(route.geom) as total_route_length,
+        (ST_Length(ST_Intersection(rn.geometry, route.geom)) / ST_Length(route.geom) * 100) as percentage
+      FROM route
+      JOIN road_network rn ON ST_Intersects(rn.geometry, route.geom)
+      LEFT JOIN surface_classifications sc ON rn.surface = sc.original_surface
+      WHERE ST_Intersects(rn.geometry, route.geom)
+      ORDER BY intersection_length DESC;
+    `;
+
+    const result = await pool.query(query, [JSON.stringify(route)]);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Surface detection error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/surface-detection/breakdown', async (req, res) => {
+  try {
+    const { route } = req.body;
+    
+    if (!route || !route.coordinates) {
+      return res.status(400).json({ error: 'Invalid route format' });
+    }
+
+    const query = `
+      WITH route AS (
+        SELECT ST_GeomFromGeoJSON($1) as geom
+      )
+      SELECT 
+        COALESCE(sc.standardized_surface, 'unknown') as surface_type,
+        SUM(ST_Length(ST_Intersection(rn.geometry, route.geom))) as intersection_length,
+        ST_Length(route.geom) as total_route_length,
+        SUM(ST_Length(ST_Intersection(rn.geometry, route.geom))) / ST_Length(route.geom) * 100 as percentage
+      FROM route
+      JOIN road_network rn ON ST_Intersects(rn.geometry, route.geom)
+      LEFT JOIN surface_classifications sc ON rn.surface = sc.original_surface
+      GROUP BY sc.standardized_surface, ST_Length(route.geom)
+      ORDER BY intersection_length DESC;
+    `;
+
+    const result = await pool.query(query, [JSON.stringify(route)]);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Surface breakdown error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 const PORT = 3001;
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
@@ -493,5 +572,7 @@ app.listen(PORT, () => {
   console.log('- GET  /api/maps/:id (requires auth)');
   console.log('- PUT  /api/maps/:id (requires auth)');
   console.log('- DELETE /api/maps/:id (requires auth)');
+  console.log('- POST /api/surface-detection');
+  console.log('- POST /api/surface-detection/breakdown');
   console.log('- GET  /health');
 });

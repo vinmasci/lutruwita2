@@ -79,7 +79,7 @@ export const useGpxProcessing = ({ mapRef }: UseGpxProcessingProps) => {
 
             // Step 3: Detect surfaces
             console.log('[GPX Processing] Starting surface detection...');
-            const pointsWithSurfaces = await SurfaceDetectionService.detectSurfaces(map, points);
+            const pointsWithSurfaces = await SurfaceDetectionService.detectSurfaces(points);
             
             setStatus(prev => ({
                 ...prev,

@@ -12,11 +12,11 @@
     "dev:all": "concurrently \"npm run dev\" \"npm run server\""
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.535.0",
+    "@aws-sdk/s3-request-presigner": "^3.535.0",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
     "@mapbox/mapbox-gl-draw": "^1.5.0",
-    "@aws-sdk/client-s3": "^3.535.0",
-    "@aws-sdk/s3-request-presigner": "^3.535.0",
     "@mui/icons-material": "^6.3.1",
     "@mui/material": "^6.3.1",
     "@radix-ui/react-dialog": "^1.1.4",
@@ -39,6 +39,7 @@
     "mapbox-gl": "^3.9.2",
     "mongodb": "^6.12.0",
     "multer": "^1.4.5-lts.1",
+    "pg": "^8.13.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.1.1",

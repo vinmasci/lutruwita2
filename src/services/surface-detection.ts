@@ -1,171 +1,151 @@
-import type { Map as MapboxMap } from 'mapbox-gl';
 import type { GpxPoint } from '../types/gpx-types';
-
-const PAVED_SURFACES = [
-  'paved', 'asphalt', 'concrete', 'compacted',
-  'sealed', 'bitumen', 'tar'
-];
-
-const UNPAVED_SURFACES = [
-  'unpaved', 'gravel', 'fine', 'fine_gravel', 
-  'dirt', 'earth'
-];
 
 interface RouteSegment {
   points: GpxPoint[];
-  surface: 'paved' | 'unpaved';
+  surface: string;
+  length: number;
+  percentage: number;
+}
+
+interface SurfaceDetectionResponse {
+  surface_type: string;
+  intersection_length: number;
+  total_route_length: number;
+  percentage: number;
 }
 
 export class SurfaceDetectionService {
-  private static readonly QUERY_BOX_SIZE = 10;
-  private static readonly JUNCTION_CHECK_SIZE = 50;
+  private static readonly API_URL = import.meta.env.VITE_API_BASE_URL;
 
-  static async detectSurfaces(map: MapboxMap, points: GpxPoint[]): Promise<GpxPoint[]> {
-    console.log('[SurfaceDetection] Starting surface detection for', points.length, 'points');
-    
-    // Check if custom-roads layer exists
-    const hasRoadsLayer = map.getLayer('custom-roads');
-    console.log('[SurfaceDetection] Custom roads layer exists:', !!hasRoadsLayer);
-    
-    // Wait for source to be loaded if it exists
-    const hasRoadsSource = map.getSource('australia-roads');
-    console.log('[SurfaceDetection] Roads source exists:', !!hasRoadsSource);
-    
-    if (!hasRoadsLayer || !hasRoadsSource) {
-      console.warn('[SurfaceDetection] Roads layer or source missing - defaulting all surfaces to unpaved');
-      return points.map(pt => ({ ...pt, surface: 'unpaved' }));
-    }
-    const results: GpxPoint[] = [];
+  static async detectSurfaces(points: GpxPoint[]): Promise<GpxPoint[]> {
+    try {
+      // Convert points to a GeoJSON LineString
+      const lineString = {
+        type: 'LineString',
+        coordinates: points.map(pt => [pt.lon, pt.lat])
+      };
 
-    for (let i = 0; i < points.length; i++) {
-      const pt = points[i];
+      // Send to our new PostgreSQL API
+      const response = await fetch(`${this.API_URL}/api/surface-detection`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ route: lineString })
+      });
+
+      if (!response.ok) {
+        throw new Error('Surface detection failed');
+      }
+
+      const surfaceData: SurfaceDetectionResponse[] = await response.json();
       
-      // Convert point to pixel coordinates
-      const pointPixel = map.project([pt.lon, pt.lat]);
+      // For now, assign the most prevalent surface type to all points
+      // Later we can make this more granular by matching segments
+      const dominantSurface = surfaceData
+        .sort((a, b) => b.percentage - a.percentage)[0]?.surface_type || 'unknown';
 
-      // First do a wide scan to detect junction areas
-      const wideAreaCheck = map.queryRenderedFeatures(
-        [
-          [pointPixel.x - this.JUNCTION_CHECK_SIZE, pointPixel.y - this.JUNCTION_CHECK_SIZE],
-          [pointPixel.x + this.JUNCTION_CHECK_SIZE, pointPixel.y + this.JUNCTION_CHECK_SIZE]
-        ],
-        { layers: ['custom-roads'] }
-      );
-
-      // Determine if we're at a complex junction
-      const isComplexJunction = wideAreaCheck && wideAreaCheck.length > 1;
-      let queryBox = this.QUERY_BOX_SIZE;
-
-      if (isComplexJunction) {
-        // Get unique road names to better identify true junctions
-        const uniqueRoads = new Set(
-          wideAreaCheck
-            .map(f => f.properties?.name || f.properties?.ref)
-            .filter(Boolean)
-        );
-        
-        // Adjust query box based on junction complexity
-        if (uniqueRoads.size > 1) {
-          queryBox = 30; // Major junction
-        } else if (wideAreaCheck.length > 2) {
-          queryBox = 20; // Minor junction
-        }
-      }
-
-      // Query for roads near the point with debug logging
-      console.log(`[SurfaceDetection] Querying point ${i} at ${pt.lat},${pt.lon}`);
-      let features = map.queryRenderedFeatures(
-        [
-          [pointPixel.x - queryBox, pointPixel.y - queryBox],
-          [pointPixel.x + queryBox, pointPixel.y + queryBox]
-        ],
-        { layers: ['custom-roads'] }
-      );
-
-      // If no features found at junction, try circular pattern
-      if (isComplexJunction && features.length === 0) {
-        for (let angle = 0; angle < 360; angle += 45) {
-          const radian = (angle * Math.PI) / 180;
-          const offsetX = Math.cos(radian) * 40;
-          const offsetY = Math.sin(radian) * 40;
-          
-          const radialFeatures = map.queryRenderedFeatures(
-            [
-              [pointPixel.x + offsetX - 10, pointPixel.y + offsetY - 10],
-              [pointPixel.x + offsetX + 10, pointPixel.y + offsetY + 10]
-            ],
-            { layers: ['custom-roads'] }
-          );
-          
-          if (radialFeatures && radialFeatures.length > 0) {
-            features = features.concat(radialFeatures);
-            break;
-          }
-        }
-      }
-
-      // Determine surface type with debug logging
-      let surface: 'paved' | 'unpaved' = 'unpaved';
-      if (features.length > 0) {
-        console.log(`[SurfaceDetection] Found ${features.length} features for point ${i}:`, 
-          features.map(f => ({ 
-            surface: f.properties?.surface,
-            geometry: f.geometry.type
-          }))
-        );
-        // Get unique features by stringifying geometry
-        const uniqueFeatures = Array.from(
-          new Map(
-            features.map(f => [JSON.stringify(f.geometry), f])
-          ).values()
-        );
-
-        // Check for paved surfaces
-        const hasPaved = uniqueFeatures.some(f => {
-          const surfaceType = (f.properties?.surface || '').toLowerCase();
-          return PAVED_SURFACES.includes(surfaceType);
-        });
-
-        surface = hasPaved ? 'paved' : 'unpaved';
-      }
-
-      results.push({ ...pt, surface });
-
-      // Log progress every 100 points
-      if (i % 100 === 0) {
-        console.log(`[SurfaceDetection] Processed ${i} of ${points.length} points`);
-      }
+      return points.map(pt => ({
+        ...pt,
+        surface: dominantSurface
+      }));
+    } catch (error) {
+      console.error('Surface detection error:', error);
+      return points.map(pt => ({ ...pt, surface: 'unknown' }));
     }
+  }
 
-    return results;
+  static async getSurfaceBreakdown(points: GpxPoint[]): Promise<RouteSegment[]> {
+    try {
+      const lineString = {
+        type: 'LineString',
+        coordinates: points.map(pt => [pt.lon, pt.lat])
+      };
+
+      const response = await fetch(`${this.API_URL}/api/surface-detection/breakdown`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ route: lineString })
+      });
+
+      if (!response.ok) {
+        throw new Error('Surface breakdown failed');
+      }
+
+      const surfaceData: SurfaceDetectionResponse[] = await response.json();
+      
+      return surfaceData.map(data => ({
+        points: [], // We'll need to implement point segmentation if needed
+        surface: data.surface_type,
+        length: data.intersection_length,
+        percentage: data.percentage
+      }));
+    } catch (error) {
+      console.error('Surface breakdown error:', error);
+      return [];
+    }
   }
 
   static splitIntoSegments(points: GpxPoint[]): RouteSegment[] {
     const segments: RouteSegment[] = [];
     let currentSegment: GpxPoint[] = [];
-    let currentSurface = points[0]?.surface || 'unpaved';
+    let currentSurface = points[0]?.surface || 'unknown';
+    let currentLength = 0;
+    let totalLength = 0;
 
     points.forEach((point, index) => {
       if (point.surface !== currentSurface && currentSegment.length > 0) {
         segments.push({
           points: [...currentSegment],
-          surface: currentSurface
+          surface: currentSurface,
+          length: currentLength,
+          percentage: 0 // Will calculate after getting total
         });
         currentSegment = [point];
-        currentSurface = point.surface || 'unpaved';
+        currentSurface = point.surface || 'unknown';
+        currentLength = 0;
       } else {
         currentSegment.push(point);
+        if (index > 0) {
+          const prevPoint = points[index - 1];
+          const segmentLength = calculateDistance(prevPoint, point);
+          currentLength += segmentLength;
+          totalLength += segmentLength;
+        }
       }
 
       // Handle last point
       if (index === points.length - 1 && currentSegment.length > 0) {
         segments.push({
           points: [...currentSegment],
-          surface: currentSurface
+          surface: currentSurface,
+          length: currentLength,
+          percentage: 0
         });
       }
     });
 
-    return segments;
+    // Calculate percentages
+    return segments.map(segment => ({
+      ...segment,
+      percentage: (segment.length / totalLength) * 100
+    }));
   }
+}
+
+function calculateDistance(point1: GpxPoint, point2: GpxPoint): number {
+  const R = 6371e3; // metres
+  const φ1 = point1.lat * Math.PI/180; // φ, λ in radians
+  const φ2 = point2.lat * Math.PI/180;
+  const Δφ = (point2.lat-point1.lat) * Math.PI/180;
+  const Δλ = (point2.lon-point1.lon) * Math.PI/180;
+
+  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+          Math.cos(φ1) * Math.cos(φ2) *
+          Math.sin(Δλ/2) * Math.sin(Δλ/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+  return R * c; // in metres
 }
