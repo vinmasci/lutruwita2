@@ -438,38 +438,6 @@ app.put('/api/maps/:id', requiresAuth(), async (req, res) => {
   }
 });
 
-// Update map
-app.put('/api/maps/:id', requiresAuth(), async (req, res) => {
-  try {
-    console.log('Updating map:', req.params.id);
-    await client.connect();
-    const db = client.db('photoApp');
-    const result = await db.collection('maps').updateOne(
-      { 
-        _id: req.params.id,
-        createdBy: req.oidc.user.sub
-      },
-      { 
-        $set: {
-          ...req.body,
-          updatedAt: new Date()
-        }
-      }
-    );
-
-    if (result.matchedCount === 0) {
-      console.log('Map not found or unauthorized');
-      return res.status(404).json({ error: 'Map not found or unauthorized' });
-    }
-
-    console.log('Map updated successfully');
-    res.json({ message: 'Map updated successfully' });
-  } catch (error) {
-    console.error('Error updating map:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
 // Delete map
 app.delete('/api/maps/:id', requiresAuth(), async (req, res) => {
   try {
@@ -506,19 +474,25 @@ app.post('/api/surface-detection', async (req, res) => {
     }
 
     const query = `
-      WITH route AS (
-        SELECT ST_GeomFromGeoJSON($1) as geom
-      )
-      SELECT 
-        COALESCE(sc.standardized_surface, 'unknown') as surface_type,
-        ST_Length(ST_Intersection(rn.geometry, route.geom)) as intersection_length,
-        ST_Length(route.geom) as total_route_length,
-        (ST_Length(ST_Intersection(rn.geometry, route.geom)) / ST_Length(route.geom) * 100) as percentage
-      FROM route
-      JOIN road_network rn ON ST_Intersects(rn.geometry, route.geom)
-      LEFT JOIN surface_classifications sc ON rn.surface = sc.original_surface
-      WHERE ST_Intersects(rn.geometry, route.geom)
-      ORDER BY intersection_length DESC;
+WITH route AS (
+  SELECT ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326), 3857) as geom
+)
+SELECT 
+  COALESCE(sc.standardized_surface, 'unknown') as surface_type,
+  ST_Length(ST_Transform(ST_Intersection(ST_Transform(rn.geometry, 3857), route.geom), 4326)::geography) as intersection_length,
+  ST_Length(ST_Transform(route.geom, 4326)::geography) as total_route_length,
+  CASE 
+    WHEN ST_Length(ST_Transform(route.geom, 4326)::geography) > 0 
+    THEN (ST_Length(ST_Transform(ST_Intersection(ST_Transform(rn.geometry, 3857), route.geom), 4326)::geography) / 
+          ST_Length(ST_Transform(route.geom, 4326)::geography) * 100)
+    ELSE 0 
+  END as percentage
+FROM route
+JOIN road_network rn ON ST_Intersects(ST_Transform(rn.geometry, 3857), route.geom)
+LEFT JOIN surface_classifications sc ON rn.surface = sc.original_surface
+WHERE ST_Intersects(ST_Transform(rn.geometry, 3857), route.geom)
+GROUP BY sc.standardized_surface, route.geom
+ORDER BY intersection_length DESC;
     `;
 
     console.log('Executing query...');
@@ -541,19 +515,25 @@ app.post('/api/surface-detection/breakdown', async (req, res) => {
     }
 
     const query = `
-      WITH route AS (
-        SELECT ST_GeomFromGeoJSON($1) as geom
-      )
-      SELECT 
-        COALESCE(sc.standardized_surface, 'unknown') as surface_type,
-        SUM(ST_Length(ST_Intersection(rn.geometry, route.geom))) as intersection_length,
-        ST_Length(route.geom) as total_route_length,
-        SUM(ST_Length(ST_Intersection(rn.geometry, route.geom))) / ST_Length(route.geom) * 100 as percentage
-      FROM route
-      JOIN road_network rn ON ST_Intersects(rn.geometry, route.geom)
-      LEFT JOIN surface_classifications sc ON rn.surface = sc.original_surface
-      GROUP BY sc.standardized_surface, ST_Length(route.geom)
-      ORDER BY intersection_length DESC;
+WITH route AS (
+  SELECT ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326), 3857) as geom
+)
+SELECT 
+  COALESCE(sc.standardized_surface, 'unknown') as surface_type,
+  ST_Length(ST_Transform(ST_Intersection(ST_Transform(rn.geometry, 3857), route.geom), 4326)::geography) as intersection_length,
+  ST_Length(ST_Transform(route.geom, 4326)::geography) as total_route_length,
+  CASE 
+    WHEN ST_Length(ST_Transform(route.geom, 4326)::geography) > 0 
+    THEN (ST_Length(ST_Transform(ST_Intersection(ST_Transform(rn.geometry, 3857), route.geom), 4326)::geography) / 
+          ST_Length(ST_Transform(route.geom, 4326)::geography) * 100)
+    ELSE 0 
+  END as percentage
+FROM route
+JOIN road_network rn ON ST_Intersects(ST_Transform(rn.geometry, 3857), route.geom)
+LEFT JOIN surface_classifications sc ON rn.surface = sc.original_surface
+WHERE ST_Intersects(ST_Transform(rn.geometry, 3857), route.geom)
+GROUP BY sc.standardized_surface, route.geom
+ORDER BY intersection_length DESC;
     `;
 
     const result = await pool.query(query, [JSON.stringify(route)]);

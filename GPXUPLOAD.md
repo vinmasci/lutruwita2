@@ -1,67 +1,104 @@
-# OpenStreetMap Import Status
+# Surface Detection Implementation Status
 
-## Current Goal
-We are trying to import Australian OpenStreetMap (OSM) data into PostGIS to enable fast, server-side surface detection for routes. This will replace the current client-side surface detection that uses MapTiler.
+## What's Been Accomplished
 
-## What's Been Done
-1. Upgraded Digital Ocean database from 10GB to 60GB to accommodate Australian OSM data
-2. Downloaded australia-latest.osm.pbf file
-3. Installed osm2pgsql (version 2.0.1) locally for importing data
-4. Confirmed PostGIS and hstore extensions are installed in the database
+1. **Database Setup**
+   - Successfully imported Australian OSM data into PostgreSQL
+   - Created road_network table with surface information
+   - Created surface_classifications table
+   - Added spatial indexes for performance
 
-## Current Issue
-We're encountering problems with the database extensions setup when trying to run osm2pgsql:
+2. **Surface Classifications**
+   - Implemented standardized surface types:
+     - asphalt
+     - paved
+     - unpaved
+     - gravel
+     - dirt
+     - sand
+     - grass
+     - wood
+     - fine_gravel
+   - Surface count statistics in database:
+     - unknown: 1,296,168 segments
+     - asphalt: 748,249 segments
+     - paved: 556,401 segments
+     - unpaved: 270,773 segments
+     - dirt: 38,917 segments
+     - gravel: 34,687 segments
+     - grass: 6,518 segments
+     - sand: 6,505 segments
+     - wood: 5,369 segments
+     - fine_gravel: 3,704 segments
 
-1. The command we're trying to run:
-```bash
-osm2pgsql -d "postgresql://doadmin:[password]@db-postgresql-syd1-03661-do-user-18256196-0.m.db.ondigitalocean.com:25060/defaultdb?sslmode=require" \
-  --hstore \
-  --create \
-  --slim \
-  --extra-attributes \
-  --prefix osm \
-  ~/Desktop/OSM\ DATA/australia-latest.osm.pbf
-```
+3. **API Implementation**
+   - Added PostgreSQL connection to server.js
+   - Implemented surface detection endpoints:
+     - POST /api/surface-detection
+     - POST /api/surface-detection/breakdown
 
-2. Error received:
-```
-ERROR: Database error: ERROR: type "hstore" does not exist
-LINE 1: ...xt,"width" text,"wood" text,"z_order" int4,"tags" hstore,way...
-```
+4. **Frontend Integration**
+   - Updated surface-detection.ts to use new API
+   - Removed old client-side Mapbox detection
+   - Successfully sending routes to API
+   - Receiving surface data responses
 
-3. Investigation shows:
-- hstore extension exists in the public schema
-- PostGIS extension is installed
-- We're unable to recreate these extensions due to permission issues or existing installations
+## Current Issues
+
+1. **Endpoint Duplication**
+   - server.js has two identical PUT endpoints for '/api/maps/:id'
+   - Both handlers implement update functionality
+   - Need to remove one to avoid conflicts
+
+2. **Surface Detection Query Issue**
+   - Current query returns 0 for intersection_length and percentage
+   - Root cause: Missing coordinate system transformations
+   - Needs update to handle SRID transformations properly
 
 ## Next Steps Required
-1. Resolve extension configuration issues:
-   - Need to properly configure hstore extension accessibility
-   - Ensure extensions are in the correct schema
-   - Verify permissions for the database user
 
-2. Once resolved:
-   - Import the OSM data
-   - Create appropriate indexes
-   - Set up surface detection queries
+1. **Fix Server.js Duplication**
+   - Remove duplicate PUT endpoint
+   - Keep version using ObjectId for proper MongoDB ID handling
 
-## Impact on Project
-This is a critical step for improving route surface detection because:
-- It will make surface detection much faster
-- Reduce client-side processing
-- Provide more accurate surface data
-- Enable better scalability
+2. **Update PostgreSQL Query**
+   - Add proper coordinate system transformations
+   - Use geography type for accurate distance calculations
+   - Add surface type grouping
 
-## Potential Solutions to Explore
-1. Work with Digital Ocean support to properly configure extensions
-2. Use a different import approach that doesn't require hstore
-3. Create a new database with clean extension setup
-4. Modify osm2pgsql import flags to work with existing setup
+3. **Query Optimization**
+   - Add surface statistics logging
+   - Consider caching frequent routes
+   - Add error handling for edge cases
 
+4. **Testing**
+   - Test with various route types
+   - Verify surface detection accuracy
+   - Add performance monitoring
 
+## Required Query Update
 
-
-
+```sql
+WITH route AS (
+  SELECT ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326), 3857) as geom
+)
+SELECT 
+  COALESCE(sc.standardized_surface, 'unknown') as surface_type,
+  ST_Length(ST_Transform(ST_Intersection(ST_Transform(rn.geometry, 3857), route.geom), 4326)::geography) as intersection_length,
+  ST_Length(ST_Transform(route.geom, 4326)::geography) as total_route_length,
+  CASE 
+    WHEN ST_Length(ST_Transform(route.geom, 4326)::geography) > 0 
+    THEN (ST_Length(ST_Transform(ST_Intersection(ST_Transform(rn.geometry, 3857), route.geom), 4326)::geography) / 
+          ST_Length(ST_Transform(route.geom, 4326)::geography) * 100)
+    ELSE 0 
+  END as percentage
+FROM route
+JOIN road_network rn ON ST_Intersects(ST_Transform(rn.geometry, 3857), route.geom)
+LEFT JOIN surface_classifications sc ON rn.surface = sc.original_surface
+WHERE ST_Intersects(ST_Transform(rn.geometry, 3857), route.geom)
+GROUP BY sc.standardized_surface, route.geom
+ORDER BY intersection_length DESC;
+```
 
 
 
