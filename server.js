@@ -476,6 +476,10 @@ app.post('/api/surface-detection', async (req, res) => {
     const query = `
 WITH route AS (
   SELECT ST_GeomFromGeoJSON($1) as geom
+),
+buffered_route AS (
+  SELECT ST_Buffer(route.geom::geography, 20)::geometry as geom_buffered
+  FROM route
 )
 SELECT 
   COALESCE(sc.standardized_surface, 'unknown') as surface_type,
@@ -484,9 +488,11 @@ SELECT
   (ST_Length(ST_Intersection(rn.geometry, route.geom)::geography) / 
    NULLIF(ST_Length(route.geom::geography), 0) * 100) as percentage
 FROM route
-JOIN road_network rn ON ST_Intersects(rn.geometry, route.geom)
+CROSS JOIN buffered_route
+JOIN road_network rn ON ST_Intersects(rn.geometry, buffered_route.geom_buffered)
 LEFT JOIN surface_classifications sc ON rn.surface = sc.original_surface
 WHERE ST_Length(ST_Intersection(rn.geometry, route.geom)::geography) > 0
+  OR ST_DWithin(rn.geometry::geography, route.geom::geography, 20)
 ORDER BY intersection_length DESC;
     `;
 

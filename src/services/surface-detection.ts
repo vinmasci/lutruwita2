@@ -46,24 +46,27 @@ export class SurfaceDetectionService {
       const surfaceData = await response.json();
       console.log('Received surface data:', surfaceData);
       
-      // Find segments along the route
-      const surfaceSegments = surfaceData.filter(s => s.intersection_length > 0)
-        .sort((a, b) => b.intersection_length - a.intersection_length);
-      
-      // If no valid segments found, use most common surface type
-      if (surfaceSegments.length === 0) {
-        const surfaceCounts = {};
-        surfaceData.forEach(s => {
-          surfaceCounts[s.surface_type] = (surfaceCounts[s.surface_type] || 0) + 1;
-        });
-        const mostCommonSurface = Object.entries(surfaceCounts)
-          .sort((a, b) => b[1] - a[1])[0][0];
-        
-        return points.map(pt => ({
-          ...pt,
-          surface: mostCommonSurface
-        }));
-      }
+// Find segments along the route
+const surfaceSegments = surfaceData.filter(s => s.intersection_length > 0)
+.sort((a, b) => b.intersection_length - a.intersection_length);
+
+// If no valid segments found, return unknown surface type
+if (surfaceSegments.length === 0) {
+console.log('No valid surface segments found, defaulting to unknown');
+return points.map(pt => ({
+  ...pt,
+  surface: 'unknown'
+}));
+}
+
+// Calculate surface type based on intersection length
+const totalIntersectionLength = surfaceSegments.reduce((sum, segment) => 
+sum + segment.intersection_length, 0);
+
+// Use the surface type with the longest intersection
+const dominantSurface = surfaceSegments[0]?.surface_type || 'unknown';
+console.log('Dominant surface type:', dominantSurface, 
+          'Total intersection length:', totalIntersectionLength);
   
       // Map points to the most likely surface based on proximity
       return points.map(pt => {
