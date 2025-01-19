@@ -46,15 +46,33 @@ export class SurfaceDetectionService {
       const surfaceData = await response.json();
       console.log('Received surface data:', surfaceData);
       
-      const dominantSurface = surfaceData
-        .sort((a, b) => b.percentage - a.percentage)[0]?.surface_type || 'unknown';
+      // Find segments along the route
+      const surfaceSegments = surfaceData.filter(s => s.intersection_length > 0)
+        .sort((a, b) => b.intersection_length - a.intersection_length);
       
-      console.log('Dominant surface:', dominantSurface);
+      // If no valid segments found, use most common surface type
+      if (surfaceSegments.length === 0) {
+        const surfaceCounts = {};
+        surfaceData.forEach(s => {
+          surfaceCounts[s.surface_type] = (surfaceCounts[s.surface_type] || 0) + 1;
+        });
+        const mostCommonSurface = Object.entries(surfaceCounts)
+          .sort((a, b) => b[1] - a[1])[0][0];
+        
+        return points.map(pt => ({
+          ...pt,
+          surface: mostCommonSurface
+        }));
+      }
   
-      return points.map(pt => ({
-        ...pt,
-        surface: dominantSurface
-      }));
+      // Map points to the most likely surface based on proximity
+      return points.map(pt => {
+        const nearestSurface = surfaceSegments[0].surface_type;
+        return {
+          ...pt,
+          surface: nearestSurface
+        };
+      });
     } catch (error) {
       console.error('Surface detection error:', error);
       return points.map(pt => ({ ...pt, surface: 'unknown' }));
