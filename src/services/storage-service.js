@@ -1,9 +1,6 @@
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 
 export class StorageService {
-  private s3Client: S3Client;
-  private bucket: string;
-
   constructor() {
     // Initialize S3 client with DO Spaces configuration
     this.s3Client = new S3Client({
@@ -18,7 +15,7 @@ export class StorageService {
     this.bucket = process.env.DO_SPACES_BUCKET || '';
   }
 
-  async uploadFile(file: Express.Multer.File, folder: string): Promise<string> {
+  async uploadFile(file, folder) {
     const key = `${folder}/${Date.now()}-${file.originalname}`;
 
     try {
@@ -38,7 +35,7 @@ export class StorageService {
     }
   }
 
-  async deleteFile(key: string): Promise<void> {
+  async deleteFile(key) {
     try {
       await this.s3Client.send(new DeleteObjectCommand({
         Bucket: this.bucket,
@@ -51,7 +48,7 @@ export class StorageService {
   }
 
   // Get signed URL for temporary file access
-  async getSignedUrl(key: string, expiresIn: number = 3600): Promise<string> {
+  async getSignedUrl(key, expiresIn = 3600) {
     // Implementation will be added when needed
     throw new Error('Not implemented');
   }

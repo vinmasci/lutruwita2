@@ -156,8 +156,8 @@ const getDistancePoints = (
 // Loading Overlay UI Component
 // Shows progress during GPX processing
 // --------------------------------------------
-const LoadingOverlay = () => {
-  const { status: processingStatus } = useGpxProcessing();
+const LoadingOverlay = ({ mapRef }: { mapRef: React.RefObject<MapRef> }) => {
+  const { status: processingStatus } = useGpxProcessing({ mapRef });
   
   if (!processingStatus.isProcessing) return null;
 
@@ -217,7 +217,7 @@ const MapContainer = forwardRef<MapRef, MapContainerProps>(({ placePOIMode, setP
 
   // Then hooks
   const { isPlacingPOI, setIsPlacingPOI } = usePOI();
-  const { processGpxFile, status: processingStatus } = useGpxProcessing();
+  const { processGpxFile, status: processingStatus } = useGpxProcessing({ mapRef: ref });
   const { routes, activeRoute, addRouteToMap, removeRoute, clearRoutes } = useRouteRendering(map.current);
 
   // Layer IDs
@@ -1057,7 +1057,7 @@ React.useImperativeHandle(
         />
       )}
       <div ref={mapContainer} className="w-full h-full" />
-      <LoadingOverlay />
+      <LoadingOverlay mapRef={ref} />
     </div>
 );
 });  // Close the forwardRef

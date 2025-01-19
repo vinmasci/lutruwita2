@@ -1,10 +1,16 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { ProcessingStatus, ProcessedRoute } from '../types';
 import { GpxService } from '../services/gpx-service';
+import { SurfaceDetectionService } from '../services/surface-detection';
 import * as turf from '@turf/turf';
 import type { FeatureCollection, Feature, LineString } from 'geojson';
+import type { MapRef } from '../components/ui/map-container';
 
-export const useGpxProcessing = () => {
+interface UseGpxProcessingProps {
+    mapRef: React.RefObject<MapRef>;
+}
+
+export const useGpxProcessing = ({ mapRef }: UseGpxProcessingProps) => {
     const [status, setStatus] = useState<ProcessingStatus>({
         isProcessing: false,
         progress: 0,
@@ -24,28 +30,8 @@ export const useGpxProcessing = () => {
         }
     }, []);
 
-    // Create GeoJSON from points
-    const createGeoJson = useCallback((points: Array<{ lat: number; lon: number }>, surface: 'paved' | 'unpaved' = 'unpaved'): FeatureCollection => {
-        const feature: Feature<LineString> = {
-            type: 'Feature',
-            properties: {
-                surface,
-                segmentIndex: 0
-            },
-            geometry: {
-                type: 'LineString',
-                coordinates: points.map(p => [p.lon, p.lat])
-            }
-        };
-
-        return {
-            type: 'FeatureCollection',
-            features: [feature]
-        };
-    }, []);
-
     const processGpxFile = useCallback(async (file: File): Promise<ProcessedRoute | null> => {
-        cleanup(); // Cleanup any ongoing operations
+        cleanup();
         abortControllerRef.current = new AbortController();
 
         try {
@@ -85,14 +71,53 @@ export const useGpxProcessing = () => {
                 progress: 40
             }));
 
-            // Step 3: Create GeoJSON
-            const geojson = createGeoJson(points);
+            // Get map instance from ref
+            const map = mapRef.current?.getMap();
+            if (!map) {
+                throw new Error('Map not initialized');
+            }
 
-            // Step 4: Calculate route statistics
+            // Step 3: Detect surfaces
+            console.log('[GPX Processing] Starting surface detection...');
+            const pointsWithSurfaces = await SurfaceDetectionService.detectSurfaces(map, points);
+            
+            setStatus(prev => ({
+                ...prev,
+                progress: 60
+            }));
+
+            // Step 4: Split into segments
+            const segments = SurfaceDetectionService.splitIntoSegments(pointsWithSurfaces);
+            console.log('[GPX Processing] Created', segments.length, 'segments');
+
+            // Step 5: Create GeoJSON for each segment
+            const features = segments.map((segment, index) => ({
+                type: 'Feature',
+                properties: {
+                    surface: segment.surface,
+                    segmentIndex: index
+                },
+                geometry: {
+                    type: 'LineString',
+                    coordinates: segment.points.map(p => [p.lon, p.lat])
+                }
+            }));
+
+            const geojson: FeatureCollection = {
+                type: 'FeatureCollection',
+                features: features as any
+            };
+
+            setStatus(prev => ({
+                ...prev,
+                progress: 80
+            }));
+
+            // Step 6: Calculate route statistics
             const lineString = turf.lineString(points.map(p => [p.lon, p.lat]));
             const length = turf.length(lineString, { units: 'kilometers' });
 
-            // Step 5: Create route object
+            // Step 7: Create route object
             const newRoute: ProcessedRoute = {
                 id: Date.now().toString(),
                 name: file.name.replace(/\.gpx$/i, ''),
@@ -100,10 +125,7 @@ export const useGpxProcessing = () => {
                 isVisible: true,
                 gpxData: content,
                 gpxFilePath: uploadResponse.path,
-                segments: [{
-                    points,
-                    surface: 'unpaved'
-                }],
+                segments,
                 geojson,
                 statistics: {
                     length,
@@ -133,7 +155,7 @@ export const useGpxProcessing = () => {
         } finally {
             cleanup();
         }
-    }, [cleanup, createGeoJson]);
+    }, [cleanup, mapRef]);
 
     const resetProcessing = useCallback(() => {
         cleanup();
