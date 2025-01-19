@@ -21,27 +21,18 @@ function isAsphalt(surface: 'paved' | 'unpaved' | 'unknown' | 'asphalt'): boolea
 
 // Helper function to standardize surface type
 function convertSurface(surface: 'paved' | 'unpaved' | 'unknown' | 'asphalt'): NonNullable<GpxPoint['surface']> {
-  // Log the surface type being standardized
-  console.log('Standardizing surface:', surface);
-
-  // Convert to standard surface type with inversion fix
   switch (surface) {
     case 'paved':
-      console.log('Converting paved to unpaved (inversion fix)');
-      return 'unpaved';
-    case 'unpaved':
-      console.log('Converting unpaved to paved (inversion fix)');
       return 'paved';
     case 'asphalt':
-      console.log('Converting asphalt to unpaved (inversion fix)');
+      return 'paved';  // asphalt is a type of paved surface
+    case 'unpaved':
       return 'unpaved';
     case 'unknown':
     default:
-      console.log('Unknown/unhandled surface type, defaulting to unpaved');
-      return 'unpaved';  // Will show as paved in UI due to inversion
+      return 'unknown';  // don't default to unpaved, keep it unknown
   }
 }
-
 export class SurfaceDetectionService {
   private static readonly API_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -156,10 +147,15 @@ export class SurfaceDetectionService {
         });
 
         if (containingSegments.length > 0) {
-          // If point is in multiple segments, use the one with highest intersection length
-          const dominantSegment = containingSegments[0].segment; // Already sorted by length
+          const dominantSegment = containingSegments[0].segment;
           const surface = convertSurface(dominantSegment.surface_type);
-          console.log(`Point ${index}: Using dominant surface ${surface} from ${containingSegments.length} segments`);
+          
+          // Only log when surface type changes or every 500 points
+          if (surface !== lastSurface || index % 500 === 0) {
+            console.log(`Surface changed at point ${index}: ${surface} (${containingSegments.length} segments)`);
+            lastSurface = surface;
+          }
+          
           return { ...point, surface };
         }
 
