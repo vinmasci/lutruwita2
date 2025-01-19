@@ -466,47 +466,104 @@ app.delete('/api/maps/:id', requiresAuth(), async (req, res) => {
 app.post('/api/surface-detection', async (req, res) => {
   try {
     const { route } = req.body;
-    console.log('Received route:', route);
+    console.log('Received route with coordinates:', route.coordinates.length);
     
     if (!route || !route.coordinates) {
       console.error('Invalid route format received');
       return res.status(400).json({ error: 'Invalid route format' });
     }
 
-    const query = `
-WITH route AS (
-  SELECT ST_Transform(ST_GeomFromGeoJSON($1), 3857) as geom
-),
-buffered_route AS (
-  SELECT ST_Transform(ST_Buffer(ST_Transform(route.geom, 4326)::geography, 20)::geometry, 3857) as geom_buffered
-  FROM route
-)
-SELECT 
-  COALESCE(sc.standardized_surface, 'unknown') as surface_type,
-  ST_Length(ST_Transform(ST_Intersection(ST_Transform(rn.geometry, 3857), route.geom), 4326)::geography) as intersection_length,
-  ST_Length(ST_Transform(route.geom, 4326)::geography) as total_route_length,
-  CASE 
-    WHEN ST_Length(ST_Transform(route.geom, 4326)::geography) > 0 
-    THEN (ST_Length(ST_Transform(ST_Intersection(ST_Transform(rn.geometry, 3857), route.geom), 4326)::geography) / 
-          ST_Length(ST_Transform(route.geom, 4326)::geography) * 100)
-    ELSE 0 
-  END as percentage
-FROM route
-CROSS JOIN buffered_route
-JOIN road_network rn ON ST_Intersects(ST_Transform(rn.geometry, 3857), buffered_route.geom_buffered)
-LEFT JOIN surface_classifications sc ON rn.surface = sc.original_surface
-WHERE ST_Length(ST_Transform(ST_Intersection(ST_Transform(rn.geometry, 3857), route.geom), 4326)::geography) > 0
-  OR ST_DWithin(ST_Transform(rn.geometry, 3857)::geography, ST_Transform(route.geom, 3857)::geography, 20)
-ORDER BY intersection_length DESC;
+    // First check for nearby roads
+    const checkQuery = `
+      WITH route AS (
+        SELECT ST_SetSRID(ST_GeomFromGeoJSON($1), 4326) as geom
+      )
+      SELECT COUNT(*) 
+      FROM road_network rn, route 
+      WHERE ST_DWithin(route.geom::geography, rn.geometry::geography, 50);
     `;
 
-    console.log('Executing query...');
+    console.log('Checking for nearby roads...');
+    const checkResult = await pool.query(checkQuery, [JSON.stringify(route)]);
+    console.log('Found nearby roads:', checkResult.rows[0].count);
+
+    const query = `
+      WITH route AS (
+        SELECT ST_SetSRID(ST_GeomFromGeoJSON($1), 4326) as geom
+      ),
+      buffered_route AS (
+        SELECT ST_Buffer(
+          ST_Transform(route.geom, 3857)::geometry, 
+          50
+        ) as geom_buffered
+        FROM route
+      )
+      SELECT 
+        COALESCE(sc.standardized_surface, 'unknown') as surface_type,
+        ST_Length(ST_Intersection(rn.geometry, ST_Transform(route.geom, 3857))::geography) as intersection_length,
+        ST_Length(route.geom::geography) as total_route_length,
+        CASE 
+          WHEN ST_Length(route.geom::geography) > 0 
+          THEN (ST_Length(ST_Intersection(rn.geometry, ST_Transform(route.geom, 3857))::geography) / 
+                ST_Length(route.geom::geography) * 100)
+          ELSE 0 
+        END as percentage
+      FROM route
+      JOIN road_network rn ON ST_Intersects(
+        ST_Transform(rn.geometry, 3857), 
+        (SELECT geom_buffered FROM buffered_route)
+      )
+      LEFT JOIN surface_classifications sc ON rn.surface = sc.original_surface
+      WHERE ST_Length(ST_Intersection(rn.geometry, ST_Transform(route.geom, 3857))::geography) > 0
+        OR ST_DWithin(route.geom::geography, rn.geometry::geography, 50)
+      ORDER BY intersection_length DESC;
+    `;
+
+    console.log('Executing surface detection query...');
     const result = await pool.query(query, [JSON.stringify(route)]);
-    console.log('Query result:', result.rows);
+    console.log('Found surface segments:', result.rows.length);
+    
+    if (result.rows.length === 0) {
+      console.log('No intersecting road segments found. Input validation:');
+      console.log('Route coordinates count:', route.coordinates.length);
+      console.log('First coordinate:', JSON.stringify(route.coordinates[0]));
+      console.log('Last coordinate:', JSON.stringify(route.coordinates[route.coordinates.length - 1]));
+      
+      // If no intersections found but roads are nearby, return closest road surface
+      if (checkResult.rows[0].count > 0) {
+        const nearestRoadQuery = `
+          WITH route AS (
+            SELECT ST_SetSRID(ST_GeomFromGeoJSON($1), 4326) as geom
+          )
+          SELECT 
+            COALESCE(sc.standardized_surface, 'unknown') as surface_type,
+            ST_Distance(route.geom::geography, rn.geometry::geography) as distance
+          FROM route
+          CROSS JOIN road_network rn
+          LEFT JOIN surface_classifications sc ON rn.surface = sc.original_surface
+          ORDER BY route.geom::geography <-> rn.geometry::geography
+          LIMIT 1;
+        `;
+        
+        const nearestRoad = await pool.query(nearestRoadQuery, [JSON.stringify(route)]);
+        console.log('Nearest road surface:', nearestRoad.rows[0]);
+        
+        if (nearestRoad.rows.length > 0) {
+          result.rows = [{
+            surface_type: nearestRoad.rows[0].surface_type,
+            intersection_length: 0,
+            total_route_length: 0,
+            percentage: 0,
+            distance: nearestRoad.rows[0].distance
+          }];
+        }
+      }
+    }
     
     res.json(result.rows);
   } catch (error) {
     console.error('Surface detection error:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({ error: error.message });
   }
 });
@@ -514,33 +571,53 @@ ORDER BY intersection_length DESC;
 app.post('/api/surface-detection/breakdown', async (req, res) => {
   try {
     const { route } = req.body;
+    console.log('Received route for breakdown:', route.coordinates.length);
     
     if (!route || !route.coordinates) {
       return res.status(400).json({ error: 'Invalid route format' });
     }
 
     const query = `
-WITH route AS (
-  SELECT ST_GeomFromGeoJSON($1) as geom
-)
-SELECT 
-  COALESCE(sc.standardized_surface, 'unknown') as surface_type,
-  SUM(ST_Length(ST_Intersection(rn.geometry, route.geom)::geography)) as intersection_length,
-  ST_Length(route.geom::geography) as total_route_length,
-  SUM(ST_Length(ST_Intersection(rn.geometry, route.geom)::geography)) / 
-   NULLIF(ST_Length(route.geom::geography), 0) * 100 as percentage
-FROM route
-JOIN road_network rn ON ST_Intersects(rn.geometry, route.geom)
-LEFT JOIN surface_classifications sc ON rn.surface = sc.original_surface
-WHERE ST_Length(ST_Intersection(rn.geometry, route.geom)::geography) > 0
-GROUP BY sc.standardized_surface, route.geom
-ORDER BY intersection_length DESC;
+      WITH route AS (
+        SELECT ST_SetSRID(ST_GeomFromGeoJSON($1), 4326) as geom
+      ),
+      buffered_route AS (
+        SELECT ST_Buffer(
+          ST_Transform(route.geom, 3857)::geometry, 
+          50
+        ) as geom_buffered
+        FROM route
+      )
+      SELECT 
+        COALESCE(sc.standardized_surface, 'unknown') as surface_type,
+        SUM(ST_Length(ST_Intersection(rn.geometry, ST_Transform(route.geom, 3857))::geography)) as intersection_length,
+        ST_Length(route.geom::geography) as total_route_length,
+        CASE 
+          WHEN ST_Length(route.geom::geography) > 0 
+          THEN (SUM(ST_Length(ST_Intersection(rn.geometry, ST_Transform(route.geom, 3857))::geography)) / 
+                ST_Length(route.geom::geography) * 100)
+          ELSE 0 
+        END as percentage
+      FROM route
+      JOIN road_network rn ON ST_Intersects(
+        ST_Transform(rn.geometry, 3857), 
+        (SELECT geom_buffered FROM buffered_route)
+      )
+      LEFT JOIN surface_classifications sc ON rn.surface = sc.original_surface
+      WHERE ST_Length(ST_Intersection(rn.geometry, ST_Transform(route.geom, 3857))::geography) > 0
+        OR ST_DWithin(route.geom::geography, rn.geometry::geography, 50)
+      GROUP BY sc.standardized_surface, route.geom
+      ORDER BY intersection_length DESC;
     `;
 
+    console.log('Executing breakdown query...');
     const result = await pool.query(query, [JSON.stringify(route)]);
+    console.log('Found breakdown segments:', result.rows.length);
+    
     res.json(result.rows);
   } catch (error) {
     console.error('Surface breakdown error:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({ error: error.message });
   }
 });
