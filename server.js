@@ -498,8 +498,10 @@ app.delete('/api/maps/:id', requiresAuth(), async (req, res) => {
 app.post('/api/surface-detection', async (req, res) => {
   try {
     const { route } = req.body;
+    console.log('Received route:', route);
     
     if (!route || !route.coordinates) {
+      console.error('Invalid route format received');
       return res.status(400).json({ error: 'Invalid route format' });
     }
 
@@ -519,7 +521,10 @@ app.post('/api/surface-detection', async (req, res) => {
       ORDER BY intersection_length DESC;
     `;
 
+    console.log('Executing query...');
     const result = await pool.query(query, [JSON.stringify(route)]);
+    console.log('Query result:', result.rows);
+    
     res.json(result.rows);
   } catch (error) {
     console.error('Surface detection error:', error);

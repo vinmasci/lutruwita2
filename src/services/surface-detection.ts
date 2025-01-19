@@ -18,14 +18,16 @@ export class SurfaceDetectionService {
   private static readonly API_URL = import.meta.env.VITE_API_BASE_URL;
 
   static async detectSurfaces(points: GpxPoint[]): Promise<GpxPoint[]> {
+    console.log('Surface detection called with points:', points.length);
+    
     try {
-      // Convert points to a GeoJSON LineString
       const lineString = {
         type: 'LineString',
         coordinates: points.map(pt => [pt.lon, pt.lat])
       };
-
-      // Send to our new PostgreSQL API
+      
+      console.log('Sending LineString to API:', lineString);
+  
       const response = await fetch(`${this.API_URL}/api/surface-detection`, {
         method: 'POST',
         headers: {
@@ -33,18 +35,22 @@ export class SurfaceDetectionService {
         },
         body: JSON.stringify({ route: lineString })
       });
-
+  
+      console.log('API Response status:', response.status);
+      
       if (!response.ok) {
+        console.error('API Error:', await response.text());
         throw new Error('Surface detection failed');
       }
-
-      const surfaceData: SurfaceDetectionResponse[] = await response.json();
+  
+      const surfaceData = await response.json();
+      console.log('Received surface data:', surfaceData);
       
-      // For now, assign the most prevalent surface type to all points
-      // Later we can make this more granular by matching segments
       const dominantSurface = surfaceData
         .sort((a, b) => b.percentage - a.percentage)[0]?.surface_type || 'unknown';
-
+      
+      console.log('Dominant surface:', dominantSurface);
+  
       return points.map(pt => ({
         ...pt,
         surface: dominantSurface
