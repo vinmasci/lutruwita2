@@ -477,23 +477,32 @@ app.post('/api/surface-detection', async (req, res) => {
 WITH route AS (
   SELECT ST_GeomFromGeoJSON($1) as geom
 ),
-snapped AS (
-  SELECT ST_Snap(route.geom, rn.geometry, 0.00001) as geom
-  FROM route, road_network rn 
-  WHERE ST_DWithin(route.geom::geography, rn.geometry::geography, 20)
-  LIMIT 1
+buffered_route AS (
+  SELECT ST_Buffer(route.geom::geography, 20)::geometry as geom_buffered
+  FROM route
+),
+nearby_roads AS (
+  SELECT rn.geometry
+  FROM route
+  CROSS JOIN buffered_route
+  JOIN road_network rn ON ST_Intersects(rn.geometry, buffered_route.geom_buffered)
+),
+snapped_route AS (
+  SELECT ST_Snap(route.geom, (SELECT ST_Collect(geometry) FROM nearby_roads), 0.00001) as geom
+  FROM route
 )
 SELECT 
   COALESCE(sc.standardized_surface, 'unknown') as surface_type,
-  SUM(ST_Length(ST_Intersection(rn.geometry, snapped.geom)::geography)) as intersection_length,
-  ST_Length(snapped.geom::geography) as total_route_length,
-  SUM(ST_Length(ST_Intersection(rn.geometry, snapped.geom)::geography)) / 
-   NULLIF(ST_Length(snapped.geom::geography), 0) * 100 as percentage
-FROM snapped
-JOIN road_network rn ON ST_Intersects(rn.geometry, snapped.geom)
+  ST_Length(ST_Intersection(rn.geometry, snapped_route.geom)::geography) as intersection_length,
+  ST_Length(route.geom::geography) as total_route_length,
+  (ST_Length(ST_Intersection(rn.geometry, snapped_route.geom)::geography) / 
+   NULLIF(ST_Length(route.geom::geography), 0) * 100) as percentage
+FROM route, snapped_route
+CROSS JOIN buffered_route
+JOIN road_network rn ON ST_Intersects(rn.geometry, buffered_route.geom_buffered)
 LEFT JOIN surface_classifications sc ON rn.surface = sc.original_surface
-WHERE ST_Length(ST_Intersection(rn.geometry, snapped.geom)::geography) > 0
-GROUP BY sc.standardized_surface, snapped.geom
+WHERE ST_Length(ST_Intersection(rn.geometry, snapped_route.geom)::geography) > 0
+  OR ST_DWithin(rn.geometry::geography, snapped_route.geom::geography, 20)
 ORDER BY intersection_length DESC;
     `;
 
