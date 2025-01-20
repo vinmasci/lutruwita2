@@ -1,8 +1,18 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import * as turf from '@turf/turf';
-import { ProcessedRoute, RouteSegment } from '../types';
+import { ProcessedRoute, RouteSegment, SurfaceType } from '../types/gpx-types';
 import { Feature, FeatureCollection, LineString } from 'geojson';
+
+const surfaceColors: Record<SurfaceType, string> = {
+    paved: '#3498db',      // Blue for paved roads
+    unpaved: '#e67e22'     // Orange for unpaved/gravel
+};
+
+const surfaceDashArrays: Record<SurfaceType, number[]> = {
+    paved: [1, 0],        // Solid line
+    unpaved: [0.5, 1.5]   // Dashed line
+};
 
 export const useRouteRendering = (map: mapboxgl.Map | null) => {
     const [routes, setRoutes] = useState<ProcessedRoute[]>([]);
@@ -12,34 +22,9 @@ export const useRouteRendering = (map: mapboxgl.Map | null) => {
     // Keep track of event listeners for cleanup
     const eventListeners = useRef<{ [key: string]: Function }>({});
 
-    // Convert route segments to GeoJSON
-    const createGeoJson = useCallback((segments: RouteSegment[]): FeatureCollection => {
-        try {
-            const features = segments.map((segment, idx) => ({
-                type: 'Feature',
-                properties: {
-                    surface: segment.surface,
-                    segmentIndex: idx
-                },
-                geometry: {
-                    type: 'LineString',
-                    coordinates: segment.points.map(p => [p.lon, p.lat])
-                }
-            })) as Feature<LineString>[];
-
-            return {
-                type: 'FeatureCollection',
-                features
-            };
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to create GeoJSON');
-            return { type: 'FeatureCollection', features: [] };
-        }
-    }, []);
-
     // Add route to map
     const addRouteToMap = useCallback((route: ProcessedRoute) => {
-        if (!map || !route.segments.length) return;
+        if (!map) return;
 
         try {
             const routeSourceId = `route-${route.id}`;
@@ -47,7 +32,7 @@ export const useRouteRendering = (map: mapboxgl.Map | null) => {
 
             // Remove existing route if present
             if (map.getSource(routeSourceId)) {
-                ['white-stroke', '', 'unpaved'].forEach(suffix => {
+                ['white-stroke', ''].forEach(suffix => {
                     const layerId = `${routeLayerId}${suffix ? '-' + suffix : ''}`;
                     if (map.getLayer(layerId)) {
                         map.removeLayer(layerId);
@@ -56,13 +41,25 @@ export const useRouteRendering = (map: mapboxgl.Map | null) => {
                 map.removeSource(routeSourceId);
             }
 
-            // Create GeoJSON if not already present
-            const geojson = route.geojson || createGeoJson(route.segments);
+            // Use either surfaces (new format) or segments (old format)
+            const segments = route.surfaces || route.segments;
+            if (!segments?.length) return;
 
             // Add source
             map.addSource(routeSourceId, {
                 type: 'geojson',
-                data: geojson
+                data: route.geojson || {
+                    type: 'FeatureCollection',
+                    features: segments.map((segment, idx) => ({
+                        type: 'Feature',
+                        properties: {
+                            surface: segment.surface,
+                            segmentIndex: idx,
+                            distance: segment.distance
+                        },
+                        geometry: segment.geometry
+                    }))
+                }
             });
 
             // Add white stroke base layer
@@ -80,7 +77,7 @@ export const useRouteRendering = (map: mapboxgl.Map | null) => {
                 }
             });
 
-            // Add base layer for paved segments
+            // Add surface-colored segments
             map.addLayer({
                 id: routeLayerId,
                 type: 'line',
@@ -90,48 +87,31 @@ export const useRouteRendering = (map: mapboxgl.Map | null) => {
                     'line-cap': 'round'
                 },
                 paint: {
-                    'line-color': route.color,
+                    'line-color': [
+                        'match',
+                        ['get', 'surface'],
+                        'paved', surfaceColors.paved,
+                        surfaceColors.unpaved // Default to unpaved
+                    ],
                     'line-width': 3,
-                    'line-opacity': [
-                        'case',
-                        ['==', ['get', 'surface'], 'paved'],
-                        1,
-                        0
+                    'line-dasharray': [
+                        'match',
+                        ['get', 'surface'],
+                        'paved', surfaceDashArrays.paved,
+                        surfaceDashArrays.unpaved // Default to unpaved
                     ]
                 }
             });
 
-            // Add dashed lines for unpaved segments
-            map.addLayer({
-                id: `${routeLayerId}-unpaved`,
-                type: 'line',
-                source: routeSourceId,
-                layout: {
-                    'line-join': 'round',
-                    'line-cap': 'round'
-                },
-                paint: {
-                    'line-color': route.color,
-                    'line-width': 3,
-                    'line-opacity': [
-                        'case',
-                        ['==', ['get', 'surface'], 'unpaved'],
-                        1,
-                        0
-                    ],
-                    'line-dasharray': [0.5, 1.5]
-                }
-            });
-
             // Update route store
-            setRoutes(prev => [...prev, { ...route, geojson }]);
-            setActiveRoute({ ...route, geojson });
+            setRoutes(prev => [...prev, route]);
+            setActiveRoute(route);
             setError(null);
         } catch (err) {
             console.error('Error adding route to map:', err);
             setError(err instanceof Error ? err.message : 'Failed to add route to map');
         }
-    }, [map, createGeoJson]);
+    }, [map]);
 
     // Remove route from map
     const removeRoute = useCallback((routeId: string) => {
@@ -142,7 +122,7 @@ export const useRouteRendering = (map: mapboxgl.Map | null) => {
             const routeLayerId = `route-layer-${routeId}`;
 
             // Remove layers
-            ['white-stroke', '', 'unpaved'].forEach(suffix => {
+            ['white-stroke', ''].forEach(suffix => {
                 const layerId = `${routeLayerId}${suffix ? '-' + suffix : ''}`;
                 if (map.getLayer(layerId)) {
                     map.removeLayer(layerId);
@@ -177,7 +157,7 @@ export const useRouteRendering = (map: mapboxgl.Map | null) => {
             const routeLayerId = `route-layer-${routeId}`;
             const visibility = visible ? 'visible' : 'none';
 
-            ['white-stroke', '', 'unpaved'].forEach(suffix => {
+            ['white-stroke', ''].forEach(suffix => {
                 const layerId = `${routeLayerId}${suffix ? '-' + suffix : ''}`;
                 if (map.getLayer(layerId)) {
                     map.setLayoutProperty(layerId, 'visibility', visibility);
@@ -230,7 +210,7 @@ export const useRouteRendering = (map: mapboxgl.Map | null) => {
                     const routeSourceId = `route-${route.id}`;
                     const routeLayerId = `route-layer-${route.id}`;
 
-                    ['white-stroke', '', 'unpaved'].forEach(suffix => {
+                    ['white-stroke', ''].forEach(suffix => {
                         const layerId = `${routeLayerId}${suffix ? '-' + suffix : ''}`;
                         if (map.getLayer(layerId)) {
                             map.removeLayer(layerId);

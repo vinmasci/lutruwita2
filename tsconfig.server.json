@@ -1,16 +1,31 @@
 {
-    "compilerOptions": {
-      "target": "ES2022",
-      "module": "CommonJS",
-      "moduleResolution": "node",
-      "esModuleInterop": true,
-      "forceConsistentCasingInFileNames": true,
-      "strict": true,
-      "skipLibCheck": true,
-      "outDir": "./dist",
-      "rootDir": ".",
-      "allowJs": true
-    },
-    "include": ["server.ts"],
-    "exclude": ["node_modules"]
-  }
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "node",
+    "jsx": "react-jsx",
+    "outDir": "dist",
+    "esModuleInterop": true,
+    "allowJs": true,
+    "resolveJsonModule": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "rootDir": ".",
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": [
+    "server.ts",
+    "src/services/gpx-processor.ts",
+    "src/types/server.d.ts",
+    "src/types/gpx-types.ts",
+    "src/utils/error-handling.ts",
+    "src/services/storage-service.ts",
+    "src/types/storage-service.d.ts"
+  ],
+  "exclude": ["node_modules"]
+}

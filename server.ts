@@ -1,4 +1,12 @@
-import express from 'express';
+import express, { 
+  Express, 
+  Request, 
+  Response, 
+  RequestHandler,
+  NextFunction
+} from 'express';
+import { ParamsDictionary } from 'express-serve-static-core';
+import { ParsedQs } from 'qs';
 import cors from 'cors';
 import { MongoClient, ObjectId } from 'mongodb';
 import multer from 'multer';
@@ -6,11 +14,76 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-import { auth as Auth0 } from 'express-openid-connect';
-import pkg from 'express-openid-connect';
+import { auth as Auth0, requiresAuth } from 'express-openid-connect';
 import fs from 'fs';
-import { StorageService } from './src/services/storage-service.js';
+import { GpxProcessor } from './src/services/gpx-processor';
 import pg from 'pg';
+import { 
+  ErrorResponse, 
+  PhotoUploadResponse, 
+  RouteUploadResponse,
+  TypedRequestBody,
+  TypedResponse,
+  ServerProcessedRoute,
+  Auth0Request,
+  SafeError,
+  isErrorWithMessage,
+  Photo,
+  SurfaceDetectionRequest,
+  SurfaceDetectionResponse,
+  SurfaceDetectionResult,
+  Auth0User
+} from './src/types/server';
+import type { Feature, FeatureCollection, LineString } from 'geojson';
+import type { ProcessedRoute } from './src/types/gpx-types';
+import { 
+  handleError, 
+  handleBadRequest, 
+  handleUnauthorized, 
+  handleNotFound 
+} from './src/utils/error-handling';
+// Import Auth0's types
+import { RequestContext } from 'express-openid-connect';
+
+// Define base types for request handling
+type BaseRequest = Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>;
+
+// Enhanced RequestWithFile type that properly extends Express types
+type RequestWithFile<T = any> = Auth0Request & TypedRequestBody<T> & {
+  file?: Express.Multer.File;
+  query: ParsedQs;
+  params: ParamsDictionary;
+};
+
+// Custom request handler type with proper typing for body, response and params
+type CustomRequestHandler<ReqBody = any, ResBody = any> = (
+  req: RequestWithFile<ReqBody>,
+  res: TypedResponse<ResBody>,
+  next: NextFunction
+) => Promise<void>;
+
+// Type-safe middleware wrapper with proper type propagation
+const wrapHandler = <ReqBody = any, ResBody = any>(
+  handler: CustomRequestHandler<ReqBody, ResBody>
+): RequestHandler<ParamsDictionary, ResBody, ReqBody, ParsedQs, Record<string, any>> => {
+  return async (req, res, next) => {
+    try {
+      await handler(req as RequestWithFile<ReqBody>, res as TypedResponse<ResBody>, next);
+    } catch (error) {
+      if (isErrorWithMessage(error)) {
+        res.status(500).json({ error: error.message });
+      } else {
+        res.status(500).json({ error: 'An unknown error occurred' });
+      }
+    }
+  };
+};
+
+// Helper function to handle responses consistently
+const sendResponse = <T>(res: TypedResponse<T | ErrorResponse>, data: T | ErrorResponse, status = 200) => {
+  res.status(status).json(data);
+};
+
 const { Pool } = pg;
 
 // PostgreSQL connection pool
@@ -26,8 +99,8 @@ const pool = new Pool({
 });
 
 // Initialize storage service
+import { StorageService } from './src/services/storage-service';
 const storageService = new StorageService();
-const { requiresAuth } = pkg;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -66,7 +139,7 @@ const config = {
   }
 };
 
-const app = express();
+export const app: Express = express();
 
 // Auth router must be set up before other routes
 app.use(Auth0(config));
@@ -77,7 +150,7 @@ app.get('/callback', (req, res) => {
   res.redirect('http://localhost:5173');
 });
 
-const MONGODB_URI = process.env.VITE_MONGODB_URI; // Changed to match your .env.local
+const MONGODB_URI = process.env.VITE_MONGODB_URI;
 if (!MONGODB_URI) {
   console.error('MONGODB_URI is not defined in environment variables');
   process.exit(1);
@@ -87,19 +160,19 @@ console.log('MongoDB URI found:', MONGODB_URI.substring(0, 20) + '...');
 
 app.use(cors({
   origin: ['http://localhost:5173', 'http://localhost:5174'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Added DELETE for map endpoints
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-csrf-token'],
   credentials: true,
   maxAge: 86400
 }));
 
 // After Auth0 middleware, but before CSP headers
-app.use((req, res, next) => {
+app.use((req: Request, res, next) => {
   console.log('Current path:', req.path);
   console.log('Authentication state:', req.oidc ? 'User is authenticated' : 'User is not authenticated');
   console.log('User info:', req.oidc?.user);
   
-  if (req.path === '/' && req.oidc.isAuthenticated()) {
+  if (req.path === '/' && req.oidc?.isAuthenticated()) {
     console.log('User authenticated, redirecting to frontend');
     return res.redirect('http://localhost:5173');
   }
@@ -121,7 +194,7 @@ app.use(express.json({limit: '12mb'}));
 app.use('/uploads', express.static('uploads'));
 
 // Configure multer for file uploads
-const storage = multer.memoryStorage(); // Change to memory storage for DO Spaces
+const storage = multer.memoryStorage();
 
 const photoUpload = multer({ 
   storage,
@@ -155,13 +228,13 @@ const gpxUpload = multer({
 const client = new MongoClient(MONGODB_URI);
 
 // Upload photo endpoint
-app.post('/api/photos/upload', photoUpload.single('photo'), async (req, res) => {
+const uploadPhoto: CustomRequestHandler = async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const { longitude, latitude, description } = req.body;
+    const { longitude, latitude, description } = req.body as { longitude: string; latitude: string; description?: string };
     
     if (!longitude || !latitude) {
       return res.status(400).json({ error: 'Location coordinates are required' });
@@ -174,7 +247,7 @@ app.post('/api/photos/upload', photoUpload.single('photo'), async (req, res) => 
     const db = client.db('photoApp');
     const result = await db.collection('photos').insertOne({
       filename: req.file.originalname,
-      key: key, // Store the DO Spaces key instead of local path
+      key: key,
       longitude: Number(longitude),
       latitude: Number(latitude),
       description: description || '',
@@ -188,13 +261,15 @@ app.post('/api/photos/upload', photoUpload.single('photo'), async (req, res) => 
     });
   } catch (error) {
     console.error('Error uploading photo:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: isErrorWithMessage(error) ? error.message : 'Unknown error occurred' });
   }
-});
+};
 
-app.get('/api/photos/near', async (req, res) => {
+app.post('/api/photos/upload', photoUpload.single('photo'), uploadPhoto);
+
+const getPhotosNear: CustomRequestHandler = async (req, res) => {
   try {
-    const { longitude, latitude } = req.query;
+    const { longitude, latitude } = req.query as { longitude: string; latitude: string };
     
     if (!longitude || !latitude) {
       return res.status(400).json({ error: 'Longitude and latitude are required' });
@@ -205,7 +280,7 @@ app.get('/api/photos/near', async (req, res) => {
     
     console.log(`Searching for photos near: ${longitude}, ${latitude}`);
     
-    const photos = await db.collection('photos').find({
+    const photos = await db.collection<Photo>('photos').find({
       $and: [
         {
           longitude: {
@@ -226,48 +301,81 @@ app.get('/api/photos/near', async (req, res) => {
     res.json(photos);
   } catch (error) {
     console.error('Error fetching photos:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: isErrorWithMessage(error) ? error.message : 'Unknown error occurred' });
   }
-});
+};
 
-// Upload GPX endpoint
-app.post('/api/gpx/upload', requiresAuth(), gpxUpload.single('gpx'), async (req, res) => {
+app.get('/api/photos/near', getPhotosNear);
+
+// Unified GPX Upload and Processing Endpoint
+const uploadRoute: CustomRequestHandler = async (req, res) => {
   try {
-    console.log('GPX upload request received:', {
-      file: req.file,
-      body: req.body,
-      headers: req.headers
-    });
+    console.log('Route upload request received');
 
     if (!req.file) {
-      console.log('No file received in request');
-      return res.status(400).json({ error: 'No file uploaded' });
+      return handleBadRequest('No file uploaded', res);
     }
 
+    // 1. Process GPX file
+    const processor = new GpxProcessor();
+    const route = await processor.processGpx(req.file.buffer, req.file.originalname) as ProcessedRoute;
+    console.log('GPX processed successfully');
+
+    // 2. Detect surfaces using PostGIS
+    if (!route.geojson?.features?.[0]?.geometry || route.geojson.features[0].geometry.type !== 'LineString') {
+      return handleBadRequest('Invalid GPX file format', res);
+    }
+
+    const lineString = {
+      type: 'LineString',
+      coordinates: (route.geojson.features[0].geometry as LineString).coordinates
+    };
+
+    const surfaceQuery = await pool.query(`
+      SELECT 
+        COALESCE(sc.standardized_surface, COALESCE(rn.surface, 'unpaved')) as surface,
+        ST_AsGeoJSON(ST_Intersection(rn.geometry, ST_SetSRID(ST_GeomFromGeoJSON($1), 4326))) as segment,
+        ST_Length(ST_Intersection(rn.geometry, ST_SetSRID(ST_GeomFromGeoJSON($1), 4326))::geography) as distance
+      FROM road_network rn
+      LEFT JOIN surface_classifications sc ON rn.surface = sc.original_surface
+      WHERE ST_Intersects(rn.geometry, ST_SetSRID(ST_GeomFromGeoJSON($1), 4326))
+      ORDER BY ST_LineLocatePoint(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326), ST_StartPoint(rn.geometry))
+    `, [JSON.stringify(lineString)]);
+
+    console.log('Surface detection completed');
+
+    // 3. Save route with surface information
     await client.connect();
     const db = client.db('photoApp');
-    const result = await db.collection('gpxFiles').insertOne({
-      filename: req.file.filename,
-      path: `/uploads/${req.file.filename}`,
-      uploadedBy: req.oidc.user.sub,
+    const result = await db.collection('routes').insertOne({
+      ...route,
+      uploadedBy: req.oidc?.user?.sub || 'anonymous',
       uploadedAt: new Date()
     });
 
-    console.log('GPX file saved successfully:', {
-      filename: req.file.filename,
-      id: result.insertedId
-    });
+    console.log('Route saved successfully');
+
+    const serverRoute: ServerProcessedRoute = {
+      ...route,
+      uploadedBy: req.oidc?.user?.sub || 'anonymous',
+      uploadedAt: new Date(),
+      id: result.insertedId.toString(),
+      color: '#' + Math.floor(Math.random()*16777215).toString(16), // Random color
+      isVisible: true,
+      gpxData: req.file.buffer.toString()
+    };
 
     res.json({
       success: true,
-      gpxId: result.insertedId,
-      path: `/uploads/${req.file.filename}`
+      routeId: result.insertedId,
+      route: serverRoute
     });
   } catch (error) {
-    console.error('Detailed GPX upload error:', error);
-    res.status(500).json({ error: error.message });
+    handleError(error, res);
   }
-});
+};
+
+app.post('/api/routes', requiresAuth(), gpxUpload.single('gpx'), uploadRoute);
 
 // Add a health check endpoint
 app.get('/health', (req, res) => {
@@ -276,8 +384,12 @@ app.get('/health', (req, res) => {
 
 // Add profile endpoint
 // Get profile data
-app.get('/api/profile', requiresAuth(), async (req, res) => {
+const getProfile: CustomRequestHandler = async (req, res) => {
   try {
+    if (!req.oidc?.user?.sub) {
+      return handleUnauthorized('User not authenticated', res);
+    }
+
     console.log('Fetching profile for user:', req.oidc.user.sub);
     await client.connect();
     const db = client.db('photoApp');
@@ -294,7 +406,7 @@ app.get('/api/profile', requiresAuth(), async (req, res) => {
         auth0Id: req.oidc.user.sub,
         bioName: req.oidc.user.name,
         email: req.oidc.user.email,
-        picture: req.oidc.user.picture.replace('=s96-c', ''),  // Remove size constraint from Google URL
+        picture: req.oidc.user.picture.replace('=s96-c', ''),
         socialLinks: {
           instagram: '',
           strava: '',
@@ -315,13 +427,19 @@ app.get('/api/profile', requiresAuth(), async (req, res) => {
     }
   } catch (error) {
     console.error('Error fetching user profile:', error);
-    res.status(500).json({ error: 'Failed to fetch profile' });
+    res.status(500).json({ error: isErrorWithMessage(error) ? error.message : 'Failed to fetch profile' });
   }
-});
+};
+
+app.get('/api/profile', requiresAuth(), getProfile);
 
 // Update profile data
-app.put('/api/profile', requiresAuth(), async (req, res) => {
+const updateProfile: CustomRequestHandler = async (req, res) => {
   try {
+    if (!req.oidc?.user?.sub) {
+      return handleUnauthorized('User not authenticated', res);
+    }
+
     console.log('Updating profile for user:', req.oidc.user.sub);
     console.log('Update data received:', req.body);
     
@@ -344,24 +462,30 @@ app.put('/api/profile', requiresAuth(), async (req, res) => {
 
     if (result.matchedCount === 0) {
       console.log('No user found to update');
-      res.status(404).json({ error: 'User not found' });
+      return handleNotFound('User not found', res);
     } else {
       console.log('Profile updated successfully');
       res.json({ message: 'Profile updated successfully' });
     }
   } catch (error) {
     console.error('Detailed error in profile update:', error);
-    res.status(500).json({ error: error.message || 'Failed to update profile' });
+    res.status(500).json({ error: isErrorWithMessage(error) ? error.message : 'Failed to update profile' });
   }
-});
+};
+
+app.put('/api/profile', requiresAuth(), updateProfile);
 
 // New Map Endpoints
 // Create new map
-app.post('/api/maps', requiresAuth(), async (req, res) => {
+const createMap: CustomRequestHandler = async (req, res) => {
   try {
+    if (!req.oidc?.user?.sub) {
+      return handleUnauthorized('User not authenticated', res);
+    }
+
     console.log('Creating new map for user:', req.oidc.user.sub);
-    console.log('Received map data:', JSON.stringify(req.body, null, 2)); // More detailed logging
-    console.log('Photos in received data:', req.body.photos); // Specifically log photos
+    console.log('Received map data:', JSON.stringify(req.body, null, 2));
+    console.log('Photos in received data:', req.body.photos);
     
     const mapData = {
       ...req.body,
@@ -369,7 +493,7 @@ app.post('/api/maps', requiresAuth(), async (req, res) => {
       createdAt: new Date(),
       updatedAt: new Date()
     };
-    console.log('Final map data to save:', mapData); // Add this line to log final data
+    console.log('Final map data to save:', mapData);
 
     await client.connect();
     const db = client.db('photoApp');
@@ -383,13 +507,19 @@ app.post('/api/maps', requiresAuth(), async (req, res) => {
     });
   } catch (error) {
     console.error('Error creating map:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: isErrorWithMessage(error) ? error.message : 'Failed to create map' });
   }
-});
+};
+
+app.post('/api/maps', requiresAuth(), createMap);
 
 // Get all maps for user
-app.get('/api/maps', requiresAuth(), async (req, res) => {
+const getMaps: CustomRequestHandler = async (req, res) => {
   try {
+    if (!req.oidc?.user?.sub) {
+      return handleUnauthorized('User not authenticated', res);
+    }
+
     console.log('Fetching maps for user:', req.oidc.user.sub);
     await client.connect();
     const db = client.db('photoApp');
@@ -402,13 +532,19 @@ app.get('/api/maps', requiresAuth(), async (req, res) => {
     res.json(maps);
   } catch (error) {
     console.error('Error fetching maps:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: isErrorWithMessage(error) ? error.message : 'Failed to fetch maps' });
   }
-});
+};
 
-// Get specific map
-app.put('/api/maps/:id', requiresAuth(), async (req, res) => {
+app.get('/api/maps', requiresAuth(), getMaps);
+
+// Update specific map
+const updateMap: CustomRequestHandler = async (req, res) => {
   try {
+    if (!req.oidc?.user?.sub) {
+      return handleUnauthorized('User not authenticated', res);
+    }
+
     console.log('Updating map:', req.params.id);
     await client.connect();
     const db = client.db('photoApp');
@@ -427,20 +563,26 @@ app.put('/api/maps/:id', requiresAuth(), async (req, res) => {
 
     if (result.matchedCount === 0) {
       console.log('Map not found or unauthorized');
-      return res.status(404).json({ error: 'Map not found or unauthorized' });
+      return handleNotFound('Map not found or unauthorized', res);
     }
 
     console.log('Map updated successfully');
     res.json({ message: 'Map updated successfully' });
   } catch (error) {
     console.error('Error updating map:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: isErrorWithMessage(error) ? error.message : 'Failed to update map' });
   }
-});
+};
+
+app.put('/api/maps/:id', requiresAuth(), updateMap);
 
 // Delete map
-app.delete('/api/maps/:id', requiresAuth(), async (req, res) => {
+const deleteMap: CustomRequestHandler = async (req, res) => {
   try {
+    if (!req.oidc?.user?.sub) {
+      return handleUnauthorized('User not authenticated', res);
+    }
+
     console.log('Deleting map:', req.params.id);
     await client.connect();
     const db = client.db('photoApp');
@@ -451,130 +593,75 @@ app.delete('/api/maps/:id', requiresAuth(), async (req, res) => {
 
     if (result.deletedCount === 0) {
       console.log('Map not found or unauthorized');
-      return res.status(404).json({ error: 'Map not found or unauthorized' });
+      return handleNotFound('Map not found or unauthorized', res);
     }
 
     console.log('Map deleted successfully');
     res.json({ message: 'Map deleted successfully' });
   } catch (error) {
     console.error('Error deleting map:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: isErrorWithMessage(error) ? error.message : 'Failed to delete map' });
   }
-});
+};
+
+app.delete('/api/maps/:id', requiresAuth(), deleteMap);
 
 // Surface Detection Endpoints
-app.post('/api/surface-detection', async (req, res) => {
+const detectSurface: CustomRequestHandler = async (req, res) => {
   try {
-    const { route } = req.body;
+    const { route } = req.body as { route: { coordinates: [number, number][] } };
     console.log('Received route:', route);
     
-    if (!route || !route.coordinates) {
+    if (!route?.coordinates) {
       console.error('Invalid route format received');
       return res.status(400).json({ error: 'Invalid route format' });
     }
 
-    const query = `
-WITH route AS (
-  SELECT ST_GeomFromGeoJSON($1) as geom
-),
-buffered_route AS (
-  SELECT ST_Buffer(route.geom::geography, 15)::geometry as geom_buffered
-  FROM route
-),
-nearby_roads AS (
-  SELECT 
-    rn.geometry, 
-    rn.surface,
-    ST_HausdorffDistance(route.geom, rn.geometry) as similarity_score,
-    ST_Length(ST_Intersection(rn.geometry, route.geom)::geography) as intersection_length,
-    ST_Length(route.geom::geography) as total_route_length
-  FROM route
-  CROSS JOIN buffered_route
-  JOIN road_network rn ON ST_Intersects(rn.geometry, buffered_route.geom_buffered)
-),
-road_scores AS (
-  SELECT 
-    surface,
-    geometry,
-    similarity_score,
-    intersection_length,
-    total_route_length,
-    -- Combine both intersection length and similarity for ranking
-    (intersection_length / NULLIF(similarity_score, 0)) as combined_score
-  FROM nearby_roads
-  WHERE intersection_length > 0
-)
-SELECT 
-  COALESCE(sc.standardized_surface, 'unknown') as surface_type,
-  SUM(rs.intersection_length) as intersection_length,
-  rs.total_route_length,
-  (SUM(rs.intersection_length) / NULLIF(rs.total_route_length, 0) * 100) as percentage
-FROM road_scores rs
-LEFT JOIN surface_classifications sc ON rs.surface = sc.original_surface
-GROUP BY sc.standardized_surface, rs.total_route_length
-HAVING SUM(rs.intersection_length) > 0
-ORDER BY SUM(rs.intersection_length) DESC;
-    `;
-
-    console.log('Executing query...');
-    const result = await pool.query(query, [JSON.stringify(route)]);
-    console.log('Query result:', result.rows);
+    // Process points in batches to avoid overwhelming the database
+    const BATCH_SIZE = 10;
+    const results: any[] = [];
     
-    res.json(result.rows);
+    for (let i = 0; i < route.coordinates.length; i += BATCH_SIZE) {
+      const batch = route.coordinates.slice(i, i + BATCH_SIZE);
+      const batchQueries = batch.map(([lon, lat]) => {
+        return pool.query(`
+          SELECT 
+            rn.id,
+            COALESCE(sc.standardized_surface, COALESCE(rn.surface, NULL)) as surface,
+            rn.highway,
+            ST_Distance(rn.geometry::geography, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography) as distance_meters
+          FROM road_network rn
+          LEFT JOIN surface_classifications sc ON rn.surface = sc.original_surface
+          WHERE ST_DWithin(
+            rn.geometry::geography,
+            ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
+            5
+          )
+          ORDER BY rn.geometry::geography <-> ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography;
+        `, [lon, lat]);
+      });
+
+      const batchResults = await Promise.all(batchQueries);
+      batchResults.forEach(result => {
+        results.push(result.rows);
+      });
+
+      // Small delay between batches to prevent overwhelming the database
+      if (i + BATCH_SIZE < route.coordinates.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+    
+    res.json(results);
   } catch (error) {
     console.error('Surface detection error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: isErrorWithMessage(error) ? error.message : 'Failed to detect surfaces' });
   }
-});
+};
 
-app.post('/api/surface-detection/breakdown', async (req, res) => {
-  try {
-    const { route } = req.body;
-    
-    if (!route || !route.coordinates) {
-      return res.status(400).json({ error: 'Invalid route format' });
-    }
+app.post('/api/surface-detection', detectSurface);
 
-    const query = `
-WITH route AS (
-  SELECT ST_GeomFromGeoJSON($1) as geom
-)
-SELECT 
-  COALESCE(sc.standardized_surface, 'unknown') as surface_type,
-  SUM(ST_Length(ST_Intersection(rn.geometry, route.geom)::geography)) as intersection_length,
-  ST_Length(route.geom::geography) as total_route_length,
-  SUM(ST_Length(ST_Intersection(rn.geometry, route.geom)::geography)) / 
-   NULLIF(ST_Length(route.geom::geography), 0) * 100 as percentage
-FROM route
-JOIN road_network rn ON ST_Intersects(rn.geometry, route.geom)
-LEFT JOIN surface_classifications sc ON rn.surface = sc.original_surface
-WHERE ST_Length(ST_Intersection(rn.geometry, route.geom)::geography) > 0
-GROUP BY sc.standardized_surface, route.geom
-ORDER BY intersection_length DESC;
-    `;
-
-    const result = await pool.query(query, [JSON.stringify(route)]);
-    res.json(result.rows);
-  } catch (error) {
-    console.error('Surface breakdown error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-const PORT = 3001;
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-  console.log('Available routes:');
-  console.log('- GET  /api/photos/near');
-  console.log('- POST /api/photos/upload');
-  console.log('- GET  /api/profile (requires auth)');
-  console.log('- PUT  /api/profile (requires auth)');
-  console.log('- POST /api/maps (requires auth)');
-  console.log('- GET  /api/maps (requires auth)');
-  console.log('- GET  /api/maps/:id (requires auth)');
-  console.log('- PUT  /api/maps/:id (requires auth)');
-  console.log('- DELETE /api/maps/:id (requires auth)');
-  console.log('- POST /api/surface-detection');
-  console.log('- POST /api/surface-detection/breakdown');
-  console.log('- GET  /health');
+const port = process.env.PORT || 3001;
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
 });

@@ -3,9 +3,11 @@
     "composite": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "noEmit": true,
     "skipLibCheck": true,
-    "strict": true
+    "strict": true,
+    "outDir": "./dist",
+    "rootDir": ".",
+    "emitDeclarationOnly": true
   },
   "include": ["vite.config.ts"]
 }

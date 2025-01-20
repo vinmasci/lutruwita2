@@ -8,6 +8,7 @@ import React, {
   forwardRef,
   useState
 } from 'react';
+import SurfaceLegend from './surface-legend';
 import mapboxgl from 'mapbox-gl';      // Main mapping library
 import { CircularProgress, Box, Typography } from '@mui/material';  // UI components
 import 'mapbox-gl/dist/mapbox-gl.css';
@@ -460,8 +461,8 @@ const handleAddPOI = useCallback(async (poiData: Omit<POI, 'id' | 'createdAt' | 
     id: `poi-${Date.now()}`,
     createdAt: new Date(),
     updatedAt: new Date(),
-    category: poiData.category || 'Infrastructure', // Add default category
-    type: poiData.iconType,  // Ensure type is set from iconType
+    category: poiData.category || 'Infrastructure',
+    type: poiData.type || poiData.iconType, // Try type first, fall back to iconType
     location: {
       lat: isPlacingPOI.position.lat,
       lon: isPlacingPOI.position.lon
@@ -1058,6 +1059,22 @@ React.useImperativeHandle(
       )}
       <div ref={mapContainer} className="w-full h-full" />
       <LoadingOverlay mapRef={ref} />
+      {activeRoute?.segments && (
+        <SurfaceLegend 
+          surfaces={activeRoute.segments.map(s => ({
+            surface: s.surface,
+            distance: s.distance
+          }))} 
+        />
+      )}
+      {activeRoute?.surfaces && (
+        <SurfaceLegend 
+          surfaces={activeRoute.surfaces.map(s => ({
+            surface: s.surface,
+            distance: s.distance
+          }))} 
+        />
+      )}
     </div>
 );
 });  // Close the forwardRef
