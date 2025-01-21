@@ -1,4 +1,5 @@
 import { OpenidRequest, AccessToken } from 'express-openid-connect';
+import { Request, Response, NextFunction, RequestHandler } from 'express';
 
 export interface Auth0User {
   sub: string;
@@ -19,10 +20,14 @@ export interface Auth0Session {
   expiresAt: number;
 }
 
-export interface Auth0Request extends OpenidRequest {
-  oidc: Auth0Session;
+export interface Auth0Request extends Request {
+  oidc?: Auth0Session;
 }
 
 export interface AuthenticatedRequest extends Auth0Request {
   oidc: Required<Auth0Session>;  // Ensures oidc is always present
 }
+
+// Use Express's RequestHandler as a base for our middleware types
+export type Auth0MiddlewareHandler = RequestHandler;
+export type Auth0CallbackHandler = RequestHandler;
