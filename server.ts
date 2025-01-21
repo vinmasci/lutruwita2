@@ -48,38 +48,47 @@ import { RequestContext } from 'express-openid-connect';
 // Define base types for request handling
 type BaseRequest = Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>;
 
+// Define extended Auth0 request type
+interface ExtendedAuth0Request extends Request {
+  oidc?: {
+    user?: Auth0User;
+    isAuthenticated?: () => boolean;
+  };
+}
+
 // Enhanced RequestWithFile type that properly extends Express types
-type RequestWithFile<T = any> = Auth0Request & TypedRequestBody<T> & {
+type RequestWithFile<T = any> = ExtendedAuth0Request & {
+  body: T;
   file?: Express.Multer.File;
   query: ParsedQs;
   params: ParamsDictionary;
 };
 
+// Define error response type
+interface ErrorResponse {
+  error: string;
+}
+
 // Custom request handler type with proper typing for body, response and params
 type CustomRequestHandler<ReqBody = any, ResBody = any> = (
   req: RequestWithFile<ReqBody>,
-  res: TypedResponse<ResBody>,
+  res: Response<ResBody | ErrorResponse>,
   next: NextFunction
-) => Promise<TypedResponse<ResBody> | Response<ResBody> | void>;
+) => Promise<void>;
 
 // Type-safe middleware wrapper with proper type propagation
 const wrapHandler = <ReqBody = any, ResBody = any>(
   handler: CustomRequestHandler<ReqBody, ResBody>
-): RequestHandler<ParamsDictionary, ResBody, ReqBody, ParsedQs, Record<string, any>> => {
+): RequestHandler => {
   return async (req, res, next) => {
     try {
-      const result = await handler(req as RequestWithFile<ReqBody>, res as TypedResponse<ResBody>, next);
-      // Only end the response if it hasn't been ended yet and we got a result
-      if (!res.headersSent && result) {
-        return result;
-      }
+      await handler(req as RequestWithFile<ReqBody>, res as Response<ResBody | ErrorResponse>, next);
     } catch (error) {
       if (!res.headersSent) {
-        if (isErrorWithMessage(error)) {
-          res.status(500).json({ error: error.message });
-        } else {
-          res.status(500).json({ error: 'An unknown error occurred' });
-        }
+        const errorResponse: ErrorResponse = {
+          error: isErrorWithMessage(error) ? error.message : 'An unknown error occurred'
+        };
+        res.status(500).json(errorResponse);
       }
     }
   };
