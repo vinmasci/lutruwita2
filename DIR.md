@@ -8,7 +8,10 @@
 ├── australia-roads.geojson - Australian roads geodata
 ├── eslint.config.js - ESLint configuration for code linting
 ├── GPXUPLOAD.md - Documentation for GPX file upload functionality
+├── GPX_REFACTOR.md - Documentation for GPX refactoring
+├── GPX_UPLOAD_PROCESS.md - GPX upload process documentation
 ├── index.html - Main HTML entry point for the Vite application
+├── LOG.md - Development log
 ├── OLDMAP-CONTAINER.md - Documentation for legacy map container
 ├── package-lock.json - Lock file for npm dependencies
 ├── package.json - Project dependencies and scripts configuration
@@ -17,7 +20,7 @@
 ├── postcss.config.js - PostCSS configuration (likely for Tailwind)
 ├── README.md - Project documentation
 ├── SAVEMAP.md - Documentation for map saving functionality
-├── server.js - Server-side application code
+├── server.ts - Server-side application code (TypeScript)
 ├── tailwind.config.js - Tailwind CSS configuration
 ├── tsconfig.app.json - TypeScript config for application code
 ├── tsconfig.json - Base TypeScript configuration
@@ -40,6 +43,7 @@
     │   ├── layout/
     │   │   └── main-layout.tsx - Main layout component
     │   └── ui/
+    │       ├── alert.tsx - Alert/notification component
     │       ├── bottom-tabs.tsx - Bottom navigation tabs component
     │       ├── button.tsx - Button component
     │       ├── distance-marker.tsx - Distance marker component
@@ -57,6 +61,7 @@
     │       ├── save-map-modal.tsx - Map saving modal
     │       ├── sheet.tsx - Sheet component
     │       ├── sidebar.tsx - Sidebar component
+    │       ├── surface-legend.tsx - Surface legend component
     │       ├── tabs.tsx - Tabbed interface component
     │       └── map/
     │           ├── components/
@@ -91,20 +96,28 @@
     │   ├── explore.tsx - Explore page component
     │   └── home.tsx - Home page component
     ├── services/
+    │   ├── gpx-processor.ts - GPX file processing logic
     │   ├── gpx-service.ts - GPX file processing service
     │   ├── index.ts - Main service exports
     │   ├── map-route-service.ts - Map route service
     │   ├── map-service.ts - Map-related service functions
     │   ├── photo-service.ts - Photo handling service
-    │   ├── storage-service.js - Local storage service
-    │   └── surface-detection.ts - Surface detection service
+    │   ├── storage-service.ts - Local storage service (TypeScript)
+    │   └── __tests__/
+    │       ├── gpx-processor.test.ts - GPX processor unit tests
+    │       ├── gpx-upload.e2e.test.ts - GPX upload end-to-end tests
+    │       └── route-upload.integration.test.ts - Route upload integration tests
     ├── types/
     │   ├── gpx-types.ts - Type definitions for GPX file processing
     │   ├── index.ts - Main type exports
     │   ├── map-types.ts - Type definitions for mapping functionality
     │   ├── note-types.ts - Type definitions for notes functionality
-    │   └── place-types.ts - Type definitions for place-related functionality
+    │   ├── place-types.ts - Type definitions for place-related functionality
+    │   ├── server.d.ts - Server type definitions
+    │   ├── storage-service.d.ts - Storage service type definitions
+    │   └── test-types.ts - Test-related type definitions
     └── utils/
+        ├── error-handling.ts - Error handling utilities
         └── gpx/
             ├── index.ts - Main GPX utilities
             └── parsing.ts - GPX parsing utilities
@@ -145,8 +158,9 @@
 - **MapService**: Core map functionality
 - **GPXService**: GPX file processing
 - **PhotoService**: Photo handling and management
-- **StorageService**: Local data persistence
-- **SurfaceDetection**: Trail surface analysis
+- **StorageService**: Local data persistence (TypeScript)
+- **GPXProcessor**: GPX file processing logic
+- **ErrorHandling**: Centralized error handling utilities
 
 ### Data Flow
 1. **User Interaction** → UI Components → Services
@@ -161,12 +175,13 @@
 2. Add TypeScript interfaces in src/types/
 3. Implement required services in src/services/
 4. Write unit tests using Jest
+5. Add integration tests for component interactions
 
 ### API Integration
 1. Define API endpoints in src/services/
 2. Create corresponding types in src/types/
 3. Implement data fetching logic
-4. Handle loading/error states
+4. Handle loading/error states using error-handling utilities
 5. Update UI components with new data
 
 ## Testing Strategy
@@ -180,10 +195,12 @@
 - Component interactions
 - API response handling
 - State management
+- Route upload integration tests
 
 ### End-to-End Tests
-- Cypress for UI workflows
+- GPX upload workflows
 - API contract testing
+- Playwright for UI testing
 
 ## Code Quality Standards
 
@@ -196,10 +213,12 @@
 - Strict TypeScript configuration
 - Type checking in CI pipeline
 - Comprehensive type definitions
+- Type documentation with TypeDoc
 
 ### Documentation
 - JSDoc for all public APIs
 - Storybook for UI components
 - TypeDoc for type documentation
+- Detailed process documentation (GPX_REFACTOR.md, LOG.md)
 
 For more detailed project information, see [README.md](README.md)
