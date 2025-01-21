@@ -22,3 +22,7 @@ export interface Auth0Session {
 export interface Auth0Request extends OpenidRequest {
   oidc: Auth0Session;
 }
+
+export interface AuthenticatedRequest extends Auth0Request {
+  oidc: Required<Auth0Session>;  // Ensures oidc is always present
+}

@@ -71,7 +71,7 @@ src/types/
 
 ### Key Type Definitions
 
-1. **auth.types.ts**
+1. ✅ **auth.types.ts**
 ```typescript
 import { OpenIDRequest } from 'express-openid-connect';
 
@@ -92,7 +92,7 @@ export interface Auth0Request extends OpenIDRequest {
 }
 ```
 
-2. **express.types.ts**
+2. ✅ **express.types.ts**
 ```typescript
 import { Request, Response } from 'express';
 import { Auth0Session } from './auth.types';
