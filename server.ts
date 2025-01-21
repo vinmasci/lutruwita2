@@ -60,7 +60,7 @@ type CustomRequestHandler<ReqBody = any, ResBody = any> = (
   req: RequestWithFile<ReqBody>,
   res: TypedResponse<ResBody>,
   next: NextFunction
-) => Promise<void>;
+) => Promise<TypedResponse<ResBody> | Response<ResBody> | void>;
 
 // Type-safe middleware wrapper with proper type propagation
 const wrapHandler = <ReqBody = any, ResBody = any>(
@@ -68,12 +68,18 @@ const wrapHandler = <ReqBody = any, ResBody = any>(
 ): RequestHandler<ParamsDictionary, ResBody, ReqBody, ParsedQs, Record<string, any>> => {
   return async (req, res, next) => {
     try {
-      await handler(req as RequestWithFile<ReqBody>, res as TypedResponse<ResBody>, next);
+      const result = await handler(req as RequestWithFile<ReqBody>, res as TypedResponse<ResBody>, next);
+      // Only end the response if it hasn't been ended yet and we got a result
+      if (!res.headersSent && result) {
+        return result;
+      }
     } catch (error) {
-      if (isErrorWithMessage(error)) {
-        res.status(500).json({ error: error.message });
-      } else {
-        res.status(500).json({ error: 'An unknown error occurred' });
+      if (!res.headersSent) {
+        if (isErrorWithMessage(error)) {
+          res.status(500).json({ error: error.message });
+        } else {
+          res.status(500).json({ error: 'An unknown error occurred' });
+        }
       }
     }
   };
